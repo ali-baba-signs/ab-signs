@@ -1,0 +1,18 @@
+# v0 sandbox internal files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+# Database bootstrap and migration SQL is source code and must be versioned.
+docs
+# Environment variables: ignore every real environment variant while keeping
+# the documented placeholder file versioned.
+.env
+.env.*local
+!.env.example
+# Common ignores
+node_modules
+.next/
+.DS_Store

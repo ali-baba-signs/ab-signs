@@ -1,0 +1,5 @@
+import type { Metadata } from 'next'
+import { ContentPage } from '@/components/content/content-page'
+import { ContactForm } from '@/components/content/contact-form'
+export const metadata:Metadata={title:'Contact | Alibaba Signs',description:'Contact Alibaba Signs about custom signage, artwork, existing orders, or trade enquiries.'}
+export default function ContactPage(){return <ContentPage eyebrow="Contact" title="Tell us about your signage project" intro="Send the details below and our team will have the context needed to help."><div className="grid gap-8 md:grid-cols-[1fr_2fr]"><aside className="space-y-5"><div><h2 className="font-bold">Email</h2><a className="text-primary" href="mailto:support@alibabasigns.com">support@alibabasigns.com</a></div><div><h2 className="font-bold">Helpful details</h2><p className="text-sm text-muted-foreground">Include the product type, finished size, quantity, deadline, delivery location, and whether artwork is ready.</p></div></aside><ContactForm/></div></ContentPage>}

@@ -1,0 +1,11 @@
+{
+  "version": "7.4.0",
+  "background": "#FFF4F7",
+  "objects": [
+    {"type":"Rect","version":"7.4.0","left":0,"top":0,"width":1200,"height":76,"fill":"#ED1B68","selectable":false,"evented":false,"id":"top-band","name":"Top accent","role":"background","locked":true},
+    {"type":"Textbox","version":"7.4.0","left":110,"top":135,"width":980,"text":"GRAND OPENING","fontSize":92,"fontWeight":"bold","fontFamily":"Arial","textAlign":"center","fill":"#231F20","id":"headline","name":"Main headline","role":"headline","placeholder":true},
+    {"type":"Textbox","version":"7.4.0","left":260,"top":280,"width":680,"text":"SATURDAY • 10 AM – 6 PM","fontSize":38,"fontWeight":"bold","fontFamily":"Arial","textAlign":"center","fill":"#ED1B68","id":"details","name":"Event details","role":"subheading","placeholder":true},
+    {"type":"Rect","version":"7.4.0","left":420,"top":390,"width":360,"height":82,"rx":12,"ry":12,"fill":"#231F20","id":"cta-bg","name":"CTA background","role":"shape"},
+    {"type":"Textbox","version":"7.4.0","left":450,"top":410,"width":300,"text":"VISIT US TODAY","fontSize":30,"fontWeight":"bold","fontFamily":"Arial","textAlign":"center","fill":"#FFFFFF","id":"cta","name":"Call to action","role":"body","placeholder":true}
+  ]
+}

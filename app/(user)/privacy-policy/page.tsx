@@ -1,0 +1,1 @@
+import type { Metadata } from 'next';import { PrivacyContent } from '@/components/content/legal-content';export const metadata:Metadata={title:'Privacy Policy | Alibaba Signs',description:'How Alibaba Signs handles customer, order, artwork, and website information.'};export default function Page(){return <PrivacyContent/>}

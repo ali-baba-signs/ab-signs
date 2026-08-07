@@ -1,0 +1,59 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { assertTransition, allowedTransitions, deadlineState, designDeadline } from '../lib/orders/workflow'
+import { createReceiptPdf } from '../lib/pdf/receipt'
+import { createTemplateCanvasSize } from '../lib/templates/size-conversion'
+import { sanitizeSvgMarkup, validateFabricCanvasData } from '../lib/templates/svg-sanitization'
+import { createUploadKey, validateUpload } from '../lib/storage/upload-validation'
+import { validateProductInput } from '../lib/products/validation'
+
+test('template canvas mapping preserves physical aspect ratio without print-sized browser canvases', () => {
+  const sixByThree = createTemplateCanvasSize(6, 3, 'ft')
+  assert.equal(sixByThree.widthMm, 1828.8000000000002)
+  assert.equal(sixByThree.logicalCanvasWidth, 1200)
+  assert.equal(sixByThree.logicalCanvasHeight, 600)
+  const portrait = createTemplateCanvasSize(600, 900, 'mm')
+  assert.equal(portrait.logicalCanvasHeight, 1200)
+  assert.equal(portrait.logicalCanvasWidth, 800)
+})
+
+test('SVG and Fabric validation reject executable, external, and empty template data', () => {
+  assert.throws(() => sanitizeSvgMarkup('<svg><script>alert(1)</script></svg>'), /forbidden/i)
+  assert.throws(() => sanitizeSvgMarkup('<svg><image href="https://evil.invalid/a.png"/></svg>'), /external/i)
+  assert.equal(sanitizeSvgMarkup('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>').startsWith('<svg'), true)
+  assert.throws(() => validateFabricCanvasData({ objects: [] }), /editable Fabric objects/i)
+  assert.deepEqual(validateFabricCanvasData({ version: '7.4.0', objects: [{ type: 'rect' }] }).objects, [{ type: 'rect' }])
+})
+
+test('template products require inherited template-size pricing and reject duplicate local images', () => {
+  const base = { sku: 'TEMPLATE-1', name: 'Template product', description: '<p>A sufficiently detailed product description.</p>', basePrice: 25, categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', images: [{ key: 'products/a.webp', assetId: 'b94ab2d1-f1ec-49d8-9d56-b5ba0694baa3' }], sizes: [] }
+  assert.throws(() => validateProductInput(base), /inherited template size/i)
+  const result = validateProductInput({ ...base, templatePrices: [{ templateSizeId: 'c94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', unitPrice: '29.995', enabled: true }] })
+  assert.equal(result.sizes.length, 0)
+  assert.equal(result.templatePrices[0].unitPrice, 30)
+})
+
+test('order workflow accepts only configured transitions and computes the six-hour deadline', () => {
+  assert.equal(assertTransition('pending_design_confirmation', 'design_confirmed'), 'design_confirmed')
+  assert.throws(() => assertTransition('pending_design_confirmation', 'completed'), /cannot transition directly/i)
+  assert.deepEqual(allowedTransitions('refunded'), [])
+  const created = new Date('2026-08-06T00:00:00.000Z')
+  assert.equal(designDeadline(created).toISOString(), '2026-08-06T06:00:00.000Z')
+  assert.equal(deadlineState(created, new Date('2026-08-06T00:00:01.000Z')).delayed, true)
+})
+
+test('private design drafts and order PDFs use validated scoped R2 keys', () => {
+  validateUpload({ filename: 'design-draft.json', contentType: 'application/json', size: 200, purpose: 'design-draft' })
+  validateUpload({ filename: 'receipt.pdf', contentType: 'application/pdf', size: 200, purpose: 'order-document' })
+  const draft = createUploadKey({ filename: 'design-draft.json', contentType: 'application/json', size: 200, purpose: 'design-draft' }, 'user-1')
+  const receipt = createUploadKey({ filename: 'receipt.pdf', contentType: 'application/pdf', size: 200, purpose: 'order-document', destination: 'order-1' }, 'admin-1')
+  assert.match(draft, /^uploads\/designs\/user-1\/drafts\/.+\.json$/)
+  assert.match(receipt, /^orders\/order-1\/documents\/.+\.pdf$/)
+})
+
+test('server receipt generator emits a valid PDF structure', () => {
+  const pdf = createReceiptPdf(['Alibaba Signs', 'PAYMENT RECEIPT', 'Order: ABS-TEST', 'Total: AUD 10.00'])
+  assert.equal(pdf.subarray(0, 8).toString(), '%PDF-1.4')
+  assert.match(pdf.toString('binary'), /startxref/)
+  assert.match(pdf.toString('binary'), /ABS-TEST/)
+})

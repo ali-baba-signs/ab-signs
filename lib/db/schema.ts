@@ -1,0 +1,489 @@
+import { pgTable, text, timestamp, integer, boolean, decimal, varchar, json, pgEnum, uuid, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { relations } from 'drizzle-orm'
+
+// Enums
+export const userRoleEnum = pgEnum('user_role', ['admin', 'customer', 'designer'])
+export const orderStatusEnum = pgEnum('order_status', [
+  'pending', 'confirmed', 'production', 'ready_to_ship', 'shipped',
+  'pending_design_confirmation', 'design_revision_required', 'design_confirmed',
+  'awaiting_payment_confirmation', 'payment_confirmed', 'order_confirmed',
+  'in_production', 'quality_check', 'print_ready', 'ready_for_pickup',
+  'awaiting_dispatch', 'out_for_delivery', 'delivered', 'completed', 'on_hold',
+  'cancelled', 'refund_requested', 'refunded',
+])
+export const productCategoryEnum = pgEnum('product_category', ['custom_banners', 'mesh_banners', 'vinyl_banners', 'templates', 'digital_designs'])
+
+// Users Table
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  email: varchar('email', { length: 255 }).unique().notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  image: text('image'),
+  role: userRoleEnum('role').default('customer').notNull(),
+  emailVerified: boolean('emailVerified').default(false).notNull(),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+})
+
+// Better Auth uses a separate security boundary for administrators.
+export const adminUsers = pgTable('admin_users', {
+  id: text('id').primaryKey(),
+  email: varchar('email', { length: 255 }).unique().notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  image: text('image'),
+  role: varchar('role', { length: 30 }).default('admin').notNull(),
+  emailVerified: boolean('emailVerified').default(false).notNull(),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+})
+
+export const storageAssets = pgTable('storage_assets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  objectKey: text('object_key').unique().notNull(),
+  filename: varchar('filename', { length: 255 }).notNull(),
+  folder: text('folder').notNull(),
+  contentType: varchar('content_type', { length: 160 }).notNull(),
+  size: integer('size_bytes').default(0).notNull(),
+  etag: varchar('etag', { length: 255 }),
+  access: varchar('access', { length: 20 }).default('public').notNull(),
+  status: varchar('status', { length: 30 }).default('available').notNull(),
+  uploadedBy: text('uploaded_by').references(() => adminUsers.id, { onDelete: 'set null' }),
+  uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+  lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('storage_assets_folder_idx').on(table.folder), index('storage_assets_seen_idx').on(table.lastSeenAt)])
+
+// User Profiles
+export const userProfiles = pgTable('user_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  company: varchar('company', { length: 255 }),
+  phone: varchar('phone', { length: 20 }),
+  alternatePhone: varchar('alternate_phone', { length: 20 }),
+  address: text('address'),
+  city: varchar('city', { length: 255 }),
+  state: varchar('state', { length: 255 }),
+  postalCode: varchar('postal_code', { length: 20 }),
+  country: varchar('country', { length: 255 }),
+  deliveryInstructions: text('delivery_instructions'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const customerAddresses = pgTable('customer_addresses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 80 }).default('Address').notNull(),
+  fullName: varchar('full_name', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 30 }),
+  alternatePhone: varchar('alternate_phone', { length: 30 }),
+  addressLine1: text('address_line_1').notNull(),
+  addressLine2: text('address_line_2'),
+  city: varchar('city', { length: 160 }).notNull(),
+  region: varchar('region', { length: 160 }),
+  postalCode: varchar('postal_code', { length: 30 }).notNull(),
+  country: varchar('country', { length: 160 }).notNull(),
+  deliveryInstructions: text('delivery_instructions'),
+  defaultShipping: boolean('default_shipping').default(false).notNull(),
+  defaultBilling: boolean('default_billing').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('customer_addresses_user_idx').on(table.userId)])
+
+// Sessions (Better Auth)
+export const sessions = pgTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expiresAt').notNull(),
+  token: text('token').unique().notNull(),
+  ipAddress: text('ipAddress'),
+  userAgent: text('userAgent'),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+})
+
+// Product Categories
+export const productCategories = pgTable('product_categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 255 }).unique().notNull(),
+  description: text('description'),
+  category: productCategoryEnum('category').notNull(),
+  imageAssetId: uuid('image_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  enabled: boolean('enabled').default(true).notNull(),
+  showOnHomepage: boolean('show_on_homepage').default(false).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Products
+export const products = pgTable('products', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  categoryId: uuid('category_id').notNull().references(() => productCategories.id),
+  sku: varchar('sku', { length: 100 }).unique().notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  basePrice: decimal('base_price', { precision: 10, scale: 2 }).notNull(),
+  // Referential integrity is created by the migration. Keeping this column
+  // reference-free here avoids a circular declaration with `templates`.
+  templateId: uuid('template_id'),
+  materials: json('materials'),
+  printTypes: json('print_types'),
+  featured: boolean('featured').default(false),
+  active: boolean('active').default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Product Variants
+export const productVariants = pgTable('product_variants', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  dimensions: varchar('dimensions', { length: 100 }),
+  material: varchar('material', { length: 100 }),
+  printType: varchar('print_type', { length: 100 }),
+  priceModifier: decimal('price_modifier', { precision: 10, scale: 2 }).default('0'),
+  stock: integer('stock').default(0),
+  sku: varchar('sku', { length: 100 }).unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// Product Images
+export const productImages = pgTable('product_images', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  storageKey: text('storage_key'),
+  assetId: uuid('asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  alt: varchar('alt', { length: 255 }),
+  isPrimary: boolean('is_primary').default(false),
+  order: integer('order').default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const productSizes = pgTable('product_sizes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 120 }).notNull(),
+  width: decimal('width', { precision: 10, scale: 2 }),
+  height: decimal('height', { precision: 10, scale: 2 }),
+  unit: varchar('unit', { length: 20 }).default('in').notNull(),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  order: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('product_sizes_product_idx').on(table.productId)])
+
+// Templates
+export const templates = pgTable('templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  thumbnail: text('thumbnail'),
+  previewImageUrl: text('preview_image_url'),
+  previewImageKey: text('preview_image_key'),
+  previewAssetId: uuid('preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  webmUrl: text('webm_url'),
+  webmKey: text('webm_key'),
+  jsonUrl: text('json_url'),
+  jsonKey: text('json_key'),
+  svgUrl: text('svg_url'),
+  svgKey: text('svg_key'),
+  svgAssetId: uuid('svg_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  physicalWidth: decimal('physical_width', { precision: 12, scale: 3 }),
+  physicalHeight: decimal('physical_height', { precision: 12, scale: 3 }),
+  measurementUnit: varchar('measurement_unit', { length: 10 }).default('mm'),
+  logicalCanvasWidth: integer('logical_canvas_width'),
+  logicalCanvasHeight: integer('logical_canvas_height'),
+  scaleMetadata: json('scale_metadata'),
+  templateVersion: integer('template_version').default(1).notNull(),
+  svgChecksum: varchar('svg_checksum', { length: 64 }),
+  conversionVersion: integer('conversion_version').default(1).notNull(),
+  conversionStatus: varchar('conversion_status', { length: 20 }).default('pending').notNull(),
+  conversionError: text('conversion_error'),
+  generatedAt: timestamp('generated_at'),
+  canvasData: json('canvas_data').notNull(),
+  category: productCategoryEnum('category'),
+  tags: json('tags'),
+  status: varchar('status', { length: 30 }).default('draft').notNull(),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const templateSizes = pgTable('template_sizes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  templateId: uuid('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 120 }).notNull(),
+  width: decimal('width', { precision: 12, scale: 3 }).notNull(),
+  height: decimal('height', { precision: 12, scale: 3 }).notNull(),
+  unit: varchar('unit', { length: 10 }).default('mm').notNull(),
+  fitMode: varchar('fit_mode', { length: 10 }).default('contain').notNull(),
+  safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('0').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('template_sizes_template_idx').on(table.templateId), uniqueIndex('template_sizes_identity_idx').on(table.templateId, table.width, table.height, table.unit)])
+
+export const productTemplateSizePrices = pgTable('product_template_size_prices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  templateSizeId: uuid('template_size_id').notNull().references(() => templateSizes.id, { onDelete: 'cascade' }),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('product_template_size_price_idx').on(table.productId, table.templateSizeId)])
+
+// Designs
+export const designs = pgTable('designs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  canvasData: json('canvas_data').notNull(),
+  assetId: uuid('asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  thumbnail: text('thumbnail'),
+  templateId: uuid('template_id').references(() => templates.id),
+  productId: uuid('product_id').references(() => products.id),
+  isPublic: boolean('is_public').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const customerArtworks = pgTable('customer_artworks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'restrict' }),
+  templateSizeId: uuid('template_size_id').references(() => templateSizes.id, { onDelete: 'restrict' }),
+  productSizeId: uuid('product_size_id').references(() => productSizes.id, { onDelete: 'restrict' }),
+  assetId: uuid('asset_id').notNull().references(() => storageAssets.id, { onDelete: 'restrict' }),
+  originalFilename: varchar('original_filename', { length: 255 }).notNull(),
+  notes: text('notes'),
+  orientation: varchar('orientation', { length: 20 }),
+  quantityReference: integer('quantity_reference'),
+  status: varchar('status', { length: 20 }).default('ready').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('customer_artworks_user_idx').on(table.userId), index('customer_artworks_product_idx').on(table.productId)])
+
+// Design Versions
+export const designVersions = pgTable('design_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  designId: uuid('design_id').notNull().references(() => designs.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  canvasData: json('canvas_data').notNull(),
+  changedAt: timestamp('changed_at').defaultNow().notNull(),
+})
+
+// Orders
+export const orders = pgTable('orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  orderNumber: varchar('order_number', { length: 50 }).unique().notNull(),
+  status: orderStatusEnum('status').default('pending_design_confirmation').notNull(),
+  paymentStatus: varchar('payment_status', { length: 30 }).default('awaiting_payment').notNull(),
+  paymentMethod: varchar('payment_method', { length: 30 }),
+  currency: varchar('currency', { length: 3 }).default('AUD').notNull(),
+  customerEmail: varchar('customer_email', { length: 255 }).notNull(),
+  idempotencyKey: varchar('idempotency_key', { length: 100 }).unique().notNull(),
+  totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
+  taxAmount: decimal('tax_amount', { precision: 10, scale: 2 }).default('0'),
+  shippingAmount: decimal('shipping_amount', { precision: 10, scale: 2 }).default('0'),
+  shippingAddress: json('shipping_address'),
+  billingAddress: json('billing_address'),
+  notes: text('notes'),
+  designConfirmationDeadline: timestamp('design_confirmation_deadline'),
+  designConfirmedAt: timestamp('design_confirmed_at'),
+  designConfirmationOnTime: boolean('design_confirmation_on_time'),
+  designDelayReason: text('design_delay_reason'),
+  expectedPrintingAt: timestamp('expected_printing_at'),
+  expectedDeliveryAt: timestamp('expected_delivery_at'),
+  courierName: varchar('courier_name', { length: 120 }),
+  trackingNumber: varchar('tracking_number', { length: 160 }),
+  internalNotes: text('internal_notes'),
+  customerNotes: text('customer_notes'),
+  receiptAssetId: uuid('receipt_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Order Items
+export const orderItems = pgTable('order_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').notNull().references(() => products.id),
+  variantId: uuid('variant_id').references(() => productVariants.id),
+  productSizeId: uuid('product_size_id').references(() => productSizes.id, { onDelete: 'set null' }),
+  templateSizeId: uuid('template_size_id').references(() => templateSizes.id, { onDelete: 'set null' }),
+  templateId: uuid('template_id').references(() => templates.id),
+  designId: uuid('design_id').references(() => designs.id),
+  customerArtworkId: uuid('customer_artwork_id').references(() => customerArtworks.id, { onDelete: 'set null' }),
+  designSource: varchar('design_source', { length: 30 }).default('design_assistance').notNull(),
+  quantity: integer('quantity').default(1).notNull(),
+  unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
+  totalPrice: decimal('total_price', { precision: 12, scale: 2 }).notNull(),
+  specifications: json('specifications'),
+})
+
+export const paymentRecords = pgTable('payment_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  provider: varchar('provider', { length: 30 }).notNull(),
+  mode: varchar('mode', { length: 20 }).default('test').notNull(),
+  status: varchar('status', { length: 30 }).default('awaiting_payment').notNull(),
+  amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+  currency: varchar('currency', { length: 3 }).notNull(),
+  externalId: varchar('external_id', { length: 255 }),
+  metadata: json('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('payment_records_order_idx').on(table.orderId)])
+
+export const storeSettings = pgTable('store_settings', {
+  id: varchar('id', { length: 30 }).primaryKey().default('default'),
+  values: json('values').notNull(),
+  updatedBy: text('updated_by').references(() => adminUsers.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export const adminActivityLogs = pgTable('admin_activity_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  adminUserId: text('admin_user_id').references(() => adminUsers.id, { onDelete: 'set null' }),
+  adminName: varchar('admin_name', { length: 255 }).notNull(),
+  actionType: varchar('action_type', { length: 80 }).notNull(),
+  entityType: varchar('entity_type', { length: 80 }).notNull(),
+  entityId: text('entity_id'),
+  entityName: varchar('entity_name', { length: 255 }),
+  description: text('description').notNull(),
+  metadata: json('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [index('admin_activity_created_idx').on(table.createdAt), index('admin_activity_entity_idx').on(table.entityType, table.entityId)])
+
+export const heroSlides = pgTable('hero_slides', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  desktopAssetId: uuid('desktop_asset_id').notNull().references(() => storageAssets.id, { onDelete: 'restrict' }),
+  mobileAssetId: uuid('mobile_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  title: varchar('title', { length: 255 }),
+  description: text('description'),
+  eyebrow: varchar('eyebrow', { length: 255 }),
+  buttonLabel: varchar('button_label', { length: 120 }),
+  buttonUrl: text('button_url'),
+  altText: varchar('alt_text', { length: 255 }).notNull(),
+  horizontalAlignment: varchar('horizontal_alignment', { length: 10 }).default('left').notNull(),
+  verticalAlignment: varchar('vertical_alignment', { length: 10 }).default('middle').notNull(),
+  featured: boolean('featured').default(true).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('hero_slides_display_idx').on(table.featured, table.enabled, table.displayOrder)])
+
+export const contactSubmissions = pgTable('contact_submissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 30 }),
+  subject: varchar('subject', { length: 255 }).notNull(),
+  message: text('message').notNull(),
+  status: varchar('status', { length: 30 }).default('new').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [index('contact_submissions_created_idx').on(table.createdAt)])
+
+// Order Status History
+export const orderStatusHistory = pgTable('order_status_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  status: orderStatusEnum('status').notNull(),
+  previousStatus: orderStatusEnum('previous_status'),
+  newStatus: orderStatusEnum('new_status'),
+  notes: text('notes'),
+  internalNote: text('internal_note'),
+  customerVisibleNote: text('customer_visible_note'),
+  expectedCompletionAt: timestamp('expected_completion_at'),
+  changedAt: timestamp('changed_at').defaultNow().notNull(),
+  changedBy: text('changed_by').references(() => users.id),
+  changedByAdmin: text('changed_by_admin').references(() => adminUsers.id, { onDelete: 'set null' }),
+})
+
+export const productReviews = pgTable('product_reviews', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderItemId: uuid('order_item_id').notNull().references(() => orderItems.id, { onDelete: 'cascade' }).unique(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  productQuality: integer('product_quality').notNull(),
+  printQuality: integer('print_quality').notNull(),
+  timeliness: integer('timeliness').notNull(),
+  service: integer('service').notNull(),
+  overall: integer('overall').notNull(),
+  feedback: text('feedback'),
+  verifiedPurchase: boolean('verified_purchase').default(true).notNull(),
+  moderationStatus: varchar('moderation_status', { length: 20 }).default('pending').notNull(),
+  moderatedBy: text('moderated_by').references(() => adminUsers.id, { onDelete: 'set null' }),
+  moderatedAt: timestamp('moderated_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('product_reviews_product_idx').on(table.productId)])
+
+// Production Queue
+export const productionQueue = pgTable('production_queue', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderItemId: uuid('order_item_id').notNull().references(() => orderItems.id),
+  status: varchar('status', { length: 50 }).default('queued').notNull(),
+  assignedTo: text('assigned_to').references(() => users.id),
+  priority: integer('priority').default(0),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// Live Chat Messages
+export const liveChatMessages = pgTable('live_chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sessionId: uuid('session_id').notNull(),
+  userId: text('user_id').notNull().references(() => users.id),
+  message: text('message').notNull(),
+  isAdminMessage: boolean('is_admin_message').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+// CMS Pages
+export const cmsPages = pgTable('cms_pages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 255 }).unique().notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  content: text('content'),
+  metadata: json('metadata'),
+  published: boolean('published').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+// Relations
+export const usersRelations = relations(users, ({ one, many }) => ({
+  profile: one(userProfiles),
+  sessions: many(sessions),
+  designs: many(designs),
+  orders: many(orders),
+}))
+
+export const productRelations = relations(products, ({ one, many }) => ({
+  category: one(productCategories),
+  template: one(templates, { fields: [products.templateId], references: [templates.id] }),
+  variants: many(productVariants),
+  images: many(productImages),
+  sizes: many(productSizes),
+}))
+
+export const orderRelations = relations(orders, ({ one, many }) => ({
+  user: one(users),
+  items: many(orderItems),
+  statusHistory: many(orderStatusHistory),
+}))

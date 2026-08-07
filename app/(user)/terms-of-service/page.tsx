@@ -1,0 +1,1 @@
+import type { Metadata } from 'next';import { TermsContent } from '@/components/content/legal-content';export const metadata:Metadata={title:'Terms of Service | Alibaba Signs',description:'Terms for ordering custom print and signage from Alibaba Signs.'};export default function Page(){return <TermsContent/>}

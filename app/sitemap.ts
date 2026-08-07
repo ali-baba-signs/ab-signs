@@ -1,0 +1,2 @@
+import type { MetadataRoute } from 'next'
+export default function sitemap():MetadataRoute.Sitemap{const base='https://alibabasigns.com.au';return ['','/products','/design','/about-us','/contact','/blog','/faq','/terms-of-service','/privacy-policy','/cookie-policy','/sitemap'].map((path)=>({url:`${base}${path}`,lastModified:new Date(),changeFrequency:path==='/products'?'daily':'monthly',priority:path===''?1:path==='/products'?0.9:0.6}))}

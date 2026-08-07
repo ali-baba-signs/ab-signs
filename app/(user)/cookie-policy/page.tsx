@@ -1,0 +1,1 @@
+import type { Metadata } from 'next';import { CookieContent } from '@/components/content/legal-content';export const metadata:Metadata={title:'Cookie Policy | Alibaba Signs',description:'How Alibaba Signs uses cookies and browser storage.'};export default function Page(){return <CookieContent/>}

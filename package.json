@@ -1,0 +1,59 @@
+{
+  "name": "my-project",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "db:migrate": "node scripts/apply-migration.mjs",
+    "lint": "eslint .",
+    "r2:check": "node scripts/r2-check.mjs",
+    "r2:smoke": "node scripts/r2-check.mjs --all-prefixes --public",
+    "verify:content-assets": "node node_modules/tsx/dist/cli.mjs scripts/verify-content-assets.ts",
+    "verify:editor-model": "node node_modules/tsx/dist/cli.mjs scripts/verify-editor-model.ts",
+    "verify:content-db": "node scripts/verify-content-db.mjs",
+    "verify:admin-http": "node scripts/verify-admin-content-http.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1096.0",
+    "@aws-sdk/s3-request-presigner": "^3.1096.0",
+    "@base-ui/react": "^1.5.0",
+    "@vercel/analytics": "1.6.1",
+    "@vercel/blob": "^2.6.1",
+    "better-auth": "^1.6.23",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
+    "fabric": "^7.4.0",
+    "lucide-react": "^1.16.0",
+    "next": "16.2.6",
+    "pg": "^8.22.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "shadcn": "^4.8.0",
+    "tailwind-merge": "^3.3.1",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@next/env": "^16.3.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.2.6",
+    "postcss": "^8.5",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "5.7.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "hono": "4.12.25"
+    }
+  },
+  "packageManager": "pnpm@10.15.0+sha512.486ebc259d3e999a4e8691ce03b5cac4a71cbeca39372a9b762cb500cfdf0873e2cb16abe3d951b1ee2cf012503f027b98b6584e4df22524e0c7450d9ec7aa7b"
+}
