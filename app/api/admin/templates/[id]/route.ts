@@ -7,6 +7,7 @@ import { activityValues } from '@/lib/admin/activity'
 import { validateTemplateInput } from '@/lib/templates/validation'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
+import { safeErrorMessage } from '@/lib/api/safe-error'
 
 function currentAssets(template: typeof templates.$inferSelect) {
   return {
@@ -50,7 +51,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         name: input.name, description: input.description, category: input.category, status: input.status, canvasData,
         thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
-        physicalWidth: input.width.toString(), physicalHeight: input.height.toString(), measurementUnit: input.unit,
+        physicalWidth: input.width, physicalHeight: input.height, measurementUnit: input.unit,
         logicalCanvasWidth: input.logicalCanvasWidth, logicalCanvasHeight: input.logicalCanvasHeight,
         scaleMetadata: requiresGeneration ? input.scaleMetadata : existing.scaleMetadata,
         templateVersion: (existing.templateVersion || 1) + (requiresGeneration ? 1 : 0),
@@ -65,10 +66,10 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       const savedSizes: Array<{ id: string }> = []
       for (const size of input.sizes) {
         if (size.id && existingSizes.some((row) => row.id === size.id)) {
-          const [saved] = await tx.update(templateSizes).set({ label: size.label, width: size.width.toString(), height: size.height.toString(), unit: size.unit, fitMode: size.fitMode, safeMargin: size.safeMargin.toString(), enabled: size.enabled, isDefault: size.isDefault, displayOrder: size.displayOrder, updatedAt: new Date() }).where(eq(templateSizes.id, size.id)).returning({ id: templateSizes.id })
+          const [saved] = await tx.update(templateSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, fitMode: size.fitMode, safeMargin: size.safeMargin, bleed: size.bleed, trimMarks: size.trimMarks, enabled: size.enabled, isDefault: size.isDefault, displayOrder: size.displayOrder, updatedAt: new Date() }).where(eq(templateSizes.id, size.id)).returning({ id: templateSizes.id })
           retained.add(saved.id); savedSizes.push(saved)
         } else {
-          const [saved] = await tx.insert(templateSizes).values({ templateId: id, label: size.label, width: size.width.toString(), height: size.height.toString(), unit: size.unit, fitMode: size.fitMode, safeMargin: size.safeMargin.toString(), enabled: size.enabled, isDefault: size.isDefault, displayOrder: size.displayOrder }).returning({ id: templateSizes.id })
+          const [saved] = await tx.insert(templateSizes).values({ templateId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, fitMode: size.fitMode, safeMargin: size.safeMargin, bleed: size.bleed, trimMarks: size.trimMarks, enabled: size.enabled, isDefault: size.isDefault, displayOrder: size.displayOrder }).returning({ id: templateSizes.id })
           retained.add(saved.id); savedSizes.push(saved)
         }
       }
@@ -82,7 +83,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ data: { template: updated } })
   } catch (error) {
     console.error('Template update failed', error)
-    return NextResponse.json({ error: { code: 'TEMPLATE_UPDATE_FAILED', message: error instanceof Error ? error.message : 'The template could not be updated.' } }, { status: 400 })
+    return NextResponse.json({ error: { code: 'TEMPLATE_UPDATE_FAILED', message: safeErrorMessage(error, 'The template could not be updated. Verify its assets and production sizes, then retry.', /Template|SVG|preview|Fabric|size|artwork|measurement|label|margin|bleed|checksum|Preserve|regenerated/) } }, { status: 400 })
   }
 }
 

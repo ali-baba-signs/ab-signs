@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Package, Pencil, Plus, Save, Star, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -15,12 +15,14 @@ export default function ProfilePage() {
   const [address, setAddress] = useState(blankAddress)
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [reviews, setReviews] = useState<Array<{id:string;overall:number;feedback:string|null;moderationStatus:string;createdAt:string}>>([])
 
   async function load() {
-    const [profilePayload, addressPayload] = await Promise.all([fetch('/api/account/profile').then((response) => response.json()), fetch('/api/account/addresses').then((response) => response.json())])
+    const [profilePayload, addressPayload, reviewPayload] = await Promise.all([fetch('/api/account/profile').then((response) => response.json()), fetch('/api/account/addresses').then((response) => response.json()), fetch('/api/reviews?mine=true').then((response) => response.json())])
     if (profilePayload.error) throw new Error(profilePayload.error.message)
     setProfile({ name: profilePayload.data.profile.name || '', email: profilePayload.data.profile.email || '', phone: profilePayload.data.profile.phone || '', alternatePhone: profilePayload.data.profile.alternatePhone || '', deliveryInstructions: profilePayload.data.profile.deliveryInstructions || '' })
     setAddresses(addressPayload.data?.addresses || [])
+    setReviews(reviewPayload.data?.reviews || [])
   }
 
   useEffect(() => { const timer = window.setTimeout(() => void load().catch((error) => setMessage(error.message)), 0); return () => window.clearTimeout(timer) }, [])
@@ -40,7 +42,8 @@ export default function ProfilePage() {
   const input = (label: string, key: keyof typeof blankAddress, required = false) => <label className="text-sm font-semibold">{label}<Input required={required} className="mt-1" value={String(address[key])} onChange={(event) => setAddress({ ...address, [key]: event.target.value })} /></label>
 
   return <main className="min-h-screen bg-background px-4 py-8"><div className="mx-auto max-w-5xl">
-    <Link href="/" className="inline-flex gap-2"><ArrowLeft /> Home</Link><h1 className="mt-3 text-3xl font-black">Contact and addresses</h1>
+    <Link href="/" className="inline-flex gap-2"><ArrowLeft /> Home</Link><h1 className="mt-3 text-3xl font-black">My profile</h1>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2"><Link href="/account/orders" className="flex items-center gap-3 rounded-xl border bg-card p-4 font-bold hover:border-primary"><Package className="text-primary"/> Previous orders, current orders and tracking</Link><a href="#my-reviews" className="flex items-center gap-3 rounded-xl border bg-card p-4 font-bold hover:border-primary"><Star className="text-primary"/> Reviews I have submitted</a></div>
     {message && <p className="mt-4 rounded bg-secondary p-3">{message}</p>}
     <div className="mt-6 grid gap-6 lg:grid-cols-2">
       <section className="rounded-xl border bg-card p-5"><h2 className="font-bold">Contact profile</h2><div className="mt-4 space-y-3">
@@ -57,5 +60,6 @@ export default function ProfilePage() {
       </div></section>
     </div>
     <section className="mt-6 rounded-xl border bg-card p-5"><h2 className="font-bold">Saved addresses</h2><div className="mt-4 grid gap-3 md:grid-cols-2">{addresses.map((item) => <article key={item.id} className="rounded border p-3"><p className="font-semibold">{item.label} {item.defaultShipping && '· Shipping'} {item.defaultBilling && '· Billing'}</p><p className="text-sm">{item.fullName}, {item.addressLine1}, {item.city}, {item.postalCode}, {item.country}</p><div className="mt-2 flex gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingAddressId(item.id); setAddress({ label: item.label, fullName: item.fullName, phone: item.phone, alternatePhone: item.alternatePhone, addressLine1: item.addressLine1, addressLine2: item.addressLine2, city: item.city, region: item.region, postalCode: item.postalCode, country: item.country, deliveryInstructions: item.deliveryInstructions, defaultShipping: item.defaultShipping, defaultBilling: item.defaultBilling }); window.scrollTo({ top: 0, behavior: 'smooth' }) }}><Pencil /> Edit</Button><Button size="sm" variant="outline" className="text-red-600" onClick={() => void remove(item.id)}><Trash2 /> Remove</Button></div></article>)}</div></section>
+    <section id="my-reviews" className="mt-6 rounded-xl border bg-card p-5"><h2 className="font-bold">My submitted reviews</h2>{reviews.length?<div className="mt-4 grid gap-3 md:grid-cols-2">{reviews.map((review)=><article key={review.id} className="rounded border p-3"><p className="font-semibold">{review.overall}/5 · {review.moderationStatus}</p>{review.feedback&&<p className="mt-2 text-sm">{review.feedback}</p>}<time className="mt-2 block text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString()}</time></article>)}</div>:<p className="mt-3 text-sm text-muted-foreground">You have not submitted a product review yet. Reviews become available from delivered orders.</p>}</section>
   </div></main>
 }

@@ -7,6 +7,7 @@ import { getAdminSession } from '@/lib/auth/require-admin'
 import { isPaymentProvider } from '@/lib/payments/providers'
 import { loadStoreSettings } from '@/lib/store/load-settings'
 import { designDeadline } from '@/lib/orders/workflow'
+import { parseMeasurement } from '@/lib/measurements'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
     const calculatedItems = items.map((item) => {
       const product = productRows.find((row) => row.id === item.productId && row.active)
       const legacySize = sizeRows.find((row) => row.id === item.sizeId && row.productId === item.productId && row.enabled)
-      const templateSize = product?.templateId ? templateSizeRows.find((row) => row.id === item.sizeId && row.templateId === product.templateId && row.enabled) : null
+      const templateSize = product?.templateId && product.sizeMode === 'template_sizes' ? templateSizeRows.find((row) => row.id === item.sizeId && row.templateId === product.templateId && row.enabled) : null
       const price = templateSize ? priceRows.find((row) => row.productId === product?.id && row.templateSizeId === templateSize.id && row.enabled) : null
       const size = templateSize ? { ...templateSize, unitPrice: price?.unitPrice, productId: product?.id } : legacySize
       const quantity = Number(item.quantity)
@@ -98,8 +99,16 @@ export async function POST(request: NextRequest) {
       const designSource = item.designSource || (design ? 'online_editor' : artwork ? 'customer_upload' : 'design_assistance')
       if (designSource === 'online_editor' && !design) throw new Error('Save the online customization before checkout.')
       if (designSource === 'customer_upload' && !artwork) throw new Error('The uploaded artwork is unavailable or belongs to another account.')
-      const unitCents = cents(Number(size.unitPrice))
-      return { product, size, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      const customHeight = item.specifications?.customHeight
+      const customWidth = item.specifications?.customWidth
+      const customRequested = customHeight !== undefined || customWidth !== undefined
+      if (customRequested && (!product.allowCustomDimensions || !legacySize || product.sizeMode === 'fixed_variants')) throw new Error('Custom dimensions are not available for this product.')
+      const finalHeight = customRequested ? parseMeasurement(customHeight, 'Custom height').normalized : size.height
+      const finalWidth = customRequested ? parseMeasurement(customWidth, 'Custom width').normalized : size.width
+      if (customRequested && (!size.height || !size.width)) throw new Error('The custom-size pricing reference has no configured dimensions.')
+      const areaRatio = customRequested ? Number(finalHeight) * Number(finalWidth) / (Number(size.height) * Number(size.width)) : 1
+      const unitCents = cents(Number(size.unitPrice) * areaRatio)
+      return { product, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
     const shippingCents = subtotalCents >= cents(settings.freeShippingThreshold) ? 0 : cents(settings.shippingCost)
@@ -114,7 +123,7 @@ export async function POST(request: NextRequest) {
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height },
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource },
       })))
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
       return rows

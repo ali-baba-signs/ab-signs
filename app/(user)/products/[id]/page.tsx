@@ -10,8 +10,9 @@ import { Label } from '@/components/ui/label'
 import { useCart } from '@/lib/cart-context'
 import { ArtworkUploadCard, type ArtworkSelection } from '@/components/products/artwork-upload-card'
 
-interface Size { id: string; label: string; width: string | null; height: string | null; unit: string; unitPrice: string }
-interface Product { id: string; name: string; description: string; basePrice: string; templateId: string | null; template: { id: string; name: string; status: string } | null; images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean }>; sizes: Size[] }
+interface Size { id: string; label: string; width: string | null; height: string | null; unit: string; unitPrice: string; sideMode?: string; variantType?: string | null; sizeGroup?: string | null }
+interface Product { id: string; name: string; description: string; basePrice: string; templateId: string | null; sizeMode: string; allowCustomDimensions: boolean; category?: { name: string }; template: { id: string; name: string; status: string } | null; images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean }>; sizes: Size[] }
+interface ReviewData { reviews: Array<{ id:string; displayName:string; overall:number; productQuality:number; printQuality:number; timeliness:number; service:number; feedback:string|null; verifiedPurchase:boolean; createdAt:string }>; summary:{overallRating:number;count:number;distribution:Record<string,number>} }
 
 function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -23,18 +24,24 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const [product, setProduct] = useState<Product | null>(null)
   const [sizeId, setSizeId] = useState('')
   const [quantity, setQuantity] = useState(1)
+  const [customSize,setCustomSize]=useState(false)
+  const [customHeight,setCustomHeight]=useState('')
+  const [customWidth,setCustomWidth]=useState('')
   const [imageIndex, setImageIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [artwork, setArtwork] = useState<ArtworkSelection | null>(null)
-  useEffect(() => { void (async () => { try { const response = await fetch(`/api/products/${id}`); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); setProduct(payload.data.product); setSizeId(payload.data.product.sizes.some((size: Size) => size.id === requestedSizeId) ? requestedSizeId! : payload.data.product.sizes[0]?.id || '') } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId])
+  const [reviews,setReviews]=useState<ReviewData|null>(null)
+  useEffect(() => { void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); setProduct(payload.data.product); setSizeId(payload.data.product.sizes.some((size: Size) => size.id === requestedSizeId) ? requestedSizeId! : payload.data.product.sizes[0]?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId])
   const selectedSize = useMemo(() => product?.sizes.find((size) => size.id === sizeId), [product, sizeId])
-  function add() { if (!product || !selectedSize) return setError('Select an available size.'); setAdding(true); const designId = customizationRef && /^[0-9a-f-]{36}$/i.test(customizationRef) ? customizationRef : null; const designSource = artwork ? 'customer_upload' : customizationRef ? 'online_editor' : 'design_assistance'; addItem({ productId: product.id, productName: product.name, sizeId: selectedSize.id, sizeLabel: selectedSize.label, templateId: product.template?.id || null, templateName: product.template?.name || null, designId, customizationRef, artworkId: artwork?.id || null, designSource, quantity, price: Number(selectedSize.unitPrice), image: (product.images.find((image) => image.isPrimary) || product.images[0])?.url, specifications: { ...(customizationRef ? { customizationRef } : {}), designSource } }); router.push('/cart') }
+  function add() { if (!product || !selectedSize) return setError('Select an available size.'); if(customSize&&(!(Number(customHeight)>0)||!(Number(customWidth)>0)))return setError('Enter valid custom Height and Width.'); setAdding(true); const designId = customizationRef && /^[0-9a-f-]{36}$/i.test(customizationRef) ? customizationRef : null; const designSource = artwork ? 'customer_upload' : customizationRef ? 'online_editor' : 'design_assistance'; addItem({ productId: product.id, productName: product.name, sizeId: selectedSize.id, sizeLabel: customSize?`${customHeight} × ${customWidth} ${selectedSize.unit}`:selectedSize.label, templateId: product.template?.id || null, templateName: product.template?.name || null, designId, customizationRef, artworkId: artwork?.id || null, designSource, quantity, price: unitPrice, image: (product.images.find((image) => image.isPrimary) || product.images[0])?.url, specifications: { ...(customizationRef ? { customizationRef } : {}), ...(customSize?{customHeight,customWidth}:{}), designSource } }); router.push('/cart') }
   if (loading) return <div className="grid min-h-[70vh] place-items-center">Loading product…</div>
   if (!product) return <div className="grid min-h-[70vh] place-items-center text-center"><div><h1 className="text-2xl font-bold">Product unavailable</h1><p className="mt-2 text-muted-foreground">{error}</p><Link href="/products"><Button className="mt-5"><ArrowLeft /> Back to products</Button></Link></div></div>
   const image = product.images[imageIndex] || product.images[0]
-  const unitPrice = Number(selectedSize?.unitPrice || product.basePrice)
+  const baseUnitPrice = Number(selectedSize?.unitPrice || product.basePrice)
+  const customRatio = customSize && selectedSize?.height && selectedSize.width ? Number(customHeight)*Number(customWidth)/(Number(selectedSize.height)*Number(selectedSize.width)) : 1
+  const unitPrice = customSize && Number.isFinite(customRatio) && customRatio>0 ? Math.round(baseUnitPrice*customRatio*100)/100 : baseUnitPrice
 return (
   <main className="min-h-screen bg-background">
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -91,6 +98,7 @@ return (
         {/* RIGHT COLUMN: Title, Pricing, Customization & Actions */}
         <section className="space-y-6">
           <div>
+            {product.category?.name && <p className="mb-2 text-sm font-bold uppercase tracking-wider text-primary">{product.category.name}</p>}
             <h1 className="text-4xl font-black">{product.name}</h1>
             <p className="mt-3 text-3xl font-black text-primary">
               ${unitPrice.toFixed(2)}{' '}
@@ -111,16 +119,17 @@ return (
               >
                 {product.sizes.map((size) => (
                   <option key={size.id} value={size.id}>
-                    {size.label} - ${Number(size.unitPrice).toFixed(2)}
+                  {size.label} {size.sideMode ? `· ${size.sideMode}-sided` : ''} - ${Number(size.unitPrice).toFixed(2)}
                   </option>
                 ))}
               </select>
               {selectedSize?.width && selectedSize.height && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {selectedSize.width} x {selectedSize.height} {selectedSize.unit}
+                  Height × Width: {selectedSize.height} × {selectedSize.width} {selectedSize.unit}{selectedSize.variantType ? ` · ${selectedSize.variantType} / ${selectedSize.sizeGroup}` : ''}
                 </p>
               )}
             </div>
+            {product.allowCustomDimensions && !product.template && <div className="rounded-lg border p-3"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={customSize} onChange={(event)=>setCustomSize(event.target.checked)}/> Custom Size</label>{customSize&&<div className="mt-3 grid grid-cols-2 gap-3"><label className="text-sm">Height<Input type="number" min="0.001" step="0.001" value={customHeight} onChange={(event)=>setCustomHeight(event.target.value)}/></label><label className="text-sm">Width<Input type="number" min="0.001" step="0.001" value={customWidth} onChange={(event)=>setCustomWidth(event.target.value)}/></label><p className="col-span-2 text-xs text-muted-foreground">{selectedSize?.unit} · price scales by print area from the selected production preset.</p></div>}</div>}
 
             {/* Template Editor Link */}
             {product.template && selectedSize && (
@@ -184,8 +193,10 @@ return (
           >
             {adding ? 'Adding…' : 'Add to cart'}
           </Button>
+          <div className="grid gap-3 rounded-xl border bg-card p-5 sm:grid-cols-3"><div><p className="font-bold">Production-ready</p><p className="text-sm text-muted-foreground">Online designs are exported with configured bleed and trim marks.</p></div><div><p className="font-bold">Artwork protected</p><p className="text-sm text-muted-foreground">Uploaded print files remain unchanged.</p></div><div><p className="font-bold">Australia-wide</p><p className="text-sm text-muted-foreground">Production and delivery support across Australia.</p></div></div>
         </section>
       </div>
+      <section className="mt-12 border-t pt-10"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm font-bold uppercase tracking-wider text-primary">Customer feedback</p><h2 className="text-3xl font-black">Reviews for {product.name}</h2></div><p className="text-lg font-bold">{reviews?.summary.count ? `${reviews.summary.overallRating.toFixed(1)} / 5 · ${reviews.summary.count} review${reviews.summary.count===1?'':'s'}` : 'No published reviews yet'}</p></div>{reviews?.summary.count ? <><div className="mt-5 flex flex-wrap gap-3">{[5,4,3,2,1].map((rating)=><span key={rating} className="rounded-full bg-secondary px-3 py-1 text-sm">{rating}★ {reviews.summary.distribution[String(rating)]||0}</span>)}</div><div className="mt-6 grid gap-4 md:grid-cols-2">{reviews.reviews.map((review)=><article key={review.id} className="rounded-xl border bg-card p-5"><div className="flex justify-between gap-2"><p className="font-bold">{review.displayName} {review.verifiedPurchase && <span className="ml-2 rounded bg-green-100 px-2 py-1 text-xs text-green-800">Verified purchase</span>}</p><time className="text-xs text-muted-foreground">{new Date(review.createdAt).toLocaleDateString()}</time></div><p className="mt-2 text-xl text-amber-500">{'\u2605'.repeat(review.overall)}<span className="text-zinc-300">{'\u2605'.repeat(5-review.overall)}</span></p>{review.feedback&&<p className="mt-3 text-sm leading-6">{review.feedback}</p>}<div className="mt-4 grid grid-cols-2 gap-1 text-xs text-muted-foreground"><span>Product quality: {review.productQuality}/5</span><span>Print quality: {review.printQuality}/5</span><span>Timeliness: {review.timeliness}/5</span><span>Service: {review.service}/5</span></div></article>)}</div></> : <p className="mt-5 rounded border border-dashed p-8 text-center text-muted-foreground">Published reviews from verified purchases will appear here.</p>}</section>
     </div>
   </main>
 );

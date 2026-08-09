@@ -120,11 +120,22 @@ export function CanvasEditor() {
   const [guides, setGuides] = useState(true)
   const [zoom, setZoom] = useState(1)
   const [status, setStatus] = useState('Ready')
+  const [currentSide, setCurrentSide] = useState<'front' | 'back'>('front')
+  const currentSideRef = useRef<'front' | 'back'>('front')
+  const sideStatesRef = useRef<Partial<Record<'front' | 'back', Record<string, unknown>>>>({})
   const savedDesignId = useRef<string | null>(null)
   const originalTemplateRef = useRef<Record<string, unknown> | null>(null)
   const baseCanvasRef = useRef({ width: DEFAULT_PRODUCT_CONFIG.logicalCanvasWidth, height: DEFAULT_PRODUCT_CONFIG.logicalCanvasHeight, fitMode: 'contain' as 'contain' | 'cover' | 'stretch' })
-  const history = useCanvasHistory(canvasRef)
-  const { canUndo, canRedo, snapshot, scheduleSnapshot, reset, undo, redo, runWhileRestoring } = history
+  const frontHistory = useCanvasHistory(canvasRef)
+  const backHistory = useCanvasHistory(canvasRef)
+  const snapshot = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.snapshot : backHistory.snapshot)(), [backHistory.snapshot, frontHistory.snapshot])
+  const scheduleSnapshot = useCallback((delay?: number) => (currentSideRef.current === 'front' ? frontHistory.scheduleSnapshot : backHistory.scheduleSnapshot)(delay), [backHistory.scheduleSnapshot, frontHistory.scheduleSnapshot])
+  const reset = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.reset : backHistory.reset)(), [backHistory.reset, frontHistory.reset])
+  const undo = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.undo : backHistory.undo)(), [backHistory.undo, frontHistory.undo])
+  const redo = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.redo : backHistory.redo)(), [backHistory.redo, frontHistory.redo])
+  const runWhileRestoring = useCallback(<T,>(task: () => Promise<T>) => (currentSideRef.current === 'front' ? frontHistory.runWhileRestoring : backHistory.runWhileRestoring)(task), [backHistory.runWhileRestoring, frontHistory.runWhileRestoring])
+  const canUndo = currentSide === 'front' ? frontHistory.canUndo : backHistory.canUndo
+  const canRedo = currentSide === 'front' ? frontHistory.canRedo : backHistory.canRedo
 
   const refreshObjects = useCallback(() => {
     setObjects((canvasRef.current?.getObjects() ?? []) as EditorObject[])
@@ -232,6 +243,7 @@ export function CanvasEditor() {
           originalTemplateRef.current = payload.data.template.canvasData
           baseCanvasRef.current = { width: payload.data.template.baseCanvasWidth, height: payload.data.template.baseCanvasHeight, fitMode: payload.data.fitMode || 'contain' }
           await restoreOriginalAtSize(payload.data.productConfig)
+          sideStatesRef.current.front = canvas.toJSON()
           setStatus(`${payload.data.template.name} loaded for ${payload.data.productSize?.label || 'its fixed size'}`)
         } else if (saved) {
           configRef.current = saved.productConfig
@@ -433,7 +445,9 @@ export function CanvasEditor() {
   const save = useCallback(async () => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const design = serializeDesign(canvas, configRef.current, templateId)
+    sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
+    const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
+    const design = serializeDesign(canvas, configRef.current, templateId, sides)
     saveDesign(design)
     if (!session?.user) {
       setStatus('Saved temporarily on this device. Sign in to save a private draft.')
@@ -466,7 +480,36 @@ export function CanvasEditor() {
     return databaseResponse.ok ? savedDesignId.current : null
   }, [requestedProductId, requestedSizeId, session?.user, templateId])
 
+  const switchSide = useCallback(async (next: 'front' | 'back') => {
+    const canvas = canvasRef.current
+    if (!canvas || next === currentSideRef.current) return
+    sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
+    currentSideRef.current = next
+    setCurrentSide(next)
+    const saved = sideStatesRef.current[next]
+    if (saved) await runWhileRestoring(() => canvas.loadFromJSON(saved))
+    else {
+      await restoreOriginalAtSize(configRef.current)
+      sideStatesRef.current[next] = canvas.toJSON()
+    }
+    refreshObjects(); if (!saved) reset(); canvas.requestRenderAll(); setStatus(`${next === 'front' ? 'Front' : 'Back'} side selected`)
+  }, [refreshObjects, reset, restoreOriginalAtSize, runWhileRestoring])
+
+  const copyFrontToBack = useCallback(async (mirror: boolean) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
+    const front = sideStatesRef.current.front
+    if (!front) return
+    currentSideRef.current = 'back'; setCurrentSide('back')
+    await runWhileRestoring(() => canvas.loadFromJSON(front))
+    if (mirror) for (const object of canvas.getObjects()) { object.set({ left: configRef.current.logicalCanvasWidth - (object.left ?? 0), flipX: !object.flipX }); object.setCoords() }
+    sideStatesRef.current.back = canvas.toJSON(); refreshObjects(); reset(); canvas.requestRenderAll(); setStatus(mirror ? 'Front mirrored to back by request' : 'Front copied to back by request')
+  }, [refreshObjects, reset, runWhileRestoring])
+
   const continueFromEditor = useCallback(async () => {
+    sideStatesRef.current[currentSideRef.current] = canvasRef.current?.toJSON()
+    if (configRef.current.sideMode === 'double' && !sideStatesRef.current.back) { setStatus('Create or copy the Back artwork before continuing with this double-sided product.'); return }
     const customizationRef = await save()
     if (requestedProductId) {
       const params = new URLSearchParams()
@@ -562,7 +605,7 @@ export function CanvasEditor() {
           onDuplicate={() => void duplicateSelected()}
           onDelete={deleteSelected}
         />
-        <CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />
+        <div className="relative flex min-w-0 flex-1"><CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />{productConfig.sideMode === 'double' && <div className="absolute right-3 top-3 z-20 flex flex-wrap gap-1 rounded-md border bg-white p-1 shadow"><button type="button" onClick={() => void switchSide('front')} className={`rounded px-3 py-1.5 text-xs font-bold ${currentSide === 'front' ? 'bg-primary text-primary-foreground' : ''}`}>Front</button><button type="button" onClick={() => void switchSide('back')} className={`rounded px-3 py-1.5 text-xs font-bold ${currentSide === 'back' ? 'bg-primary text-primary-foreground' : ''}`}>Back</button><button type="button" onClick={() => void copyFrontToBack(false)} className="rounded border px-2 py-1.5 text-xs">Copy front</button><button type="button" onClick={() => void copyFrontToBack(true)} className="rounded border px-2 py-1.5 text-xs">Mirror front</button></div>}</div>
       </div>
     </div>
   )

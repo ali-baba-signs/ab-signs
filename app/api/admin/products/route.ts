@@ -34,20 +34,20 @@ export async function POST(request: NextRequest) {
       const [template] = await db.select().from(templates).where(eq(templates.id, input.templateId)).limit(1)
       if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') throw new Error('Select an enabled, ready editable template.')
       const allowed = new Set((await db.select({ id: templateSizes.id }).from(templateSizes).where(eq(templateSizes.templateId, input.templateId))).map((size) => size.id))
-      if (input.templatePrices.some((price) => !allowed.has(price.templateSizeId))) throw new Error('A selected price does not belong to this template.')
+      if (input.sizeMode === 'template_sizes' && input.templatePrices.some((price) => !allowed.has(price.templateSizeId))) throw new Error('A selected price does not belong to this template.')
     }
     const result = await db.transaction(async (tx) => {
       const [product] = await tx.insert(products).values({
         sku: input!.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2),
-        categoryId: input!.categoryId, templateId: input!.templateId, featured: input!.featured, active: input!.active,
+        categoryId: input!.categoryId, templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, featured: input!.featured, active: input!.active,
       }).returning()
       await tx.insert(productImages).values(input!.images.map((image) => ({
         productId: product.id, url: image.key ? getStoredAssetUrl(image.key) : image.url!, storageKey: image.key, assetId: image.assetId, alt: image.alt, isPrimary: image.isPrimary, order: image.order,
       })))
-      if (input!.templateId) await tx.insert(productTemplateSizePrices).values(input!.templatePrices.map((price) => ({ productId: product.id, templateSizeId: price.templateSizeId, unitPrice: price.unitPrice.toFixed(2), enabled: price.enabled })))
+      if (input!.templateId && input!.sizeMode === 'template_sizes') await tx.insert(productTemplateSizePrices).values(input!.templatePrices.map((price) => ({ productId: product.id, templateSizeId: price.templateSizeId, unitPrice: price.unitPrice.toFixed(2), enabled: price.enabled })))
       else {
         const standalone = input!.sizes.length ? input!.sizes : [{ label: 'Standard', width: null, height: null, unit: 'mm', unitPrice: input!.basePrice, enabled: true, order: 0 }]
-        await tx.insert(productSizes).values(standalone.map((size) => ({ productId: product.id, label: size.label, width: size.width?.toString(), height: size.height?.toString(), unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order })))
+        await tx.insert(productSizes).values(standalone.map((size) => ({ productId: product.id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: 'variantType' in size ? size.variantType : null, sizeGroup: 'sizeGroup' in size ? size.sizeGroup : null, sideMode: 'sideMode' in size ? size.sideMode : 'single' })))
       }
       await tx.insert(adminActivityLogs).values(activityValues(session, {
         actionType: 'product.created', entityType: 'product', entityId: product.id, entityName: product.name,

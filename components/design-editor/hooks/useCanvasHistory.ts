@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Canvas, FabricObject } from 'fabric'
 
-const HISTORY_LIMIT = 60
+const HISTORY_LIMIT = 50
 type HistoryEntry = { json: string; selectedId: string | null }
 
 export function useCanvasHistory(canvasRef: React.RefObject<Canvas | null>) {

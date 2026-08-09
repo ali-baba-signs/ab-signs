@@ -5,6 +5,7 @@ import { adminActivityLogs, productCategories, storageAssets } from '@/lib/db/sc
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { safeErrorMessage } from '@/lib/api/safe-error'
 
 function normalizeName(value: unknown) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 120) : ''
@@ -44,7 +45,8 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json({ data: { category: created } }, { status: 201 })
   } catch (error) {
+    console.error('Category create failed', error)
     const duplicate = error instanceof Error && /unique|duplicate/i.test(error.message)
-    return NextResponse.json({ error: { code: duplicate ? 'CATEGORY_EXISTS' : 'CATEGORY_CREATE_FAILED', message: duplicate ? 'A category with this name already exists.' : error instanceof Error ? error.message : 'The category could not be created.' } }, { status: duplicate ? 409 : 400 })
+    return NextResponse.json({ error: { code: duplicate ? 'CATEGORY_EXISTS' : 'CATEGORY_CREATE_FAILED', message: duplicate ? 'A category with this name already exists.' : safeErrorMessage(error, 'The category could not be created. Check its required fields and try again.', /Category name|valid category image/) } }, { status: duplicate ? 409 : 400 })
   }
 }

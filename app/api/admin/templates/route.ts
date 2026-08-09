@@ -6,6 +6,7 @@ import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { validateTemplateInput } from '@/lib/templates/validation'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { safeErrorMessage } from '@/lib/api/safe-error'
 
 export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
@@ -37,18 +38,18 @@ export async function POST(request: NextRequest) {
         canvasData: input.canvasData!, thumbnail: getStoredAssetUrl(preview.objectKey),
         previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
-        physicalWidth: input.width.toString(), physicalHeight: input.height.toString(), measurementUnit: input.unit,
+        physicalWidth: input.width, physicalHeight: input.height, measurementUnit: input.unit,
         logicalCanvasWidth: input.logicalCanvasWidth, logicalCanvasHeight: input.logicalCanvasHeight,
         scaleMetadata: input.scaleMetadata, templateVersion: 1,
         svgChecksum: input.svgChecksum, conversionVersion: input.conversionVersion, conversionStatus: 'ready', conversionError: null, generatedAt: new Date(),
       }).returning()
-      await tx.insert(templateSizes).values(input.sizes.map((size) => ({ templateId: rows[0].id, label: size.label, width: size.width.toString(), height: size.height.toString(), unit: size.unit, fitMode: size.fitMode, safeMargin: size.safeMargin.toString(), enabled: size.enabled, isDefault: size.isDefault, displayOrder: size.displayOrder })))
+      await tx.insert(templateSizes).values(input.sizes.map((size) => ({ templateId: rows[0].id, label: size.label, width: size.width, height: size.height, unit: size.unit, fitMode: size.fitMode, safeMargin: size.safeMargin, bleed: size.bleed, trimMarks: size.trimMarks, enabled: size.enabled, isDefault: size.isDefault, displayOrder: size.displayOrder })))
       await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: 'template.created', entityType: 'template', entityId: rows[0].id, entityName: rows[0].name, description: `Created SVG editable template ${rows[0].name}.`, metadata: { category: rows[0].category, status: rows[0].status, width: input.width, height: input.height, unit: input.unit } }))
       return rows
     })
     return NextResponse.json({ data: { template: created } }, { status: 201 })
   } catch (error) {
     console.error('Template create failed', error)
-    return NextResponse.json({ error: { code: 'TEMPLATE_CREATE_FAILED', message: error instanceof Error ? error.message : 'The template could not be created.' } }, { status: 400 })
+    return NextResponse.json({ error: { code: 'TEMPLATE_CREATE_FAILED', message: safeErrorMessage(error, 'The template could not be created. Verify its assets and production sizes, then retry.', /Template|SVG|preview|Fabric|size|artwork|measurement|label|margin|bleed|checksum/) } }, { status: 400 })
   }
 }

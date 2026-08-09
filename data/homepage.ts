@@ -116,31 +116,31 @@ export const catalogHighlights = [
 export const promotions: PromoBanner[] = [
   {
     id: 'business-banners',
-    title: 'Promote your business with custom banners',
-    subtitle: 'Choose a product, set your size and bring your campaign artwork to life.',
+    title: 'Turn every fence, wall and event space into an advert',
+    subtitle: 'Choose durable vinyl or mesh, select a proven size, then upload finished artwork or customise a print-ready design online.',
     desktopImageKey: 'homepage/promotions/desktop/business-banners.png',
     mobileImageKey: 'homepage/promotions/mobile/business-banners.png',
     fallbackImage: '/vnyl banner.png',
     href: '/products?category=vinyl_banners',
-    buttonLabel: 'Explore banners',
+    buttonLabel: 'Build your banner',
   },
   {
     id: 'flags',
-    title: 'Put your brand in motion',
-    subtitle: 'Create portable feather flags for entries, events and outdoor promotions.',
+    title: 'Get noticed before customers reach the door',
+    subtitle: 'Create portable feather and teardrop flags for launches, entries and outdoor campaigns, with fixed hardware-ready print variants.',
     desktopImageKey: 'homepage/promotions/desktop/custom-flags.png',
     mobileImageKey: 'homepage/promotions/mobile/custom-flags.png',
     fallbackImage: '/feather flag.png',
     href: '/products?category=flag',
-    buttonLabel: 'Explore flags',
+    buttonLabel: 'Choose a flag format',
   },
 ]
 
 export const benefits = [
-  { title: 'Print-focused quality', description: 'Artwork tools and product options designed around signage production.' },
-  { title: 'Custom dimensions', description: 'Configure a format suited to your message and installation.' },
-  { title: 'Online design tools', description: 'Start blank or customise an editable template in your browser.' },
-  { title: 'Australia-wide service', description: 'A streamlined online ordering experience for Australian customers.' },
+  { title: 'Print-Ready Quality', description: 'Professional production standards for signage, banners, flags and custom print.' },
+  { title: 'Flexible Sizing', description: 'Choose standard sizes or supported custom dimensions where the product allows.' },
+  { title: 'Design Online', description: 'Customise supported templates in a purpose-built browser print editor.' },
+  { title: 'Australia-Wide Service', description: 'Order online with production and delivery support across Australia.' },
 ]
 
 export function resolveAsset(key: string, fallback: string) {

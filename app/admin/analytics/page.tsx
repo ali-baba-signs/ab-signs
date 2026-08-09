@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { adminPath } from '@/lib/auth/admin-path'
 
 interface AnalyticsData {
@@ -47,11 +48,21 @@ export default function AnalyticsPage() {
 
   const money = (value: number) => `${data?.currency || 'AUD'} ${Number(value || 0).toFixed(2)}`
   const revenueMax = Math.max(...(data?.series.map((item) => Number(item.revenue)) || []), 1)
+  const applyPreset = (preset: string) => {
+    const now = new Date(); const today = now.toISOString().slice(0,10); let from = today; let to = today
+    if (preset === '7') from = new Date(now.getTime()-6*86400000).toISOString().slice(0,10)
+    if (preset === '30') from = new Date(now.getTime()-29*86400000).toISOString().slice(0,10)
+    if (preset === 'month') from = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString().slice(0,10)
+    if (preset === 'last-month') { from = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,1)).toISOString().slice(0,10); to = new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),0)).toISOString().slice(0,10) }
+    if (preset === 'quarter') from = new Date(Date.UTC(now.getUTCFullYear(),Math.floor(now.getUTCMonth()/3)*3,1)).toISOString().slice(0,10)
+    if (preset === 'year') from = `${now.getUTCFullYear()}-01-01`
+    setRange((current)=>({...current,from,to}))
+  }
 
   return <main className="min-h-screen bg-background px-4 py-8"><div className="mx-auto max-w-7xl">
     <Link href={adminPath()} className="inline-flex gap-2"><ArrowLeft /> Dashboard</Link>
     <h1 className="mt-2 text-3xl font-black">Analytics</h1>
-    <div className="mt-5 flex flex-wrap gap-2"><Input type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} /><Input type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} /><select aria-label="Analytics grouping" className="h-10 rounded-md border bg-background px-3" value={range.group} onChange={(event) => setRange({ ...range, group: event.target.value })}><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option></select></div>
+    <div className="mt-5 rounded-xl border bg-card p-4"><div className="flex flex-wrap items-end gap-3"><label className="text-sm font-semibold">From<Input aria-label="Analytics from date" className="mt-1" type="date" max={range.to} value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} /></label><label className="text-sm font-semibold">To<Input aria-label="Analytics to date" className="mt-1" type="date" min={range.from} value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} /></label><select aria-label="Analytics grouping" className="h-10 rounded-md border bg-background px-3" value={range.group} onChange={(event) => setRange({ ...range, group: event.target.value })}><option value="day">Daily</option><option value="week">Weekly</option><option value="month">Monthly</option></select><a href={`/api/admin/analytics/export?from=${range.from}&to=${range.to}&format=csv`}><Button variant="outline"><Download/> CSV</Button></a><a href={`/api/admin/analytics/export?from=${range.from}&to=${range.to}&format=xlsx`}><Button><Download/> Excel</Button></a></div><div className="mt-3 flex flex-wrap gap-2">{[['today','Today'],['7','Last 7 days'],['30','Last 30 days'],['month','This month'],['last-month','Last month'],['quarter','This quarter'],['year','This year']].map(([value,label])=><button key={value} type="button" onClick={()=>applyPreset(value)} className="rounded-full border px-3 py-1 text-xs font-semibold hover:border-primary">{label}</button>)}</div><p className="mt-3 text-sm text-muted-foreground">Active range: {new Date(`${range.from}T00:00:00`).toLocaleDateString()} – {new Date(`${range.to}T00:00:00`).toLocaleDateString()}</p></div>
     {error && <p className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>}
     {loading ? <p className="p-12 text-center">Calculating analytics...</p> : !data ? <p className="p-12 text-center">No analytics available.</p> : <>
       <div className="mt-6 grid gap-4 md:grid-cols-3 lg:grid-cols-4">

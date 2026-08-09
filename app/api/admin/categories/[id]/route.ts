@@ -5,6 +5,7 @@ import { adminActivityLogs, productCategories, products, storageAssets } from '@
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
+import { safeErrorMessage } from '@/lib/api/safe-error'
 
 function nameOf(value: unknown) { return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 120) : '' }
 function slugify(value: string) { return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120) }
@@ -30,7 +31,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     })
     if (oldAsset?.objectKey && oldAsset.id !== imageAssetId) await deleteAssetIfOrphaned(oldAsset.objectKey)
     return NextResponse.json({ data: { category: updated } })
-  } catch (error) { return NextResponse.json({ error: { message: error instanceof Error ? error.message : 'Category update failed.' } }, { status: 400 }) }
+  } catch (error) { console.error('Category update failed', { categoryId: id, error }); return NextResponse.json({ error: { message: safeErrorMessage(error, 'The category could not be updated. Check its values and try again.', /Category name|valid category image|not found/) } }, { status: 400 }) }
 }
 
 export async function DELETE(_: NextRequest, context: { params: Promise<{ id: string }> }) {

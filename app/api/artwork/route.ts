@@ -15,6 +15,8 @@ const allowed = new Map([['application/pdf', ['pdf']], ['image/png', ['png']], [
 const MAX_BYTES = 100 * 1024 * 1024
 function safeText(value: FormDataEntryValue | null, max = 2000) { return typeof value === 'string' ? value.trim().slice(0, max) : '' }
 function validateBytes(type: string, body: Buffer) { if (type === 'application/pdf' && !body.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('The PDF signature is invalid.'); if (type === 'image/png' && body.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new Error('The PNG signature is invalid.'); if ((type === 'application/postscript' || type === 'application/eps') && !body.subarray(0, 20).toString('ascii').startsWith('%!PS-Adobe')) throw new Error('The EPS signature is invalid.') }
+function pngDimensions(body: Buffer) { return body.length >= 24 && body.subarray(12,16).toString('ascii') === 'IHDR' ? { width: body.readUInt32BE(16), height: body.readUInt32BE(20) } : null }
+function svgDimensions(source: string) { const tag=source.match(/<svg\b[^>]*>/i)?.[0]||''; const number=(name:string)=>Number(tag.match(new RegExp(`\\b${name}=["']([0-9.]+)`,'i'))?.[1]); const width=number('width'); const height=number('height'); if(width>0&&height>0)return{width:Math.round(width),height:Math.round(height)}; const viewBox=tag.match(/\bviewBox=["']\s*[-0-9.]+\s+[-0-9.]+\s+([0-9.]+)\s+([0-9.]+)/i); return viewBox?{width:Math.round(Number(viewBox[1])),height:Math.round(Number(viewBox[2]))}:null }
 
 export async function POST(request: NextRequest) {
   const session = await getSession(); if (!session?.user) return NextResponse.json({ error: { message: 'Sign in to upload print artwork.' } }, { status: 401 })
@@ -26,20 +28,22 @@ export async function POST(request: NextRequest) {
     const productId = safeText(form.get('productId'), 50); const sizeId = safeText(form.get('sizeId'), 50)
     const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1); if (!product?.active) throw new Error('The selected product is unavailable.')
     let templateSizeId: string | null = null; let productSizeId: string | null = null
-    if (product.templateId) { const [size] = await db.select().from(templateSizes).where(and(eq(templateSizes.id, sizeId), eq(templateSizes.templateId, product.templateId))).limit(1); if (!size?.enabled) throw new Error('The selected template size is unavailable.'); templateSizeId = size.id }
+    if (product.templateId && product.sizeMode === 'template_sizes') { const [size] = await db.select().from(templateSizes).where(and(eq(templateSizes.id, sizeId), eq(templateSizes.templateId, product.templateId))).limit(1); if (!size?.enabled) throw new Error('The selected template size is unavailable.'); templateSizeId = size.id }
     else { const [size] = await db.select().from(productSizes).where(and(eq(productSizes.id, sizeId), eq(productSizes.productId, product.id))).limit(1); if (!size?.enabled) throw new Error('The selected product size is unavailable.'); productSizeId = size.id }
     const source = Buffer.from(await file.arrayBuffer()); validateBytes(file.type, source)
-    const body = file.type === 'image/svg+xml' ? Buffer.from(sanitizeSvgMarkup(source.toString('utf8')), 'utf8') : source
+    if (file.type === 'image/svg+xml') sanitizeSvgMarkup(source.toString('utf8'))
+    const body = source
+    const dimensions = file.type === 'image/png' ? pngDimensions(source) : file.type === 'image/svg+xml' ? svgDimensions(source.toString('utf8')) : null
     key = `${R2_PATHS.artworkUploads}/${session.user.id.replace(/[^a-zA-Z0-9_-]/g, '')}/${crypto.randomUUID()}-${sanitizeFilename(file.name)}`
     const checksum = createHash('sha256').update(body).digest('hex')
     await uploadObject({ key, body, contentType: file.type, metadata: { owner: session.user.id, originalName: file.name.slice(0, 250), checksum, private: 'true' } })
     const artwork = await db.transaction(async (tx) => {
       const asset = await registerStorageAsset({ key, contentType: file.type, size: body.length, uploadedBy: null, etag: checksum })
       await tx.update(storageAssets).set({ access: 'private' }).where(eq(storageAssets.id, asset.id))
-      const [row] = await tx.insert(customerArtworks).values({ userId: session.user.id, productId: product.id, templateSizeId, productSizeId, assetId: asset.id, originalFilename: file.name.slice(0, 255), notes: safeText(form.get('notes')), orientation: ['portrait','landscape'].includes(safeText(form.get('orientation'))) ? safeText(form.get('orientation')) : 'unspecified', quantityReference: Math.max(1, Math.min(1000, Number(form.get('quantityReference')) || 1)) }).returning()
+      const [row] = await tx.insert(customerArtworks).values({ userId: session.user.id, productId: product.id, templateSizeId, productSizeId, assetId: asset.id, originalFilename: file.name.slice(0, 255), notes: safeText(form.get('notes')), orientation: ['portrait','landscape'].includes(safeText(form.get('orientation'))) ? safeText(form.get('orientation')) : 'unspecified', quantityReference: Math.max(1, Math.min(1000, Number(form.get('quantityReference')) || 1)), sourceWidthPx: dimensions?.width, sourceHeightPx: dimensions?.height }).returning()
       return row
     })
-    return NextResponse.json({ data: { artwork: { ...artwork, previewUrl: file.type === 'image/png' || file.type === 'image/svg+xml' ? await createPresignedDownloadUrl(key) : null } } }, { status: 201 })
+    return NextResponse.json({ data: { artwork: { ...artwork, contentType: file.type, fileSize: body.length, previewUrl: file.type === 'application/postscript' || file.type === 'application/eps' ? null : `/api/artwork/preview?id=${artwork.id}` } } }, { status: 201 })
   } catch (error) { if (key) await deleteObject(key).catch(() => undefined); return NextResponse.json({ error: { message: error instanceof Error ? error.message : 'Artwork upload failed.' } }, { status: 400 }) }
 }
 
@@ -49,7 +53,7 @@ export async function GET(request: NextRequest) {
   const [row] = await db.select({ artwork: customerArtworks, asset: storageAssets }).from(customerArtworks).innerJoin(storageAssets, eq(customerArtworks.assetId, storageAssets.id)).where(eq(customerArtworks.id, id)).limit(1)
   if (!row) return NextResponse.json({ error: { message: 'Artwork not found.' } }, { status: 404 })
   if (!admin?.user && row.artwork.userId !== session?.user.id) return NextResponse.json({ error: { message: 'You cannot access another customer’s artwork.' } }, { status: 403 })
-  return NextResponse.json({ data: { artwork: { ...row.artwork, contentType: row.asset.contentType, downloadUrl: await createPresignedDownloadUrl(row.asset.objectKey) } } }, { headers: { 'cache-control': 'private, no-store' } })
+  return NextResponse.json({ data: { artwork: { ...row.artwork, contentType: row.asset.contentType, fileSize: row.asset.size, previewUrl: ['image/png','image/svg+xml','application/pdf'].includes(row.asset.contentType) ? `/api/artwork/preview?id=${row.artwork.id}` : null, downloadUrl: await createPresignedDownloadUrl(row.asset.objectKey) } } }, { headers: { 'cache-control': 'private, no-store' } })
 }
 
 export async function DELETE(request: NextRequest) {

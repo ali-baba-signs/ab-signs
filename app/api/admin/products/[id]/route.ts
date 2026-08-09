@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       const [template] = await db.select().from(templates).where(eq(templates.id, input.templateId)).limit(1)
       if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') throw new Error('Select an enabled, ready editable template.')
       const allowed = new Set((await db.select({ id: templateSizes.id }).from(templateSizes).where(eq(templateSizes.templateId, input.templateId))).map((size) => size.id))
-      if (input.templatePrices.some((price) => !allowed.has(price.templateSizeId))) throw new Error('A selected price does not belong to this template.')
+      if (input.sizeMode === 'template_sizes' && input.templatePrices.some((price) => !allowed.has(price.templateSizeId))) throw new Error('A selected price does not belong to this template.')
     }
     const oldImages = await db.select().from(productImages).where(eq(productImages.productId, id))
     const existingIds = new Set(oldImages.map((image) => image.id))
@@ -39,7 +39,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     await db.transaction(async (tx) => {
       const [product] = await tx.update(products).set({
         sku: input!.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2), categoryId: input!.categoryId,
-        templateId: input!.templateId, featured: input!.featured, active: input!.active, updatedAt: new Date(),
+        templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, featured: input!.featured, active: input!.active, updatedAt: new Date(),
       }).where(eq(products.id, id)).returning()
       if (!product) throw new Error('Product not found.')
       if (removedImages.length) await tx.delete(productImages).where(inArray(productImages.id, removedImages.map((image) => image.id)))
@@ -48,11 +48,22 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         else await tx.insert(productImages).values({ productId: id, url: getStoredAssetUrl(image.key!), storageKey: image.key, assetId: image.assetId, alt: image.alt, isPrimary: image.isPrimary, order: image.order })
       }
       await tx.delete(productTemplateSizePrices).where(eq(productTemplateSizePrices.productId, id))
-      if (input!.templateId) {
+      if (input!.templateId && input!.sizeMode === 'template_sizes') {
         await tx.delete(productSizes).where(eq(productSizes.productId, id))
         await tx.insert(productTemplateSizePrices).values(input!.templatePrices.map((price) => ({ productId: id, templateSizeId: price.templateSizeId, unitPrice: price.unitPrice.toFixed(2), enabled: price.enabled })))
-      } else if (existingProduct.templateId) {
-        await tx.insert(productSizes).values({ productId: id, label: 'Standard', unit: 'mm', unitPrice: input!.basePrice.toFixed(2), enabled: true, order: 0 })
+      } else {
+        const existingSizes = await tx.select().from(productSizes).where(eq(productSizes.productId, id))
+        const retained = new Set<string>()
+        for (const size of input!.sizes) {
+          if (size.id && existingSizes.some((row) => row.id === size.id)) {
+            await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
+            retained.add(size.id)
+          } else {
+            const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode }).returning({ id: productSizes.id })
+            retained.add(created.id)
+          }
+        }
+        for (const size of existingSizes) if (!retained.has(size.id)) await tx.delete(productSizes).where(eq(productSizes.id, size.id))
       }
       await tx.insert(adminActivityLogs).values(activityValues(session, {
         actionType: 'product.updated', entityType: 'product', entityId: id, entityName: input!.name,
