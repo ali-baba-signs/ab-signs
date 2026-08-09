@@ -24,7 +24,9 @@ const transitions: Record<OrderWorkflowStatus, OrderWorkflowStatus[]> = {
   cancelled: ['refund_requested'], refund_requested: ['refunded','payment_confirmed','completed'], refunded: [],
 }
 export function isOrderStatus(value: unknown): value is OrderWorkflowStatus { return typeof value === 'string' && ORDER_STATUSES.includes(value as OrderWorkflowStatus) }
-export function allowedTransitions(status: string) { return isOrderStatus(status) ? transitions[status] : ['pending_design_confirmation'] as OrderWorkflowStatus[] }
-export function assertTransition(current: string, next: unknown) { if (!isOrderStatus(next)) throw new Error('Select a valid order status.'); if (!allowedTransitions(current).includes(next)) throw new Error(`${ORDER_STATUS_LABELS[current as OrderWorkflowStatus] || current} cannot transition directly to ${ORDER_STATUS_LABELS[next]}.`); return next }
+const legacyStatus: Record<string, OrderWorkflowStatus> = { pending: 'pending_design_confirmation', confirmed: 'order_confirmed', production: 'in_production', ready_to_ship: 'awaiting_dispatch', shipped: 'out_for_delivery' }
+export function normalizeOrderStatus(status: string) { return isOrderStatus(status) ? status : legacyStatus[status] || 'pending_design_confirmation' }
+export function allowedTransitions(status: string) { return transitions[normalizeOrderStatus(status)] }
+export function assertTransition(current: string, next: unknown) { if (!isOrderStatus(next)) throw new Error('Select a valid order status.'); const normalized = normalizeOrderStatus(current); if (!allowedTransitions(normalized).includes(next)) throw new Error(`${ORDER_STATUS_LABELS[normalized]} cannot transition directly to ${ORDER_STATUS_LABELS[next]}.`); return next }
 export function designDeadline(createdAt = new Date()) { return new Date(createdAt.getTime() + 6 * 60 * 60 * 1000) }
 export function deadlineState(deadline: Date | string | null, confirmedAt?: Date | string | null) { if (!deadline) return { delayed: false, remainingMs: null }; const target = new Date(deadline).getTime(); const end = confirmedAt ? new Date(confirmedAt).getTime() : Date.now(); return { delayed: end > target, remainingMs: confirmedAt ? 0 : target - Date.now() } }

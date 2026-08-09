@@ -1,17 +1,18 @@
 import { validateFabricCanvasData } from './svg-sanitization'
 import { createTemplateCanvasSize, type MeasurementUnit } from './size-conversion'
+import { parseMeasurement } from '@/lib/measurements'
 
 export type TemplateAssetName = 'previewImage' | 'svg'
 export interface TemplateAssetInput { id: string; key: string; url?: string; filename?: string }
-export interface TemplateSizeInput { id?: string; label: string; width: number; height: number; unit: MeasurementUnit; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: number; enabled: boolean; isDefault: boolean; displayOrder: number }
+export interface TemplateSizeInput { id?: string; label: string; width: string; height: string; unit: MeasurementUnit; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; enabled: boolean; isDefault: boolean; displayOrder: number }
 export interface TemplateInput {
   name: string
   description: string
   category: 'custom_banners' | 'mesh_banners' | 'vinyl_banners' | 'templates' | 'digital_designs' | null
   status: 'draft' | 'active' | 'inactive'
   assets: Partial<Record<TemplateAssetName, TemplateAssetInput | null>>
-  width: number
-  height: number
+  width: string
+  height: string
   unit: MeasurementUnit
   logicalCanvasWidth: number
   logicalCanvasHeight: number
@@ -46,10 +47,12 @@ export function validateTemplateInput(value: unknown, requireGeneratedData = tru
       assets[field] = { id: asset.id, key: asset.key, url: typeof asset.url === 'string' ? asset.url : undefined, filename: typeof asset.filename === 'string' ? asset.filename.slice(0, 255) : undefined }
     }
   }
-  const width = Number(input.width)
-  const height = Number(input.height)
+  const widthMeasurement = parseMeasurement(input.width, 'Base artwork width')
+  const heightMeasurement = parseMeasurement(input.height, 'Base artwork height')
+  const width = widthMeasurement.normalized
+  const height = heightMeasurement.normalized
   const unit = units.has(input.unit as MeasurementUnit) ? input.unit as MeasurementUnit : 'mm'
-  const canvasSize = createTemplateCanvasSize(width, height, unit)
+  const canvasSize = createTemplateCanvasSize(widthMeasurement.value, heightMeasurement.value, unit)
   const canvasData = input.canvasData ? validateFabricCanvasData(input.canvasData) : null
   if (requireGeneratedData && !canvasData) throw new Error('Generate editable Fabric data from the SVG before saving.')
   const scaleMetadata = input.scaleMetadata && typeof input.scaleMetadata === 'object' ? input.scaleMetadata as Record<string, unknown> : null
@@ -58,13 +61,17 @@ export function validateTemplateInput(value: unknown, requireGeneratedData = tru
   const sizes = rawSizes.map((raw, index) => {
     const row = raw as Record<string, unknown>
     const sizeUnit = units.has(row.unit as MeasurementUnit) ? row.unit as MeasurementUnit : unit
-    createTemplateCanvasSize(Number(row.width), Number(row.height), sizeUnit)
+    const sizeWidth = parseMeasurement(row.width, `Template size ${index + 1} width`)
+    const sizeHeight = parseMeasurement(row.height, `Template size ${index + 1} height`)
+    createTemplateCanvasSize(sizeWidth.value, sizeHeight.value, sizeUnit)
     const label = typeof row.label === 'string' ? row.label.trim().slice(0, 120) : ''
     if (!label) throw new Error(`Template size ${index + 1} needs a label.`)
     const fitMode = ['contain', 'cover', 'stretch'].includes(String(row.fitMode)) ? String(row.fitMode) as TemplateSizeInput['fitMode'] : 'contain'
-    const safeMargin = Number(row.safeMargin ?? 0)
-    if (!Number.isFinite(safeMargin) || safeMargin < 0) throw new Error(`Template size ${index + 1} has an invalid safe margin.`)
-    return { id: typeof row.id === 'string' && uuid.test(row.id) ? row.id : undefined, label, width: Number(row.width), height: Number(row.height), unit: sizeUnit, fitMode, safeMargin, enabled: row.enabled !== false, isDefault: Boolean(row.isDefault), displayOrder: index }
+    const safeMarginRaw = row.safeMargin === '' || row.safeMargin === undefined ? '0' : row.safeMargin
+    const bleedRaw = row.bleed === '' || row.bleed === undefined ? '3' : row.bleed
+    const safeMargin = String(safeMarginRaw) === '0' ? '0' : parseMeasurement(safeMarginRaw, `Template size ${index + 1} safe margin`).normalized
+    const bleed = String(bleedRaw) === '0' ? '0' : parseMeasurement(bleedRaw, `Template size ${index + 1} bleed`).normalized
+    return { id: typeof row.id === 'string' && uuid.test(row.id) ? row.id : undefined, label, width: sizeWidth.normalized, height: sizeHeight.normalized, unit: sizeUnit, fitMode, safeMargin, bleed, trimMarks: row.trimMarks !== false, enabled: row.enabled !== false, isDefault: Boolean(row.isDefault), displayOrder: index }
   })
   if (sizes.filter((size) => size.isDefault).length !== 1) sizes.forEach((size, index) => { size.isDefault = index === 0 })
   const svgChecksum = typeof input.svgChecksum === 'string' && /^[a-f0-9]{64}$/i.test(input.svgChecksum) ? input.svgChecksum.toLowerCase() : ''

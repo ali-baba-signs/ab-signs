@@ -6,6 +6,24 @@ import { createTemplateCanvasSize } from '../lib/templates/size-conversion'
 import { sanitizeSvgMarkup, validateFabricCanvasData } from '../lib/templates/svg-sanitization'
 import { createUploadKey, validateUpload } from '../lib/storage/upload-validation'
 import { validateProductInput } from '../lib/products/validation'
+import { formatDimensions, parseMeasurement, sameMeasurement } from '../lib/measurements'
+import { BANNER_SIZE_PRESETS } from '../lib/products/size-presets'
+
+test('integer and decimal physical dimensions normalize without artificial .01 offsets', () => {
+  for (const value of ['500','600','1000','1200','1500','500.125']) assert.equal(parseMeasurement(value).value, Number(value))
+  assert.equal(sameMeasurement('500', '500.000'), true)
+  assert.equal(formatDimensions('500','1000','mm'), '500 × 1000 mm')
+  assert.equal(BANNER_SIZE_PRESETS.length, 20)
+  assert.deepEqual(BANNER_SIZE_PRESETS[0], [500,1000])
+})
+
+test('fixed flag variants require real print dimensions and preserve side mode', () => {
+  const base = { sku:'FLAG-1',name:'Feather flag',description:'<p>A sufficiently detailed flag product.</p>',basePrice:50,categoryId:'d94ab2d1-f1ec-49d8-9d56-b5ba0694baa3',sizeMode:'fixed_variants',images:[{key:'products/flag.png'}] }
+  assert.throws(()=>validateProductInput({...base,sizes:[{label:'Feather / Small / Double-sided',unit:'mm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]}),/real print dimensions/i)
+  const product=validateProductInput({...base,sizes:[{label:'Feather / Small / Double-sided',height:'1800',width:'650.5',unit:'mm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]})
+  assert.equal(product.sizes[0].sideMode,'double')
+  assert.equal(product.sizes[0].width,'650.5')
+})
 
 test('template canvas mapping preserves physical aspect ratio without print-sized browser canvases', () => {
   const sixByThree = createTemplateCanvasSize(6, 3, 'ft')

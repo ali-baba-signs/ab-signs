@@ -128,6 +128,8 @@ export const products = pgTable('products', {
   // Referential integrity is created by the migration. Keeping this column
   // reference-free here avoids a circular declaration with `templates`.
   templateId: uuid('template_id'),
+  sizeMode: varchar('size_mode', { length: 30 }).default('preset_sizes').notNull(),
+  allowCustomDimensions: boolean('allow_custom_dimensions').default(false).notNull(),
   materials: json('materials'),
   printTypes: json('print_types'),
   featured: boolean('featured').default(false),
@@ -173,6 +175,9 @@ export const productSizes = pgTable('product_sizes', {
   unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   order: integer('sort_order').default(0).notNull(),
+  variantType: varchar('variant_type', { length: 30 }),
+  sizeGroup: varchar('size_group', { length: 20 }),
+  sideMode: varchar('side_mode', { length: 10 }).default('single').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('product_sizes_product_idx').on(table.productId)])
@@ -223,6 +228,8 @@ export const templateSizes = pgTable('template_sizes', {
   unit: varchar('unit', { length: 10 }).default('mm').notNull(),
   fitMode: varchar('fit_mode', { length: 10 }).default('contain').notNull(),
   safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('0').notNull(),
+  bleed: decimal('bleed', { precision: 10, scale: 3 }).default('3').notNull(),
+  trimMarks: boolean('trim_marks').default(true).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   isDefault: boolean('is_default').default(false).notNull(),
   displayOrder: integer('display_order').default(0).notNull(),
@@ -268,6 +275,8 @@ export const customerArtworks = pgTable('customer_artworks', {
   orientation: varchar('orientation', { length: 20 }),
   quantityReference: integer('quantity_reference'),
   status: varchar('status', { length: 20 }).default('ready').notNull(),
+  sourceWidthPx: integer('source_width_px'),
+  sourceHeightPx: integer('source_height_px'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('customer_artworks_user_idx').on(table.userId), index('customer_artworks_product_idx').on(table.productId)])

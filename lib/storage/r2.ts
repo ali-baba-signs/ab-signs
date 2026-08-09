@@ -80,6 +80,13 @@ export async function getObjectMetadata(key: string) {
   return r2.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
 }
 
+export async function getObjectBody(key: string) {
+  const { client: r2, bucket } = getClient()
+  const result = await r2.send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+  if (!result.Body) throw new Error('Storage returned an empty object.')
+  return Buffer.from(await result.Body.transformToByteArray())
+}
+
 export async function listObjects(input: { prefix: string; maxKeys?: number; continuationToken?: string }) {
   const { client: r2, bucket } = getClient()
   const result = await r2.send(new ListObjectsV2Command({

@@ -21,7 +21,7 @@ export async function getProductsWithDetails(productId?: string, includeInactive
   return rows.map((product) => ({
     ...product,
     images: images.filter((image) => image.productId === product.id),
-    sizes: product.templateId ? allTemplateSizes.filter((size) => size.templateId === product.templateId).flatMap((size) => {
+    sizes: product.templateId && product.sizeMode === 'template_sizes' ? allTemplateSizes.filter((size) => size.templateId === product.templateId).flatMap((size) => {
       const price = templatePrices.find((row) => row.productId === product.id && row.templateSizeId === size.id)
       return price ? [{ ...size, productId: product.id, unitPrice: price.unitPrice, enabled: size.enabled && price.enabled, order: size.displayOrder, templateSizeId: size.id }] : []
     }) : sizes.filter((size) => size.productId === product.id),

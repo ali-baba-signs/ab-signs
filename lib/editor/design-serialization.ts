@@ -7,12 +7,14 @@ export function serializeDesign(
   canvas: Canvas,
   productConfig: ProductConfig,
   templateId: string | null,
+  sides?: SavedDesign['sides'],
 ): SavedDesign {
   return {
-    version: 1,
+    version: sides ? 2 : 1,
     productConfig,
     templateId,
     canvasJson: canvas.toJSON(),
+    sides,
     updatedAt: new Date().toISOString(),
   }
 }
@@ -26,7 +28,7 @@ export function loadDesign(): SavedDesign | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const value = JSON.parse(raw) as SavedDesign
-    return value.version === 1 && value.canvasJson && value.productConfig ? value : null
+    return (value.version === 1 || value.version === 2) && value.canvasJson && value.productConfig ? value : null
   } catch {
     return null
   }

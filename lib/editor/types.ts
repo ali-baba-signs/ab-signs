@@ -17,6 +17,7 @@ export interface ProductConfig {
   logicalCanvasWidth: number
   logicalCanvasHeight: number
   measurementUnit?: 'mm' | 'cm' | 'in' | 'ft' | 'm'
+  sideMode?: 'single' | 'double'
 }
 
 export interface DesignTemplate {
@@ -38,10 +39,11 @@ export interface DesignTemplate {
 }
 
 export interface SavedDesign {
-  version: 1
+  version: 1 | 2
   productConfig: ProductConfig
   templateId: string | null
   canvasJson: Record<string, unknown>
+  sides?: { front: { canvasJson: Record<string, unknown> }; back?: { canvasJson: Record<string, unknown> } }
   updatedAt: string
 }
 
