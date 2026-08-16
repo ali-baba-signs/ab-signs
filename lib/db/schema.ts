@@ -312,6 +312,9 @@ export const orders = pgTable('orders', {
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
   taxAmount: decimal('tax_amount', { precision: 10, scale: 2 }).default('0'),
   shippingAmount: decimal('shipping_amount', { precision: 10, scale: 2 }).default('0'),
+  couponId: uuid('coupon_id'),
+  couponSnapshot: json('coupon_snapshot'),
+  discountAmount: decimal('discount_amount', { precision: 12, scale: 2 }).default('0').notNull(),
   shippingAddress: json('shipping_address'),
   billingAddress: json('billing_address'),
   deliveryType: varchar('delivery_type', { length: 20 }).default('delivery').notNull(),
@@ -377,6 +380,72 @@ export const paymentRecords = pgTable('payment_records', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('payment_records_order_idx').on(table.orderId)])
+
+// Coupons remain the one authoritative discount-code table. Presentation and
+// eligibility live in related tables below so checkout has one pricing engine.
+export const coupons = pgTable('coupons', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: varchar('code', { length: 80 }).notNull().unique(),
+  description: text('description'),
+  discountType: varchar('discount_type', { length: 20 }).notNull(),
+  discountValue: decimal('discount_value', { precision: 10, scale: 2 }).notNull(),
+  active: boolean('active').default(true).notNull(),
+  startsAt: timestamp('starts_at'),
+  endsAt: timestamp('ends_at'),
+  usageLimit: integer('usage_limit'),
+  usedCount: integer('used_count').default(0).notNull(),
+  perCustomerUsageLimit: integer('per_customer_usage_limit'),
+  minimumSubtotal: decimal('minimum_subtotal', { precision: 12, scale: 2 }),
+  maxDiscountAmount: decimal('max_discount_amount', { precision: 12, scale: 2 }),
+  visibility: varchar('visibility', { length: 20 }).default('private').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export const couponProducts = pgTable('coupon_products', {
+  couponId: uuid('coupon_id').notNull().references(() => coupons.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+}, (table) => [uniqueIndex('coupon_products_unique').on(table.couponId, table.productId)])
+
+export const couponCategories = pgTable('coupon_categories', {
+  couponId: uuid('coupon_id').notNull().references(() => coupons.id, { onDelete: 'cascade' }),
+  categoryId: uuid('category_id').notNull().references(() => productCategories.id, { onDelete: 'cascade' }),
+}, (table) => [uniqueIndex('coupon_categories_unique').on(table.couponId, table.categoryId)])
+
+export const couponRedemptions = pgTable('coupon_redemptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  couponId: uuid('coupon_id').notNull().references(() => coupons.id, { onDelete: 'restrict' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'restrict' }),
+  paymentRecordId: uuid('payment_record_id').references(() => paymentRecords.id, { onDelete: 'set null' }),
+  discountAmount: decimal('discount_amount', { precision: 12, scale: 2 }).notNull(),
+  status: varchar('status', { length: 20 }).default('redeemed').notNull(),
+  redeemedAt: timestamp('redeemed_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('coupon_redemptions_order_unique').on(table.orderId), index('coupon_redemptions_customer_idx').on(table.couponId, table.userId)])
+
+export const offers = pgTable('offers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  couponId: uuid('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
+  title: varchar('title', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 255 }).notNull().unique(),
+  shortDescription: text('short_description'),
+  fullDescription: text('full_description'),
+  terms: text('terms'),
+  imageUrl: text('image_url'),
+  mobileImageUrl: text('mobile_image_url'),
+  badgeText: varchar('badge_text', { length: 100 }),
+  ctaLabel: varchar('cta_label', { length: 120 }),
+  ctaUrl: text('cta_url'),
+  showOnHomepage: boolean('show_on_homepage').default(false).notNull(),
+  showInOffersPage: boolean('show_in_offers_page').default(true).notNull(),
+  showInProfile: boolean('show_in_profile').default(true).notNull(),
+  featured: boolean('featured').default(false).notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  startsAt: timestamp('starts_at'),
+  endsAt: timestamp('ends_at'),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('offers_visible_idx').on(table.enabled, table.showOnHomepage, table.displayOrder)])
 
 export const storeSettings = pgTable('store_settings', {
   id: varchar('id', { length: 30 }).primaryKey().default('default'),

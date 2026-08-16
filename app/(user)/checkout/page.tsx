@@ -27,6 +27,7 @@ export default function CheckoutPage() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const [serverTotal, setServerTotal] = useState('')
+  const [couponCode, setCouponCode] = useState('')
   const [stripePayment, setStripePayment] = useState<{ clientSecret: string; orderNumber: string } | null>(null)
   const [savedAddresses, setSavedAddresses] = useState<Array<{ id:string;label:string;fullName:string;phone:string|null;addressLine1:string;addressLine2:string|null;city:string;region:string|null;postalCode:string;country:string;defaultShipping:boolean;defaultBilling:boolean }>>([])
   useEffect(() => { void fetch('/api/store/settings').then((response) => response.json()).then((payload) => { if (payload.data) setSettings(payload.data); else setError(payload.error?.message || 'Checkout settings are unavailable.') }).catch(() => setError('Checkout settings are unavailable.')) }, [])
@@ -38,7 +39,7 @@ export default function CheckoutPage() {
     if (!policiesAccepted) { setError('You must accept the store policies before placing the order.'); return }
     setSubmitting(true); setError(''); setStatus('Creating and validating order…')
     try {
-      const orderResponse = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idempotencyKey, paymentMethod: 'stripe', deliveryType, policiesAccepted, customer: { email, phone: shipping.phone }, shippingAddress: shipping, billingSameAsShipping: sameBilling, billingAddress: billing, items: items.map((item) => ({ productId: item.productId, sizeId: item.sizeId, templateId: item.templateId, designId: item.designId, artworkId: item.artworkId, designSource: item.designSource, quantity: item.quantity, specifications: item.specifications })) }) })
+      const orderResponse = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idempotencyKey, couponCode: couponCode || undefined, paymentMethod: 'stripe', deliveryType, policiesAccepted, customer: { email, phone: shipping.phone }, shippingAddress: shipping, billingSameAsShipping: sameBilling, billingAddress: billing, items: items.map((item) => ({ productId: item.productId, sizeId: item.sizeId, templateId: item.templateId, designId: item.designId, artworkId: item.artworkId, designSource: item.designSource, quantity: item.quantity, specifications: item.specifications })) }) })
       const orderPayload = await orderResponse.json(); if (!orderResponse.ok) throw new Error(orderPayload.error?.message || 'The order could not be created.')
       setServerTotal(orderPayload.data.order.totalAmount); setStatus('Loading secure Stripe payment…')
       const paymentResponse = await fetch('/api/payments/intent', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: orderPayload.data.order.id, checkoutToken: idempotencyKey }) })

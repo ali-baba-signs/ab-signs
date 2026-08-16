@@ -75,6 +75,7 @@ export function Header() {
       <nav aria-label="Product categories" className={`${menuOpen ? 'block' : 'hidden'} border-b border-zinc-200 bg-white lg:block`}>
         <div className="mx-auto flex max-w-[1440px] flex-col px-4 lg:h-12 lg:flex-row lg:items-center lg:gap-1 lg:px-8">
           <Link href="/products" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">All products</Link>
+          <Link href="/offers" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold text-[#ed1b68] hover:text-[#ed1b68]">Offers &amp; Vouchers</Link>
           {productNavigation.map((category) => <div key={category.id} className="group relative">
             <Link href={category.href} onClick={() => setMenuOpen(false)} className="flex items-center justify-between gap-1 px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">{category.name}<ChevronDown className="hidden h-3.5 w-3.5 lg:block" /></Link>
             <div className="border-l border-zinc-200 pl-3 lg:invisible lg:absolute lg:left-0 lg:top-full lg:w-60 lg:rounded-b-lg lg:border lg:bg-white lg:p-2 lg:pl-2 lg:opacity-0 lg:shadow-xl lg:transition lg:group-hover:visible lg:group-hover:opacity-100">

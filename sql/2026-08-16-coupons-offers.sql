@@ -1,0 +1,15 @@
+BEGIN;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS per_customer_usage_limit integer;
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS minimum_subtotal numeric(12,2);
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS max_discount_amount numeric(12,2);
+ALTER TABLE coupons ADD COLUMN IF NOT EXISTS visibility varchar(20) NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','public','customer_specific'));
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_id uuid;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_snapshot jsonb;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount numeric(12,2) NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS coupon_products (coupon_id uuid NOT NULL REFERENCES coupons(id) ON DELETE CASCADE, product_id uuid NOT NULL REFERENCES products(id) ON DELETE CASCADE, UNIQUE(coupon_id, product_id));
+CREATE TABLE IF NOT EXISTS coupon_categories (coupon_id uuid NOT NULL REFERENCES coupons(id) ON DELETE CASCADE, category_id uuid NOT NULL REFERENCES product_categories(id) ON DELETE CASCADE, UNIQUE(coupon_id, category_id));
+CREATE TABLE IF NOT EXISTS coupon_redemptions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), coupon_id uuid NOT NULL REFERENCES coupons(id) ON DELETE RESTRICT, user_id text REFERENCES users(id) ON DELETE SET NULL, order_id uuid NOT NULL REFERENCES orders(id) ON DELETE RESTRICT UNIQUE, payment_record_id uuid REFERENCES payment_records(id) ON DELETE SET NULL, discount_amount numeric(12,2) NOT NULL, status varchar(20) NOT NULL DEFAULT 'redeemed', redeemed_at timestamp NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS coupon_redemptions_customer_idx ON coupon_redemptions(coupon_id, user_id);
+CREATE TABLE IF NOT EXISTS offers (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), coupon_id uuid REFERENCES coupons(id) ON DELETE SET NULL, title varchar(255) NOT NULL, slug varchar(255) NOT NULL UNIQUE, short_description text, full_description text, terms text, image_url text, mobile_image_url text, badge_text varchar(100), cta_label varchar(120), cta_url text, show_on_homepage boolean NOT NULL DEFAULT false, show_in_offers_page boolean NOT NULL DEFAULT true, show_in_profile boolean NOT NULL DEFAULT true, featured boolean NOT NULL DEFAULT false, enabled boolean NOT NULL DEFAULT true, starts_at timestamp, ends_at timestamp, display_order integer NOT NULL DEFAULT 0, created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS offers_visible_idx ON offers(enabled, show_on_homepage, display_order);
+COMMIT;

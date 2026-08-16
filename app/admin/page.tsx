@@ -20,6 +20,7 @@ import {
   Star,
   Mail,
   MessageCircle,
+  Ticket,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AdminActivityPanel } from '@/components/admin/activity-panel'
@@ -208,6 +209,9 @@ export default function AdminDashboard() {
           </Link>
           <Link href={adminPath('/live-chat')} className="block">
             <div className="bg-card border border-border rounded-lg p-6 hover:border-primary transition-colors cursor-pointer h-full"><div className="flex items-start justify-between mb-4"><h3 className="text-xl font-bold text-foreground">Support Chat</h3><MessageCircle className="h-6 w-6 text-primary" /></div><p className="text-muted-foreground text-sm mb-4">Read customer conversations and send support replies</p><Button variant="outline" className="w-full">Open Support Chat</Button></div>
+          </Link>
+          <Link href={adminPath('/coupons')} className="block">
+            <div className="bg-card border border-border rounded-lg p-6 hover:border-primary transition-colors cursor-pointer h-full"><div className="flex items-start justify-between mb-4"><h3 className="text-xl font-bold text-foreground">Offers &amp; Coupons</h3><Ticket className="h-6 w-6 text-primary" /></div><p className="text-muted-foreground text-sm mb-4">Create and manage customer vouchers and campaign codes</p><Button variant="outline" className="w-full">Manage Offers</Button></div>
           </Link>
 
           {/* Analytics */}

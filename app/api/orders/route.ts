@@ -8,6 +8,7 @@ import { loadStoreSettings } from '@/lib/store/load-settings'
 import { designDeadline } from '@/lib/orders/workflow'
 import { parseMeasurement } from '@/lib/measurements'
 import { currentPolicyAcceptance } from '@/lib/policies/registry'
+import { validateCoupon } from '@/lib/coupons/engine'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -114,14 +115,17 @@ export async function POST(request: NextRequest) {
       return { product, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
-    const shippingCents = deliveryType === 'pickup' || subtotalCents >= cents(settings.freeShippingThreshold) ? 0 : cents(settings.shippingCost)
-    const taxCents = Math.round(subtotalCents * settings.taxRate / 100)
-    const totalCents = subtotalCents + shippingCents + taxCents
+    const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null
+    const discountCents = coupon?.discountCents || 0
+    const discountedSubtotalCents = Math.max(0, subtotalCents - discountCents)
+    const shippingCents = deliveryType === 'pickup' || discountedSubtotalCents >= cents(settings.freeShippingThreshold) ? 0 : cents(settings.shippingCost)
+    const taxCents = Math.round(discountedSubtotalCents * settings.taxRate / 100)
+    const totalCents = discountedSubtotalCents + shippingCents + taxCents
     const orderNumber = `ABS-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
     const [order] = await db.transaction(async (tx) => {
       const rows = await tx.insert(orders).values({
         userId: session?.user.id ?? null, orderNumber, status: 'pending_design_confirmation', paymentStatus: 'awaiting_payment', paymentMethod, designConfirmationDeadline: designDeadline(),
-        currency: settings.currency, customerEmail: email, idempotencyKey, totalAmount: amount(totalCents), taxAmount: amount(taxCents), shippingAmount: amount(shippingCents),
+        currency: settings.currency, customerEmail: email, idempotencyKey, totalAmount: amount(totalCents), taxAmount: amount(taxCents), shippingAmount: amount(shippingCents), couponId: coupon?.id || null, discountAmount: amount(discountCents), couponSnapshot: coupon ? { id: coupon.id, code: coupon.code, discountType: coupon.discountType, discountValue: coupon.discountValue, discountAmount: amount(discountCents) } : null,
         shippingAddress, billingAddress, deliveryType, policiesAccepted: true, policiesAcceptedAt: new Date(), policyAcceptance: currentPolicyAcceptance(), notes: typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : null,
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
       return rows
     })
-    return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), tax: amount(taxCents), shipping: amount(shippingCents), total: amount(totalCents), currency: settings.currency } } }, { status: 201 })
+    return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), discount: amount(discountCents), couponCode: coupon?.code || null, tax: amount(taxCents), shipping: amount(shippingCents), total: amount(totalCents), currency: settings.currency } } }, { status: 201 })
   } catch (error) {
     console.error('Order create failed', error)
     const message = error instanceof Error && /cart|valid|available|Quantity|Shipping|customer|payment|idempotency|product|size|template|accept|delivery|pickup/i.test(error.message) ? error.message : 'The order could not be created.'
