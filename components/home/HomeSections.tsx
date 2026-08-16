@@ -33,7 +33,11 @@ export function CategoryGrid({ categories }: { categories: Array<{ id: string; n
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 lg:gap-6">
       {categories.map((category) => <Link key={category.id} href={category.href} className="group flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition hover:-translate-y-1 hover:border-[#ed1b68] hover:shadow-xl">
         <div className="relative aspect-[4/3] overflow-hidden bg-zinc-100"><Image src={category.image} alt={category.name} fill sizes="(max-width: 768px) 50vw, 33vw" className="object-cover transition duration-500 group-hover:scale-105" /></div>
-        <div className="flex flex-1 flex-col p-4 sm:p-6"><h3 className="min-h-14 text-lg font-black sm:text-2xl">{category.name}</h3><p className="mt-2 hidden min-h-[4.5rem] overflow-hidden text-sm leading-6 text-zinc-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] sm:block">{category.description}</p><span className="mt-auto inline-flex items-center gap-1 pt-4 text-sm font-bold text-[#ed1b68]">Shop now <ArrowRight className="h-4 w-4" /></span></div>
+        <div className="flex flex-1 flex-col p-4 sm:p-6"><h3 className="min-h-14 text-lg font-black sm:text-2xl">{category.name}</h3>
+        <p className="mt-2 hidden h-[4.5rem] overflow-hidden text-sm leading-6 text-zinc-500 line-clamp-3 sm:block">
+  {category.description}
+</p>
+        <span className="mt-auto inline-flex items-center gap-1 pt-4 text-sm font-bold text-[#ed1b68]">Shop now <ArrowRight className="h-4 w-4" /></span></div>
       </Link>)}
     </div>
   </section>
