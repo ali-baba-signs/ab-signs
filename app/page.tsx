@@ -15,6 +15,7 @@ import {
 import { heroSlides, resolveAsset } from '@/data/homepage'
 import { getHeroSlides } from '@/lib/home/hero-data'
 import { getHomepageCategories } from '@/lib/home/category-data'
+import { getHomepagePromotions } from '@/lib/home/promotion-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   let homepageCategories: Awaited<ReturnType<typeof getHomepageCategories>> = []
+  let homepagePromotions: Awaited<ReturnType<typeof getHomepagePromotions>> = []
   let slides = heroSlides
     .filter((slide) => slide.enabled && slide.featured)
     .sort((a, b) => a.priority - b.priority)
@@ -67,6 +69,7 @@ export default async function HomePage() {
     console.error('Managed homepage heroes could not be loaded; using built-in fallbacks.', error)
   }
   try { homepageCategories = await getHomepageCategories() } catch (error) { console.error('Homepage categories could not be loaded.', error) }
+  try { homepagePromotions = await getHomepagePromotions() } catch (error) { console.error('Homepage promotions could not be loaded.', error) }
 
   return (
     <CartProvider>
@@ -77,7 +80,7 @@ export default async function HomePage() {
           <BenefitsStrip />
           <CategoryGrid categories={homepageCategories} />
           <ProductHighlights />
-          <PromotionGrid />
+          <PromotionGrid promotions={homepagePromotions} />
           <DesignOnlineSection />
           <ArtworkOptions />
           <SeoContent />

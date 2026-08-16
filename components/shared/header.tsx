@@ -46,7 +46,7 @@ export function Header() {
           </form>
 
           <div className="flex items-center justify-self-end">
-            <a href="mailto:support@alibabasigns.com" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need help?</span>Contact us</a>
+            <Link href="/contact" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need help?</span>Contact us</Link>
             <div className="relative">
               <button type="button" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} className="flex min-h-11 items-center gap-2 rounded-md px-2 hover:bg-zinc-100">
                 <UserRound className="h-5 w-5" /><span className="hidden text-sm font-bold sm:inline">{isPending ? 'Account' : session?.user?.name?.split(' ')[0] || 'Account'}</span>
@@ -54,6 +54,7 @@ export function Header() {
               {accountOpen && <div className="absolute right-0 top-full mt-2 w-52 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl">
                 {session?.user ? <>
                   <p className="truncate px-3 py-2 text-xs text-zinc-500">{session.user.email}</p>
+                  <Link href="/account/profile" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My profile</Link>
                   <Link href="/account/orders" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My orders</Link>
                   <button onClick={logout} className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Sign out</button>
                 </> : <>

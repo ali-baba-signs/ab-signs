@@ -11,13 +11,15 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   try {
     const [template] = await db.select().from(templates).where(eq(templates.id, id)).limit(1)
     if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') return NextResponse.json({ error: { code: 'TEMPLATE_UNAVAILABLE', message: 'This editable template is not available.' } }, { status: 404 })
-    if (!template.svgKey || !template.svgAssetId || !template.canvasData || !template.logicalCanvasWidth || !template.logicalCanvasHeight) return NextResponse.json({ error: { code: 'TEMPLATE_INVALID', message: 'The template is missing its SVG source or generated editor data.' } }, { status: 422 })
+    if (!template.canvasData || !template.logicalCanvasWidth || !template.logicalCanvasHeight) return NextResponse.json({ error: { code: 'TEMPLATE_INVALID', message: 'The template is missing its canonical editor data.' } }, { status: 422 })
     let config = { widthMm: Number(template.physicalWidth), heightMm: Number(template.physicalHeight), logicalCanvasWidth: template.logicalCanvasWidth, logicalCanvasHeight: template.logicalCanvasHeight }
     let productSize: (typeof templateSizes.$inferSelect | typeof productSizes.$inferSelect) | null = null
     const availableSizes = await db.select().from(templateSizes).where(eq(templateSizes.templateId, template.id))
     if (productId) {
       const [product] = await db.select().from(products).where(eq(products.id, productId)).limit(1)
-      if (!product?.active || product.templateId !== template.id) return NextResponse.json({ error: { code: 'TEMPLATE_PRODUCT_MISMATCH', message: 'This template is not assigned to the selected product.' } }, { status: 409 })
+      const [variantMapping] = product?.active && sizeId && product.sizeMode === 'fixed_variants' ? await db.select().from(productSizes).where(and(eq(productSizes.id, sizeId), eq(productSizes.productId, product.id))).limit(1) : []
+      const assignedToVariant = variantMapping?.frontTemplateId === template.id || variantMapping?.backTemplateId === template.id
+      if (!product?.active || (product.templateId !== template.id && !assignedToVariant)) return NextResponse.json({ error: { code: 'TEMPLATE_PRODUCT_MISMATCH', message: 'This template is not assigned to the selected product variant.' } }, { status: 409 })
       if (sizeId && product.sizeMode === 'template_sizes') {
         const size = availableSizes.find((row) => row.id === sizeId && row.enabled)
         if (!size) return NextResponse.json({ error: { code: 'SIZE_UNAVAILABLE', message: 'The selected template size is not available for editing.' } }, { status: 409 })

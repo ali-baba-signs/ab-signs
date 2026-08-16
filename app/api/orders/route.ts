@@ -8,6 +8,7 @@ import { isPaymentProvider } from '@/lib/payments/providers'
 import { loadStoreSettings } from '@/lib/store/load-settings'
 import { designDeadline } from '@/lib/orders/workflow'
 import { parseMeasurement } from '@/lib/measurements'
+import { currentPolicyAcceptance } from '@/lib/policies/registry'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -47,15 +48,18 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>
+    if (body.policiesAccepted !== true) throw new Error('You must accept the store policies before placing the order.')
     const items = Array.isArray(body.items) ? body.items as CheckoutItem[] : []
     const customer = body.customer as Record<string, unknown>
     const email = typeof customer?.email === 'string' ? customer.email.trim().toLowerCase().slice(0, 255) : ''
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim().slice(0, 100) : ''
     const paymentMethod = body.paymentMethod
+    const deliveryType = body.deliveryType === 'pickup' ? 'pickup' : body.deliveryType === 'delivery' ? 'delivery' : null
     if (!items.length || items.length > 50) throw new Error('The cart must contain between 1 and 50 items.')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('A valid customer email is required.')
     if (!/^[a-zA-Z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('A valid checkout idempotency key is required.')
     if (!isPaymentProvider(paymentMethod)) throw new Error('Select a valid payment method.')
+    if (!deliveryType) throw new Error('Select delivery or pickup.')
     const shippingAddress = cleanAddress(body.shippingAddress)
     const billingAddress = body.billingSameAsShipping === false ? cleanAddress(body.billingAddress) : shippingAddress
     const settings = await loadStoreSettings()
@@ -108,10 +112,10 @@ export async function POST(request: NextRequest) {
       if (customRequested && (!size.height || !size.width)) throw new Error('The custom-size pricing reference has no configured dimensions.')
       const areaRatio = customRequested ? Number(finalHeight) * Number(finalWidth) / (Number(size.height) * Number(size.width)) : 1
       const unitCents = cents(Number(size.unitPrice) * areaRatio)
-      return { product, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      return { product, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
-    const shippingCents = subtotalCents >= cents(settings.freeShippingThreshold) ? 0 : cents(settings.shippingCost)
+    const shippingCents = deliveryType === 'pickup' || subtotalCents >= cents(settings.freeShippingThreshold) ? 0 : cents(settings.shippingCost)
     const taxCents = Math.round(subtotalCents * settings.taxRate / 100)
     const totalCents = subtotalCents + shippingCents + taxCents
     const orderNumber = `ABS-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
@@ -119,10 +123,10 @@ export async function POST(request: NextRequest) {
       const rows = await tx.insert(orders).values({
         userId: session?.user.id ?? null, orderNumber, status: 'pending_design_confirmation', paymentStatus: 'awaiting_payment', paymentMethod, designConfirmationDeadline: designDeadline(),
         currency: settings.currency, customerEmail: email, idempotencyKey, totalAmount: amount(totalCents), taxAmount: amount(taxCents), shippingAmount: amount(shippingCents),
-        shippingAddress, billingAddress, notes: typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : null,
+        shippingAddress, billingAddress, deliveryType, policiesAccepted: true, policiesAcceptedAt: new Date(), policyAcceptance: currentPolicyAcceptance(), notes: typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : null,
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
-        orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, designSource: item.designSource,
+        orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
         quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource },
       })))
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), tax: amount(taxCents), shipping: amount(shippingCents), total: amount(totalCents), currency: settings.currency } } }, { status: 201 })
   } catch (error) {
     console.error('Order create failed', error)
-    const message = error instanceof Error && /cart|valid|available|Quantity|Shipping|customer|payment|idempotency|product|size|template/i.test(error.message) ? error.message : 'The order could not be created.'
+    const message = error instanceof Error && /cart|valid|available|Quantity|Shipping|customer|payment|idempotency|product|size|template|accept|delivery|pickup/i.test(error.message) ? error.message : 'The order could not be created.'
     return NextResponse.json({ error: { code: 'ORDER_CREATE_FAILED', message } }, { status: 400 })
   }
 }

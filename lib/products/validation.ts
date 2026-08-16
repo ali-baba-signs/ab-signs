@@ -24,6 +24,9 @@ export interface ProductSizeInput {
   variantType?: string | null
   sizeGroup?: string | null
   sideMode?: string
+  assembledHeightDescription?: string | null
+  frontTemplateId?: string | null
+  backTemplateId?: string | null
 }
 
 export interface ValidProductInput {
@@ -90,8 +93,11 @@ export function validateProductInput(value: unknown): ValidProductInput {
     const variantType = FLAG_TYPES.includes(size.variantType as typeof FLAG_TYPES[number]) ? size.variantType as typeof FLAG_TYPES[number] : null
     const sizeGroup = FLAG_SIZE_GROUPS.includes(size.sizeGroup as typeof FLAG_SIZE_GROUPS[number]) ? size.sizeGroup as typeof FLAG_SIZE_GROUPS[number] : null
     const sideMode = SIDE_MODES.includes(size.sideMode as typeof SIDE_MODES[number]) ? size.sideMode as typeof SIDE_MODES[number] : 'single'
+    const frontTemplateId = typeof size.frontTemplateId === 'string' && uuid.test(size.frontTemplateId) ? size.frontTemplateId : null
+    const backTemplateId = typeof size.backTemplateId === 'string' && uuid.test(size.backTemplateId) ? size.backTemplateId : null
     if (sizeMode === 'fixed_variants' && (!variantType || !sizeGroup || !size.width || !size.height)) throw new Error(`${label} must define flag type, size group, side mode, and real print dimensions.`)
-    return { id: typeof size.id === 'string' && uuid.test(size.id) ? size.id : undefined, label, width: optionalDimension(size.width, `${label} width`), height: optionalDimension(size.height, `${label} height`), unit, unitPrice: money(size.unitPrice, `${label} price`), enabled: Boolean(size.enabled), order, variantType, sizeGroup, sideMode }
+    if (sideMode === 'double' && backTemplateId && !frontTemplateId) throw new Error(`${label} needs a front template when a back template is selected.`)
+    return { id: typeof size.id === 'string' && uuid.test(size.id) ? size.id : undefined, label, width: optionalDimension(size.width, `${label} width`), height: optionalDimension(size.height, `${label} height`), unit, unitPrice: money(size.unitPrice, `${label} price`), enabled: Boolean(size.enabled), order, variantType, sizeGroup, sideMode, assembledHeightDescription: typeof size.assembledHeightDescription === 'string' ? size.assembledHeightDescription.trim().slice(0,255) || null : null, frontTemplateId, backTemplateId }
   })
   const templatePrices = (Array.isArray(input.templatePrices) ? input.templatePrices : []).slice(0, 30).map((raw) => {
     const row = raw as Record<string, unknown>

@@ -36,6 +36,7 @@ try {
   }
 } catch (error) {
   console.error(`Migration failed: ${error instanceof Error ? error.message : 'Unknown database error'}`)
+  if (error && typeof error === 'object') console.error({ code: error.code, detail: error.detail, hint: error.hint, position: error.position, where: error.where })
   process.exitCode = 1
 } finally {
   await pool.end()

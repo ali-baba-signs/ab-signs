@@ -6,9 +6,10 @@ export const userRoleEnum = pgEnum('user_role', ['admin', 'customer', 'designer'
 export const orderStatusEnum = pgEnum('order_status', [
   'pending', 'confirmed', 'production', 'ready_to_ship', 'shipped',
   'pending_design_confirmation', 'design_revision_required', 'design_confirmed',
-  'awaiting_payment_confirmation', 'payment_confirmed', 'order_confirmed',
-  'in_production', 'quality_check', 'print_ready', 'ready_for_pickup',
-  'awaiting_dispatch', 'out_for_delivery', 'delivered', 'completed', 'on_hold',
+  'awaiting_payment_confirmation', 'awaiting_payment', 'payment_confirmed', 'order_confirmed',
+  'in_production', 'queued_for_printing', 'printing', 'printing_completed',
+  'quality_check', 'production_completed', 'print_ready', 'ready_for_pickup',
+  'awaiting_dispatch', 'ready_for_dispatch', 'dispatched', 'out_for_delivery', 'delivered', 'completed', 'on_hold',
   'cancelled', 'refund_requested', 'refunded',
 ])
 export const productCategoryEnum = pgEnum('product_category', ['custom_banners', 'mesh_banners', 'vinyl_banners', 'templates', 'digital_designs'])
@@ -178,6 +179,9 @@ export const productSizes = pgTable('product_sizes', {
   variantType: varchar('variant_type', { length: 30 }),
   sizeGroup: varchar('size_group', { length: 20 }),
   sideMode: varchar('side_mode', { length: 10 }).default('single').notNull(),
+  assembledHeightDescription: varchar('assembled_height_description', { length: 255 }),
+  frontTemplateId: uuid('front_template_id'),
+  backTemplateId: uuid('back_template_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('product_sizes_product_idx').on(table.productId)])
@@ -255,6 +259,10 @@ export const designs = pgTable('designs', {
   description: text('description'),
   canvasData: json('canvas_data').notNull(),
   assetId: uuid('asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  previewAssetId: uuid('preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  frontPreviewAssetId: uuid('front_preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  backPreviewAssetId: uuid('back_preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  productionAssetId: uuid('production_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   thumbnail: text('thumbnail'),
   templateId: uuid('template_id').references(() => templates.id),
   productId: uuid('product_id').references(() => products.id),
@@ -306,6 +314,7 @@ export const orders = pgTable('orders', {
   shippingAmount: decimal('shipping_amount', { precision: 10, scale: 2 }).default('0'),
   shippingAddress: json('shipping_address'),
   billingAddress: json('billing_address'),
+  deliveryType: varchar('delivery_type', { length: 20 }).default('delivery').notNull(),
   notes: text('notes'),
   designConfirmationDeadline: timestamp('design_confirmation_deadline'),
   designConfirmedAt: timestamp('design_confirmed_at'),
@@ -313,10 +322,20 @@ export const orders = pgTable('orders', {
   designDelayReason: text('design_delay_reason'),
   expectedPrintingAt: timestamp('expected_printing_at'),
   expectedDeliveryAt: timestamp('expected_delivery_at'),
+  dispatchedAt: timestamp('dispatched_at'),
+  deliveredAt: timestamp('delivered_at'),
+  deliveredByAdminId: text('delivered_by_admin_id').references(() => adminUsers.id, { onDelete: 'set null' }),
+  deliveryNote: text('delivery_note'),
+  expectedPickupAt: timestamp('expected_pickup_at'),
+  readyForPickupAt: timestamp('ready_for_pickup_at'),
+  pickupCompletedAt: timestamp('pickup_completed_at'),
   courierName: varchar('courier_name', { length: 120 }),
   trackingNumber: varchar('tracking_number', { length: 160 }),
   internalNotes: text('internal_notes'),
   customerNotes: text('customer_notes'),
+  policiesAccepted: boolean('policies_accepted').default(false).notNull(),
+  policiesAcceptedAt: timestamp('policies_accepted_at'),
+  policyAcceptance: json('policy_acceptance'),
   receiptAssetId: uuid('receipt_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -333,6 +352,11 @@ export const orderItems = pgTable('order_items', {
   templateId: uuid('template_id').references(() => templates.id),
   designId: uuid('design_id').references(() => designs.id),
   customerArtworkId: uuid('customer_artwork_id').references(() => customerArtworks.id, { onDelete: 'set null' }),
+  previewAssetId: uuid('preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  frontPreviewAssetId: uuid('front_preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  backPreviewAssetId: uuid('back_preview_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  customerArtworkAssetId: uuid('customer_artwork_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  productionAssetId: uuid('production_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   designSource: varchar('design_source', { length: 30 }).default('design_assistance').notNull(),
   quantity: integer('quantity').default(1).notNull(),
   unitPrice: decimal('unit_price', { precision: 10, scale: 2 }).notNull(),
@@ -361,6 +385,24 @@ export const storeSettings = pgTable('store_settings', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
+
+export const homepagePromotions = pgTable('homepage_promotions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  internalTitle: varchar('internal_title', { length: 255 }).notNull(),
+  headline: varchar('headline', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  imageAssetId: uuid('image_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  imageUrl: text('image_url'),
+  ctaLabel: varchar('cta_label', { length: 120 }),
+  ctaUrl: text('cta_url'),
+  alignment: varchar('alignment', { length: 20 }).default('image_left').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  productId: uuid('product_id').references(() => products.id, { onDelete: 'set null' }),
+  categoryId: uuid('category_id').references(() => productCategories.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [index('homepage_promotions_enabled_order_idx').on(table.enabled, table.displayOrder)])
 
 export const adminActivityLogs = pgTable('admin_activity_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -399,11 +441,21 @@ export const contactSubmissions = pgTable('contact_submissions', {
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull(),
   phone: varchar('phone', { length: 30 }),
+  company: varchar('company', { length: 255 }),
+  orderNumber: varchar('order_number', { length: 80 }),
+  enquiryType: varchar('enquiry_type', { length: 80 }),
   subject: varchar('subject', { length: 255 }).notNull(),
   message: text('message').notNull(),
   status: varchar('status', { length: 30 }).default('new').notNull(),
+  emailStatus: varchar('email_status', { length: 30 }).default('pending').notNull(),
+  emailError: text('email_error'),
+  ipHash: varchar('ip_hash', { length: 64 }),
+  userAgent: varchar('user_agent', { length: 500 }),
+  readAt: timestamp('read_at'),
+  resolvedAt: timestamp('resolved_at'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => [index('contact_submissions_created_idx').on(table.createdAt)])
+}, (table) => [index('contact_submissions_created_idx').on(table.createdAt), index('contact_submissions_ip_created_idx').on(table.ipHash, table.createdAt)])
 
 // Order Status History
 export const orderStatusHistory = pgTable('order_status_history', {
@@ -416,6 +468,7 @@ export const orderStatusHistory = pgTable('order_status_history', {
   internalNote: text('internal_note'),
   customerVisibleNote: text('customer_visible_note'),
   expectedCompletionAt: timestamp('expected_completion_at'),
+  actualCompletionAt: timestamp('actual_completion_at'),
   changedAt: timestamp('changed_at').defaultNow().notNull(),
   changedBy: text('changed_by').references(() => users.id),
   changedByAdmin: text('changed_by_admin').references(() => adminUsers.id, { onDelete: 'set null' }),
@@ -424,10 +477,12 @@ export const orderStatusHistory = pgTable('order_status_history', {
 export const productReviews = pgTable('product_reviews', {
   id: uuid('id').primaryKey().defaultRandom(),
   orderItemId: uuid('order_item_id').notNull().references(() => orderItems.id, { onDelete: 'cascade' }).unique(),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
   productQuality: integer('product_quality').notNull(),
   printQuality: integer('print_quality').notNull(),
+  colourFinishQuality: integer('colour_finish_quality').notNull(),
   timeliness: integer('timeliness').notNull(),
   service: integer('service').notNull(),
   overall: integer('overall').notNull(),
@@ -438,7 +493,19 @@ export const productReviews = pgTable('product_reviews', {
   moderatedAt: timestamp('moderated_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => [index('product_reviews_product_idx').on(table.productId)])
+}, (table) => [index('product_reviews_product_idx').on(table.productId), index('product_reviews_order_idx').on(table.orderId)])
+
+export const policyDocuments = pgTable('policy_documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 120 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  version: varchar('version', { length: 40 }).notNull(),
+  content: json('content').notNull(),
+  published: boolean('published').default(true).notNull(),
+  effectiveAt: timestamp('effective_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('policy_documents_slug_version_idx').on(table.slug, table.version), index('policy_documents_published_idx').on(table.slug, table.published, table.effectiveAt)])
 
 // Production Queue
 export const productionQueue = pgTable('production_queue', {

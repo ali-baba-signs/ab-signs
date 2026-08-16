@@ -1,8 +1,239 @@
 'use client'
-import { Suspense,useState } from 'react'
-import { useParams,useSearchParams } from 'next/navigation'
+
+import { Suspense, useState } from 'react'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Star } from 'lucide-react'
+import { Star, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-function Form(){const params=useParams<{id:string}>();const query=useSearchParams();const itemId=query.get('itemId')||'';const[ratings,setRatings]=useState({productQuality:5,printQuality:5,timeliness:5,service:5,overall:5});const[feedback,setFeedback]=useState('');const[message,setMessage]=useState('');const fields=Object.keys(ratings) as Array<keyof typeof ratings>;async function submit(){const response=await fetch('/api/reviews',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({orderItemId:itemId,...ratings,feedback})});const payload=await response.json();setMessage(response.ok?'Thank you. Your verified-order review was submitted for moderation.':payload.error?.message||'Review failed.')}return <main className="min-h-[70vh] px-4 py-10"><div className="mx-auto max-w-xl rounded-xl border bg-card p-6"><h1 className="text-2xl font-black">Review your order</h1><p className="mt-2 text-sm text-muted-foreground">Ratings cannot be changed by administrators without an audit record.</p>{fields.map(field=><label key={field} className="mt-5 block text-sm font-semibold capitalize">{field.replace(/([A-Z])/g,' $1')}<select className="mt-1 h-10 w-full rounded border px-2" value={ratings[field]} onChange={e=>setRatings({...ratings,[field]:Number(e.target.value)})}>{[5,4,3,2,1].map(value=><option key={value} value={value}>{value} star{value!==1?'s':''}</option>)}</select></label>)}<label className="mt-5 block text-sm font-semibold">Optional feedback<textarea className="mt-1 min-h-28 w-full rounded border p-2" value={feedback} onChange={e=>setFeedback(e.target.value)}/></label>{message&&<p className="mt-4 rounded bg-secondary p-3">{message}</p>}<div className="mt-5 flex gap-2"><Button onClick={()=>void submit()} disabled={!itemId}><Star/> Submit review</Button><Link href={`/account/orders/${params.id}`}><Button variant="outline">Back</Button></Link></div></div></main>}
-export default function ReviewPage(){return <Suspense fallback={<div>Loading review...</div>}><Form/></Suspense>}
+
+const RATING_FIELDS = [
+  { key: 'overall', label: 'Overall Experience', description: 'Your overall rating of the order' },
+  { key: 'productQuality', label: 'Product Quality', description: 'Material durability and build' },
+  { key: 'printQuality', label: 'Print Quality', description: 'Resolution, sharpness, and clarity' },
+  { key: 'colourFinishQuality', label: 'Colour & Finish', description: 'Accuracy of colors and coating' },
+  { key: 'timeliness', label: 'Timeliness', description: 'Delivery speed and turnaround' },
+  { key: 'service', label: 'Customer Service', description: 'Communication and support' },
+] as const
+
+type RatingKey = (typeof RATING_FIELDS)[number]['key']
+
+function InteractiveStarRating({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (val: number) => void
+}) {
+  const [hover, setHover] = useState<number | null>(null)
+
+  return (
+    <div className="flex items-center gap-1.5" role="radiogroup">
+      {[1, 2, 3, 4, 5].map((star) => {
+        const isFilled = star <= (hover ?? value)
+        return (
+          <button
+            key={star}
+            type="button"
+            role="radio"
+            aria-checked={star === value}
+            aria-label={`${star} star${star !== 1 ? 's' : ''}`}
+            className="rounded p-1 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onMouseEnter={() => setHover(star)}
+            onMouseLeave={() => setHover(null)}
+            onClick={() => onChange(star)}
+          >
+            <Star
+              className={`h-6 w-6 transition-colors ${
+                isFilled
+                  ? 'fill-amber-400 text-amber-400'
+                  : 'fill-zinc-100 text-zinc-300 dark:fill-zinc-800 dark:text-zinc-600'
+              }`}
+            />
+          </button>
+        )
+      })}
+      <span className="ml-2 text-xs font-semibold text-muted-foreground">
+        {(hover ?? value)} / 5
+      </span>
+    </div>
+  )
+}
+
+function ReviewForm() {
+  const params = useParams<{ id: string }>()
+  const query = useSearchParams()
+  const router = useRouter()
+  const itemId = query.get('itemId') || ''
+
+  const [ratings, setRatings] = useState<Record<RatingKey, number>>({
+    overall: 5,
+    productQuality: 5,
+    printQuality: 5,
+    colourFinishQuality: 5,
+    timeliness: 5,
+    service: 5,
+  })
+
+  const [feedback, setFeedback] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [isSuccess, setIsSuccess] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!itemId) {
+      setErrorMessage('Order item identifier missing.')
+      return
+    }
+
+    setSubmitting(true)
+    setErrorMessage('')
+
+    try {
+      const response = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderItemId: itemId,
+          ...ratings,
+          feedback: feedback.trim() || null,
+        }),
+      })
+
+      const payload = await response.json()
+
+      if (!response.ok) {
+        throw new Error(payload.error?.message || 'Failed to submit review.')
+      }
+
+      setIsSuccess(true)
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Review submission failed.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (isSuccess) {
+    return (
+      <main className="min-h-[70vh] px-4 py-10">
+        <div className="mx-auto max-w-xl rounded-xl border bg-card p-8 text-center shadow-sm">
+          <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
+          <h1 className="mt-4 text-2xl font-black">Thank You!</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your verified review has been submitted and sent for moderation.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href={`/account/orders/${params.id}`}>
+              <Button>
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Order
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-[70vh] px-4 py-10">
+      <div className="mx-auto max-w-xl rounded-xl border bg-card p-6 shadow-sm sm:p-8">
+        <div className="border-b pb-4">
+          <Link
+            href={`/account/orders/${params.id}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground mb-3"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to order
+          </Link>
+          <h1 className="text-2xl font-black">Review Your Order</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your feedback helps us maintain verified print and material standards.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+          {RATING_FIELDS.map(({ key, label, description }) => (
+            <div
+              key={key}
+              className={`rounded-lg border p-4 transition-colors ${
+                key === 'overall' ? 'border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20' : 'bg-background'
+              }`}
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{label}</p>
+                  <p className="text-xs text-muted-foreground">{description}</p>
+                </div>
+                <InteractiveStarRating
+                  value={ratings[key]}
+                  onChange={(val) => setRatings((prev) => ({ ...prev, [key]: val }))}
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="space-y-2 pt-2">
+            <label htmlFor="feedback" className="block text-sm font-semibold">
+              Detailed Comments <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+            </label>
+            <textarea
+              id="feedback"
+              className="min-h-28 w-full rounded-md border bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              placeholder="Tell us what you liked about the finish, packaging, or customer service..."
+              maxLength={5000}
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+            />
+            <p className="text-right text-xs text-muted-foreground">
+              {feedback.length} / 5000 characters
+            </p>
+          </div>
+
+          {errorMessage && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 pt-4 sm:flex-row-reverse sm:justify-between">
+            <Button
+              type="submit"
+              disabled={submitting || !itemId}
+              className="w-full sm:w-auto"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting…
+                </>
+              ) : (
+                <>
+                  <Star className="mr-2 h-4 w-4 fill-primary-foreground" /> Submit Review
+                </>
+              )}
+            </Button>
+            <Link href={`/account/orders/${params.id}`} className="w-full sm:w-auto">
+              <Button variant="outline" type="button" className="w-full">
+                Cancel
+              </Button>
+            </Link>
+          </div>
+        </form>
+      </div>
+    </main>
+  )
+}
+
+export default function ReviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[70vh] place-items-center text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      }
+    >
+      <ReviewForm />
+    </Suspense>
+  )
+}

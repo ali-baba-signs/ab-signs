@@ -6,7 +6,7 @@ import { products, productTemplateSizePrices, templateSizes, templates } from '@
 export async function GET() {
   try {
     const rows = await db.select().from(templates).where(eq(templates.status, 'active')).orderBy(asc(templates.name))
-    const valid = rows.filter((row) => row.conversionStatus === 'ready' && row.previewImageUrl && row.canvasData && row.svgAssetId)
+    const valid = rows.filter((row) => row.conversionStatus === 'ready' && row.previewImageUrl && row.canvasData)
     const ids = valid.map((row) => row.id)
     const [sizes, productRows] = ids.length ? await Promise.all([
       db.select().from(templateSizes).where(inArray(templateSizes.templateId, ids)).orderBy(asc(templateSizes.displayOrder)),

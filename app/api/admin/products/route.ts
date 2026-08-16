@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
       })))
       if (input!.templateId && input!.sizeMode === 'template_sizes') await tx.insert(productTemplateSizePrices).values(input!.templatePrices.map((price) => ({ productId: product.id, templateSizeId: price.templateSizeId, unitPrice: price.unitPrice.toFixed(2), enabled: price.enabled })))
       else {
-        const standalone = input!.sizes.length ? input!.sizes : [{ label: 'Standard', width: null, height: null, unit: 'mm', unitPrice: input!.basePrice, enabled: true, order: 0 }]
-        await tx.insert(productSizes).values(standalone.map((size) => ({ productId: product.id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: 'variantType' in size ? size.variantType : null, sizeGroup: 'sizeGroup' in size ? size.sizeGroup : null, sideMode: 'sideMode' in size ? size.sideMode : 'single' })))
+        const standalone = input!.sizes.length ? input!.sizes : [{ label: 'Standard', width: null, height: null, unit: 'mm', unitPrice: input!.basePrice, enabled: true, order: 0, assembledHeightDescription:null, frontTemplateId:null, backTemplateId:null }]
+        await tx.insert(productSizes).values(standalone.map((size) => ({ productId: product.id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: 'variantType' in size ? size.variantType : null, sizeGroup: 'sizeGroup' in size ? size.sizeGroup : null, sideMode: 'sideMode' in size ? size.sideMode : 'single', assembledHeightDescription:size.assembledHeightDescription, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId })))
       }
       await tx.insert(adminActivityLogs).values(activityValues(session, {
         actionType: 'product.created', entityType: 'product', entityId: product.id, entityName: product.name,

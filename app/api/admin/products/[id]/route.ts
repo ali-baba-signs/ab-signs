@@ -56,10 +56,10 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         const retained = new Set<string>()
         for (const size of input!.sizes) {
           if (size.id && existingSizes.some((row) => row.id === size.id)) {
-            await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
+            await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
             retained.add(size.id)
           } else {
-            const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode }).returning({ id: productSizes.id })
+            const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId }).returning({ id: productSizes.id })
             retained.add(created.id)
           }
         }

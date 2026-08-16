@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { pool } from '@/lib/db/client'
 import { getAuthBaseURL, getTrustedOrigins } from '@/lib/auth/origins'
+import { sendPasswordResetEmail } from '@/lib/contact/mailer'
 
 export const auth = betterAuth({
   database: pool,
@@ -8,6 +9,15 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => sendPasswordResetEmail({ email: user.email, name: user.name, url }),
+  },
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: { '/request-password-reset': { window: 15 * 60, max: 5 } },
   },
   user: {
     modelName: 'users',

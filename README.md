@@ -111,6 +111,28 @@ node --env-file=.env.local scripts/r2-check.mjs --all-prefixes --public
 
 An `Unauthorized` result means the credentials, account ID, bucket scope, or token permissions do not match; the admin UI reports the same actionable configuration error.
 
+## SMTP email and password reset
+
+Contact submissions and customer password-reset links use the same server-only SMTP transport. The SMTP login is deliberately separate from the public recipient configured in Store Settings.
+
+```env
+SMTP_HOST="mail.alibabasigns.com.au"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER="your-mailbox@alibabasigns.com.au"
+SMTP_PASSWORD="replace-with-real-password"
+SMTP_FROM_EMAIL="your-mailbox@alibabasigns.com.au"
+SMTP_FROM_NAME="Ali Baba Signs"
+CONTACT_TO_EMAIL="contact@alibabasigns.com.au"
+CONTACT_FALLBACK_EMAIL="contact@alibabasigns.com.au"
+SMTP_REQUIRE_TLS="true"
+SMTP_CONNECTION_TIMEOUT_MS="10000"
+SMTP_GREETING_TIMEOUT_MS="10000"
+SMTP_SOCKET_TIMEOUT_MS="20000"
+```
+
+Port 587 with `SMTP_SECURE=false` uses STARTTLS; providers using implicit TLS commonly specify port 465 with `SMTP_SECURE=true`. Use the exact mode supplied by the mail host. Certificate verification is not disabled. `SMTP_USERNAME` remains accepted as a backwards-compatible alias, but new deployments should use `SMTP_USER`. Contact messages are sent from `SMTP_FROM_EMAIL`, to the admin Store Settings contact email (then the contact environment fallbacks), with the customer address as Reply-To.
+
 ## Payments
 
 Store Settings defaults to safe test mode. The checkout test adapter supports Stripe, card through Stripe, and PayPal outcomes without collecting card data.

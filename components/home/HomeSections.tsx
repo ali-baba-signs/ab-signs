@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight, BadgeCheck, Boxes, PenTool, Truck, Upload, WandSparkles } from 'lucide-react'
-import { benefits, catalogHighlights, promotions, resolveAsset } from '@/data/homepage'
+import { benefits, catalogHighlights } from '@/data/homepage'
 
 const benefitIcons = [BadgeCheck, Boxes, PenTool, Truck]
 
@@ -51,12 +51,12 @@ export function ProductHighlights() {
   </div></section>
 }
 
-export function PromotionGrid() {
+export function PromotionGrid({ promotions }: { promotions: Array<{ id:string; headline:string; description:string; image:string; ctaLabel:string|null; ctaUrl:string|null; alignment:string }> }) {
+  if (!promotions.length) return null
   return <section className="mx-auto max-w-[1440px] px-4 py-16 sm:px-8 lg:py-24">
-    <div className="grid gap-6 lg:grid-cols-2">{promotions.map((promo) => <article key={promo.id} className="relative min-h-[390px] overflow-hidden rounded-2xl bg-zinc-900">
-      <Image src={resolveAsset(promo.desktopImageKey, promo.fallbackImage)} alt="" fill sizes="(max-width:1024px) 100vw, 50vw" className="object-cover opacity-65" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 p-7 text-white sm:p-10"><h2 className="max-w-lg text-3xl font-black">{promo.title}</h2><p className="mt-3 max-w-lg text-sm leading-6 text-white/75">{promo.subtitle}</p><Link href={promo.href} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-white">{promo.buttonLabel}<ArrowRight className="h-4 w-4 text-[#ed1b68]" /></Link></div>
+    <div className="space-y-8">{promotions.map((promo) => <article key={promo.id} className="grid overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950 text-white lg:grid-cols-2">
+      <div className={`relative min-h-[320px] ${promo.alignment==='image_right'?'lg:order-2':''}`}><Image src={promo.image} alt="" fill sizes="(max-width:1024px) 100vw, 50vw" className="object-cover" /></div>
+      <div className={`flex flex-col justify-center p-8 sm:p-12 ${promo.alignment==='image_right'?'lg:order-1':''}`}><h2 className="max-w-xl text-3xl font-black sm:text-4xl">{promo.headline}</h2><p className="mt-4 max-w-xl leading-7 text-white/70">{promo.description}</p>{promo.ctaLabel&&promo.ctaUrl&&<Link href={promo.ctaUrl} className="mt-7 inline-flex items-center gap-2 self-start text-sm font-bold text-white">{promo.ctaLabel}<ArrowRight className="h-4 w-4 text-[#ed1b68]" /></Link>}</div>
     </article>)}</div>
   </section>
 }
@@ -72,7 +72,7 @@ export function DesignOnlineSection() {
 export function ArtworkOptions() {
   const options = [
     { icon: WandSparkles, title: 'Design online', text: 'Use the live editor now.', href: '/design', enabled: true },
-    { icon: Upload, title: 'Upload artwork', text: 'Available inside the design editor after sign-in.', href: '/design', enabled: true },
+    { icon: Upload, title: 'Upload artwork', text: 'Choose a product and confirm a print-ready PDF, PNG, SVG, or EPS.', href: '/upload-artwork', enabled: true },
     { icon: PenTool, title: 'Design assistance', text: 'A managed assistance workflow is being prepared.', href: '', enabled: false },
   ]
   return <section className="mx-auto max-w-[1440px] px-4 py-16 sm:px-8 lg:py-24"><Heading eyebrow="Choose your artwork path" title="Bring your design to print" /><div className="grid gap-4 md:grid-cols-3">{options.map(({ icon: Icon, ...option }) => <article key={option.title} className="rounded-xl border border-zinc-200 p-7"><Icon className="h-7 w-7 text-[#ed1b68]" /><h3 className="mt-5 text-xl font-black">{option.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-500">{option.text}</p>{option.enabled ? <Link href={option.href} className="mt-5 inline-flex items-center gap-1 text-sm font-bold text-[#ed1b68]">Get started <ArrowRight className="h-4 w-4" /></Link> : <span className="mt-5 inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-500">Coming later</span>}</article>)}</div></section>

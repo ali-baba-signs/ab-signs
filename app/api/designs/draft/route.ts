@@ -2,13 +2,22 @@ import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { designs, designVersions } from '@/lib/db/schema'
+import { designs, designVersions, productSizes, templateSizes } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { registerStorageAsset, deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { uploadObject } from '@/lib/storage/r2'
 import { createUploadKey } from '@/lib/storage/upload-validation'
+import { R2_PATHS } from '@/lib/storage/r2-paths'
+import { renderProductionDesign } from '@/lib/production/design-render'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const unitToMm: Record<string, number> = { mm: 1, cm: 10, in: 25.4, ft: 304.8, m: 1000 }
+
+async function persistRenderedAsset(ownerId: string, groupId: string, filename: string, contentType: string, body: Buffer) {
+  const key = `${R2_PATHS.designUploads}/${ownerId.replace(/[^a-zA-Z0-9_-]/g, '')}/${groupId}/${crypto.randomUUID()}-${filename}`
+  await uploadObject({ key, body, contentType, metadata: { ownerId, private: 'true', generated: 'true' } })
+  return registerStorageAsset({ key, contentType, size: body.length, etag: createHash('sha256').update(body).digest('hex') })
+}
 
 export async function POST(request: NextRequest) {
   const session = await getSession()
@@ -31,14 +40,35 @@ export async function POST(request: NextRequest) {
     const canvasData = { ...(design as Record<string, unknown>), assetKey: key, assetId: asset.id, productSizeId: input.sizeId || null }
     const oldKey = existing && existing.assetId ? (existing.canvasData as Record<string, unknown>)?.assetKey : null
 
+    const sizeId = typeof input.sizeId === 'string' && uuid.test(input.sizeId) ? input.sizeId : null
+    if (!sizeId) throw new Error('Choose a supported product size before saving the design.')
+    const [[templateSize], [productSize]] = await Promise.all([
+      db.select().from(templateSizes).where(eq(templateSizes.id, sizeId)).limit(1),
+      db.select().from(productSizes).where(eq(productSizes.id, sizeId)).limit(1),
+    ])
+    const size = templateSize || productSize
+    if (!size) throw new Error('The selected product size is no longer available.')
+    const factor = unitToMm[String(size.unit)] || 1
+    const renderOptions = { widthMm: Number(size.width) * factor, heightMm: Number(size.height) * factor, bleedMm: Number('bleed' in size ? size.bleed : 3), trimMarks: 'trimMarks' in size ? Boolean(size.trimMarks) : true }
+    const sideMode = String((design as Record<string, unknown>).productConfig && ((design as Record<string, unknown>).productConfig as Record<string, unknown>).sideMode || ('sideMode' in size ? size.sideMode : 'single'))
+    const front = await renderProductionDesign(canvasData, { ...renderOptions, side: 'front' })
+    const groupId = id || crypto.randomUUID()
+    const [frontPreview, production, backPreview] = await Promise.all([
+      persistRenderedAsset(session.user.id, groupId, 'front-preview.png', 'image/png', front.preview),
+      persistRenderedAsset(session.user.id, groupId, 'front-production.pdf', 'application/pdf', front.pdf),
+      sideMode === 'double'
+        ? renderProductionDesign(canvasData, { ...renderOptions, side: 'back' }).then((back) => persistRenderedAsset(session.user.id, groupId, 'back-preview.png', 'image/png', back.preview))
+        : Promise.resolve(null),
+    ])
+
     const saved = await db.transaction(async (tx) => {
       if (existing) {
         const [latest] = await tx.select({ version: designVersions.version }).from(designVersions).where(eq(designVersions.designId, existing.id)).orderBy(desc(designVersions.version)).limit(1)
         await tx.insert(designVersions).values({ designId: existing.id, version: (latest?.version || 0) + 1, canvasData })
-        const [row] = await tx.update(designs).set({ canvasData, assetId: asset.id, templateId, productId, updatedAt: new Date() }).where(eq(designs.id, existing.id)).returning()
+        const [row] = await tx.update(designs).set({ canvasData, assetId: asset.id, previewAssetId: frontPreview.id, frontPreviewAssetId: frontPreview.id, backPreviewAssetId: backPreview?.id || null, productionAssetId: production.id, thumbnail: frontPreview.objectKey, templateId, productId, updatedAt: new Date() }).where(eq(designs.id, existing.id)).returning()
         return row
       }
-      const [row] = await tx.insert(designs).values({ userId: session.user.id, name: typeof input.name === 'string' ? input.name.trim().slice(0, 255) || 'Untitled design' : 'Untitled design', canvasData, assetId: asset.id, templateId, productId, isPublic: false }).returning()
+      const [row] = await tx.insert(designs).values({ userId: session.user.id, name: typeof input.name === 'string' ? input.name.trim().slice(0, 255) || 'Untitled design' : 'Untitled design', canvasData, assetId: asset.id, previewAssetId: frontPreview.id, frontPreviewAssetId: frontPreview.id, backPreviewAssetId: backPreview?.id || null, productionAssetId: production.id, thumbnail: frontPreview.objectKey, templateId, productId, isPublic: false }).returning()
       await tx.insert(designVersions).values({ designId: row.id, version: 1, canvasData })
       return row
     })

@@ -145,6 +145,7 @@ export function AuthForm({
               <p className="text-xs text-muted-foreground">
                 {isSignUp ? 'Minimum 8 characters' : ''}
               </p>
+              {!admin && !isSignUp && <Link href="/forgot-password" className="self-end text-sm font-semibold text-primary hover:underline">Forgot password?</Link>}
             </div>
 
             {error && (

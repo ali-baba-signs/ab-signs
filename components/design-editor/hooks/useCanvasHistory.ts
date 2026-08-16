@@ -50,5 +50,10 @@ export function useCanvasHistory(canvasRef: React.RefObject<Canvas | null>) {
     restoring.current = true
     try { return await task() } finally { restoring.current = false }
   }, [])
-  return { ...state, runWhileRestoring, isRestoring: restoring, snapshot, scheduleSnapshot, reset, undo: () => restore(index.current - 1), redo: () => restore(index.current + 1) }
+  // Keep these identities stable. CanvasEditor uses them in its one-time Fabric
+  // initialisation effect; fresh lambdas here caused the canvas to be disposed
+  // and recreated after history state changes.
+  const undo = useCallback(() => restore(index.current - 1), [restore])
+  const redo = useCallback(() => restore(index.current + 1), [restore])
+  return { ...state, runWhileRestoring, isRestoring: restoring, snapshot, scheduleSnapshot, reset, undo, redo }
 }
