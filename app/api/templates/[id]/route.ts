@@ -8,6 +8,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const { id } = await context.params
   const productId = request.nextUrl.searchParams.get('productId')
   const sizeId = request.nextUrl.searchParams.get('sizeId')
+  const editorData = request.nextUrl.searchParams.get('editor') === '1'
   try {
     const [template] = await db.select().from(templates).where(eq(templates.id, id)).limit(1)
     if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') return NextResponse.json({ error: { code: 'TEMPLATE_UNAVAILABLE', message: 'This editable template is not available.' } }, { status: 404 })
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const safeMargin = productSize && 'safeMargin' in productSize ? Number(productSize.safeMargin) : Math.min(config.widthMm, config.heightMm) * 0.03
     const bleed = productSize && 'bleed' in productSize ? Number(productSize.bleed) : 3
     const sideMode = productSize && 'sideMode' in productSize ? productSize.sideMode : 'single'
-    return NextResponse.json({ data: { template: { id: template.id, name: template.name, version: template.templateVersion, canvasData: template.canvasData, baseCanvasWidth: template.logicalCanvasWidth, baseCanvasHeight: template.logicalCanvasHeight }, productId, productSize, availableSizes, fitMode, productConfig: { widthMm: config.widthMm, heightMm: config.heightMm, bleedMm: bleed, safeMarginMm: safeMargin, logicalCanvasWidth: config.logicalCanvasWidth, logicalCanvasHeight: config.logicalCanvasHeight, measurementUnit: productSize?.unit || template.measurementUnit || 'mm', sideMode } } }, { headers: { 'cache-control': 'private, max-age=60, stale-while-revalidate=300' } })
+    return NextResponse.json({ data: { template: { id: template.id, name: template.name, version: template.templateVersion, ...(editorData ? { canvasData: template.canvasData, baseCanvasWidth: template.logicalCanvasWidth, baseCanvasHeight: template.logicalCanvasHeight } : { previewUrl: template.previewImageUrl, description: template.description, category: template.category }) }, productId, productSize, availableSizes, fitMode, productConfig: { widthMm: config.widthMm, heightMm: config.heightMm, bleedMm: bleed, safeMarginMm: safeMargin, logicalCanvasWidth: config.logicalCanvasWidth, logicalCanvasHeight: config.logicalCanvasHeight, measurementUnit: productSize?.unit || template.measurementUnit || 'mm', sideMode } } }, { headers: { 'cache-control': 'private, max-age=60, stale-while-revalidate=300' } })
   } catch (error) {
     console.error('Editable template load failed', error)
     return NextResponse.json({ error: { code: 'TEMPLATE_LOAD_FAILED', message: 'The editable template could not be loaded.' } }, { status: 500 })

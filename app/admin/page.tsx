@@ -19,6 +19,7 @@ import {
   GalleryHorizontalEnd,
   Star,
   Mail,
+  MessageCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AdminActivityPanel } from '@/components/admin/activity-panel'
@@ -204,6 +205,9 @@ export default function AdminDashboard() {
 
           <Link href={adminPath('/enquiries')} className="block">
             <div className="bg-card border border-border rounded-lg p-6 hover:border-primary transition-colors cursor-pointer h-full"><div className="flex items-start justify-between mb-4"><h3 className="text-xl font-bold text-foreground">Enquiries</h3><Mail className="h-6 w-6 text-primary" /></div><p className="text-muted-foreground text-sm mb-4">Read and resolve persisted website contact enquiries</p><Button variant="outline" className="w-full">View Enquiries</Button></div>
+          </Link>
+          <Link href={adminPath('/live-chat')} className="block">
+            <div className="bg-card border border-border rounded-lg p-6 hover:border-primary transition-colors cursor-pointer h-full"><div className="flex items-start justify-between mb-4"><h3 className="text-xl font-bold text-foreground">Support Chat</h3><MessageCircle className="h-6 w-6 text-primary" /></div><p className="text-muted-foreground text-sm mb-4">Read customer conversations and send support replies</p><Button variant="outline" className="w-full">Open Support Chat</Button></div>
           </Link>
 
           {/* Analytics */}

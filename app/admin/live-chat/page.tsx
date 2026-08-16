@@ -1,0 +1,18 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { adminPath } from '@/lib/auth/admin-path'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+
+type Session = { sessionId: string; userName: string | null; userEmail: string | null; message: string; createdAt: string }
+type Message = { id: string; message: string; isAdminMessage: boolean; createdAt: string }
+export default function AdminLiveChatPage() {
+  const [sessions, setSessions] = useState<Session[]>([]); const [selected, setSelected] = useState<Session | null>(null); const [messages, setMessages] = useState<Message[]>([]); const [reply, setReply] = useState(''); const [error, setError] = useState('')
+  async function loadSessions() { const response = await fetch('/api/admin/live-chat', { cache: 'no-store' }); const payload = await response.json(); if (!response.ok) { setError(payload.error?.message || 'Unable to load support chat.'); return }; setSessions(payload.data.sessions || []) }
+  async function open(session: Session) { setSelected(session); const response = await fetch(`/api/admin/live-chat?sessionId=${session.sessionId}`, { cache: 'no-store' }); const payload = await response.json(); if (response.ok) setMessages(payload.data.messages || []) }
+  useEffect(() => { void loadSessions() }, [])
+  async function send() { if (!selected || !reply.trim()) return; const response = await fetch('/api/admin/live-chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: selected.sessionId, message: reply }) }); const payload = await response.json(); if (!response.ok) { setError(payload.error?.message || 'Reply could not be sent.'); return }; setReply(''); await open(selected); await loadSessions() }
+  return <main className="min-h-screen bg-background p-6"><Link href={adminPath()} className="text-sm font-semibold">← Dashboard</Link><h1 className="mt-2 text-3xl font-black">Support Chat</h1>{error && <p role="alert" className="mt-4 text-red-700">{error}</p>}<div className="mt-6 grid gap-5 lg:grid-cols-[320px_1fr]"><aside className="rounded-xl border bg-card"><h2 className="border-b p-4 font-bold">Conversations</h2>{sessions.map((session) => <button key={session.sessionId} onClick={() => void open(session)} className="block w-full border-b p-4 text-left hover:bg-secondary"><p className="font-semibold">{session.userName || session.userEmail || 'Customer'}</p><p className="truncate text-sm text-muted-foreground">{session.message}</p><time className="text-xs text-muted-foreground">{new Date(session.createdAt).toLocaleString()}</time></button>)}</aside><section className="flex min-h-[500px] flex-col rounded-xl border bg-card"><div className="border-b p-4 font-bold">{selected ? selected.userName || selected.userEmail || 'Customer conversation' : 'Select a conversation'}</div><div className="flex-1 space-y-3 overflow-auto p-4">{messages.map((message) => <div key={message.id} className={message.isAdminMessage ? 'text-right' : ''}><p className={`inline-block max-w-[80%] rounded-lg p-3 text-sm ${message.isAdminMessage ? 'bg-primary text-white' : 'bg-secondary'}`}>{message.message}</p><time className="block text-xs text-muted-foreground">{new Date(message.createdAt).toLocaleString()}</time></div>)}</div>{selected && <div className="flex gap-2 border-t p-4"><Input value={reply} maxLength={2000} onChange={(event) => setReply(event.target.value)} placeholder="Reply to customer" /><Button type="button" onClick={() => void send()}>Send</Button></div>}</section></div></main>
+}

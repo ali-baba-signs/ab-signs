@@ -4,7 +4,6 @@ import { db } from '@/lib/db/client'
 import { customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productSizes, productTemplateSizePrices, products, templateSizes, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { getAdminSession } from '@/lib/auth/require-admin'
-import { isPaymentProvider } from '@/lib/payments/providers'
 import { loadStoreSettings } from '@/lib/store/load-settings'
 import { designDeadline } from '@/lib/orders/workflow'
 import { parseMeasurement } from '@/lib/measurements'
@@ -58,7 +57,7 @@ export async function POST(request: NextRequest) {
     if (!items.length || items.length > 50) throw new Error('The cart must contain between 1 and 50 items.')
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('A valid customer email is required.')
     if (!/^[a-zA-Z0-9_-]{16,100}$/.test(idempotencyKey)) throw new Error('A valid checkout idempotency key is required.')
-    if (!isPaymentProvider(paymentMethod)) throw new Error('Select a valid payment method.')
+    if (paymentMethod !== 'stripe') throw new Error('Stripe is the only available payment method.')
     if (!deliveryType) throw new Error('Select delivery or pickup.')
     const shippingAddress = cleanAddress(body.shippingAddress)
     const billingAddress = body.billingSameAsShipping === false ? cleanAddress(body.billingAddress) : shippingAddress

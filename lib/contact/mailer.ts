@@ -24,6 +24,7 @@ function requiredEnvironment(name: string) {
 function smtpUser() {
   const value = process.env.SMTP_USER?.trim() || process.env.SMTP_USERNAME?.trim()
   if (!value) throw new Error('Mail delivery is not configured: SMTP_USER is missing.')
+  if (/your-mailbox@|example\.(com|org)|placeholder/i.test(value)) throw new Error('Mail delivery is not configured: SMTP_USER contains a placeholder value.')
   return value
 }
 

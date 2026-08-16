@@ -234,7 +234,7 @@ export function CanvasEditor() {
           const params = new URLSearchParams()
           if (requestedProductId) params.set('productId', requestedProductId)
           if (requestedSizeId) params.set('sizeId', requestedSizeId)
-          const response = await fetch(`/api/templates/${requestedTemplateId}?${params}`, { cache: 'no-store' })
+          const response = await fetch(`/api/templates/${requestedTemplateId}/editor-data?${params}`, { cache: 'no-store' })
           const payload = await response.json()
           if (!response.ok) throw new Error(payload.error?.message || 'The selected template could not be loaded.')
           configRef.current = payload.data.productConfig
@@ -464,7 +464,7 @@ export function CanvasEditor() {
         design,
         templateId,
         productId: requestedProductId,
-        sizeId: requestedSizeId,
+        variantId: requestedSizeId,
       }),
     })
     const databasePayload = await databaseResponse.json()

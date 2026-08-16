@@ -20,17 +20,15 @@ interface ChatMessage {
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false)
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      content: 'Welcome to Ali Baba Signs support! How can we help you today?',
-      sender: 'support',
-      timestamp: new Date(),
-    },
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const sessionId = useRef<string>('')
+
+  useEffect(() => { const stored = localStorage.getItem('abs-support-session'); const id = stored || crypto.randomUUID(); localStorage.setItem('abs-support-session', id); sessionId.current = id }, [])
+  async function loadMessages() { if (!sessionId.current) return; const response = await fetch(`/api/live-chat?sessionId=${sessionId.current}`); if (!response.ok) return; const payload = await response.json(); setMessages((payload.data?.messages || []).map((row: { id:string; message:string; isAdminMessage:boolean; createdAt:string }) => ({ id: row.id, content: row.message, sender: row.isAdminMessage ? 'support' : 'user', timestamp: new Date(row.createdAt) }))) }
+  useEffect(() => { if (isOpen) { void loadMessages(); const timer = window.setInterval(() => void loadMessages(), 10000); return () => window.clearInterval(timer) } }, [isOpen])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -43,29 +41,8 @@ export function ChatWidget() {
   const handleSend = async () => {
     if (!input.trim()) return
 
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content: input,
-      sender: 'user',
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput('')
     setIsLoading(true)
-
-    // Simulate support response
-    setTimeout(() => {
-      const supportMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: 'Thanks for your message! Our team will get back to you shortly.',
-        sender: 'support',
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, supportMessage])
-      setIsLoading(false)
-    }, 1000)
+    try { const response = await fetch('/api/live-chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: sessionId.current, message: input }) }); if (!response.ok) throw new Error(); setInput(''); await loadMessages() } finally { setIsLoading(false) }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -92,7 +69,7 @@ export function ChatWidget() {
       <div className="bg-card border-b border-border p-4 flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-foreground">Ali Baba Signs Support</h3>
-          <p className="text-xs text-muted-foreground">Usually replies instantly</p>
+          <p className="text-xs text-muted-foreground">Replies during business hours</p>
         </div>
         <button
           onClick={() => setIsOpen(false)}

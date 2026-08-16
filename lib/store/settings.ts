@@ -155,14 +155,10 @@ export function publicConfigurationStatus(settings: StoreSettingsValues) {
       provider: 'Cloudflare R2',
       configured: Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_R2_BUCKET && process.env.CLOUDFLARE_R2_ACCESS_KEY_ID && process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY && process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL),
     },
-    payments: {
-      testMode: settings.paymentTestMode,
-      stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY),
-      paypalConfigured: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET),
-    },
+    payments: { stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) },
     email: {
       provider: 'SMTP',
-      configured: Boolean(process.env.SMTP_HOST && process.env.SMTP_PORT && (process.env.SMTP_USER || process.env.SMTP_USERNAME) && process.env.SMTP_PASSWORD && process.env.SMTP_FROM_EMAIL),
+      configured: Boolean(process.env.SMTP_HOST && process.env.SMTP_PORT && (process.env.SMTP_USER || process.env.SMTP_USERNAME) && !/your-mailbox@|example\.(com|org)|placeholder/i.test(process.env.SMTP_USER || process.env.SMTP_USERNAME || '') && process.env.SMTP_PASSWORD && process.env.SMTP_FROM_EMAIL),
     },
   }
 }
