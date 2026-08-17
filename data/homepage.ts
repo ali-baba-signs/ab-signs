@@ -38,18 +38,18 @@ export const productNavigation = [
   {
     id: 'banners',
     name: 'Banners',
-    href: '/products?category=vinyl_banners',
+    href: '/products?category=vinyl-banners',
     children: [
-      { name: 'Vinyl Banners', href: '/products?category=vinyl_banners' },
-      { name: 'Mesh Banners', href: '/products?category=mesh_banners' },
+      { name: 'Vinyl Banners', href: '/products?category=vinyl-banner' },
+      { name: 'Mesh Banners', href: '/products?category=mesh-banner' },
       { name: 'All Banners', href: '/products' },
     ],
   },
   {
     id: 'mesh',
     name: 'Mesh Banners',
-    href: '/products?category=mesh_banners',
-    children: [{ name: 'Browse Mesh Banners', href: '/products?category=mesh_banners' }],
+    href: '/products?category=mesh-banners',
+    children: [{ name: 'Browse Mesh Banners', href: '/products?category=mesh-banner' }],
   },
   {
     id: 'flags',
