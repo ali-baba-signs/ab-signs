@@ -38,7 +38,7 @@ export const productNavigation = [
   {
     id: 'banners',
     name: 'Banners',
-    href: '/products?category=vinyl-banners',
+    href: '/products?category=vinyl-banner',
     children: [
       { name: 'Vinyl Banners', href: '/products?category=vinyl-banner' },
       { name: 'Mesh Banners', href: '/products?category=mesh-banner' },
@@ -48,14 +48,14 @@ export const productNavigation = [
   {
     id: 'mesh',
     name: 'Mesh Banners',
-    href: '/products?category=mesh-banners',
+    href: '/products?category=mesh-banner',
     children: [{ name: 'Browse Mesh Banners', href: '/products?category=mesh-banner' }],
   },
   {
     id: 'flags',
     name: 'Flags',
-    href: '/products?category=flag',
-    children: [{ name: 'Feather Flags', href: '/products?category=flag' }],
+    href: '/products?category=flags',
+    children: [{ name: 'Feather Flags', href: '/products?category=flags' }],
   },
 ]
 

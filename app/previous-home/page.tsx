@@ -6,12 +6,12 @@ const featured = [
   {
     title: 'Custom Vinyl Banners',
     text: 'Weather-ready storefront, event, and roadside banners.',
-    href: '/products?category=vinyl_banners',
+    href: '/products?category=vinyl_banner',
   },
   {
     title: 'Mesh Banners',
     text: 'Wind-friendly banners for fences, jobsites, and outdoor spaces.',
-    href: '/products?category=mesh_banners',
+    href: '/products?category=mesh_banner',
   },
   {
     title: 'Custom Flags',

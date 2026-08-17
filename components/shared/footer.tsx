@@ -8,9 +8,10 @@ const groups = [
   { 
     title: 'Products', 
     links: [
-      ['Vinyl Banners', '/products?category=vinyl-banners'],
-      ['Mesh Banners', '/products?category=mesh-banners'],
-      ['All Products', '/products']
+      ['All Products', '/products'],
+      ['Vinyl Banners', '/products?category=vinyl-banner'],
+      ['Mesh Banners', '/products?category=mesh-banner'],
+      ['Flags', '/products?category=flags']
     ] 
   },
   { 
