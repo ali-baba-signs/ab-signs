@@ -5,9 +5,17 @@ export const BANNER_SIZE_PRESETS = [
 ] as const
 
 export const FLAG_TYPES = ['teardrop', 'feather'] as const
-export const FLAG_SIZE_GROUPS = ['small', 'medium', 'large'] as const
+export const FLAG_SIZE_GROUPS = ['small', 'medium', 'large', 'extra_large'] as const
 export const SIDE_MODES = ['single', 'double'] as const
-export const PRODUCT_SIZE_MODES = ['template_sizes', 'preset_sizes', 'custom_dimensions', 'fixed_variants'] as const
+export const PRODUCT_SIZE_MODES = ['preset_sizes', 'custom_dimensions', 'fixed_variants'] as const
 
 export type ProductSizeMode = typeof PRODUCT_SIZE_MODES[number]
 export type SideMode = typeof SIDE_MODES[number]
+
+/** Standard flag print areas; assembled heights are hardware measurements. */
+export const FLAG_PRINT_PRESETS = {
+  small: { label: 'Small – 2.6m', width: 50, height: 200, assembledHeightDescription: 'Approximately 2.6 m assembled height' },
+  medium: { label: 'Medium – 3.4m', width: 60, height: 260, assembledHeightDescription: 'Approximately 3.1 m assembled height' },
+  large: { label: 'Large – 4.5m', width: 70, height: 340, assembledHeightDescription: 'Approximately 4.1 m assembled height' },
+  extra_large: { label: 'Extra Large – 5.5m', width: 80, height: 410, assembledHeightDescription: 'Approximately 5.0 m assembled height' },
+} as const

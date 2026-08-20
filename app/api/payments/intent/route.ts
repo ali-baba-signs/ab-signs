@@ -2,19 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { orders, paymentRecords } from '@/lib/db/schema'
+import { couponReservations, orders, paymentRecords } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { stripeMode } from '@/lib/payments/providers'
+import { expireCouponReservations } from '@/lib/coupons/reservations'
 
 export async function POST(request: NextRequest) {
   try {
     const { orderId, checkoutToken } = await request.json() as { orderId?: string; checkoutToken?: string }
     if (!orderId || !checkoutToken) throw new Error('Order authorization is required.')
+    await expireCouponReservations({ orderId })
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1)
     if (!order) return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Order not found.' } }, { status: 404 })
     const session = await getSession()
     if (order.userId ? order.userId !== session?.user.id : order.idempotencyKey !== checkoutToken) return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'This order is not available for payment.' } }, { status: 403 })
     if (order.paymentStatus === 'paid') return NextResponse.json({ error: { code: 'ALREADY_PAID', message: 'This order has already been paid.' } }, { status: 409 })
+    if (order.paymentStatus === 'cancelled') return NextResponse.json({ error: { code: 'PAYMENT_EXPIRED', message: 'This payment session has expired. Return to checkout to create a new order.' } }, { status: 410 })
+    if (order.couponId) {
+      const [reservation] = await db.select({ status: couponReservations.status, expiresAt: couponReservations.expiresAt }).from(couponReservations).where(eq(couponReservations.orderId, order.id)).limit(1)
+      if (!reservation || reservation.status !== 'reserved' || reservation.expiresAt <= new Date()) return NextResponse.json({ error: { code: 'PAYMENT_EXPIRED', message: 'This coupon payment session has expired. Return to checkout to reserve the offer again.' } }, { status: 410 })
+    }
     const mode = stripeMode()
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
     const amount = Math.round(Number(order.totalAmount) * 100)

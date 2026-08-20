@@ -1,7 +1,8 @@
 import type { DesignTemplate } from './types'
 
 export async function listDesignTemplates() {
-  const response = await fetch('/api/templates', { cache: 'no-store' })
+  const productId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('productId') : null
+  const response = await fetch(productId ? `/api/templates?productId=${encodeURIComponent(productId)}` : '/api/templates', { cache: 'no-store' })
   const payload = await response.json()
   if (!response.ok) throw new Error(payload.error?.message || 'Design Online templates could not be loaded.')
   return (payload.data.templates as Array<Record<string, unknown>>).map((row) => {
@@ -21,6 +22,7 @@ export async function fetchTemplate(template: DesignTemplate) {
   const params = new URLSearchParams()
   if (template.productId) params.set('productId', template.productId)
   if (template.sizeId) params.set('sizeId', template.sizeId)
+  params.set('editor', '1')
   const response = await fetch(`/api/templates/${template.id}?${params}`, { cache: 'no-store' })
   const payload = await response.json()
   if (!response.ok) throw new Error(payload.error?.message || `Unable to load ${template.name}`)

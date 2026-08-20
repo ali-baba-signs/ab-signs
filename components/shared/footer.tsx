@@ -3,17 +3,12 @@ import Link from 'next/link'
 import { loadStoreSettings } from '@/lib/store/load-settings'
 import { DEFAULT_STORE_SETTINGS } from '@/lib/store/settings'
 import { SocialIcon } from '@/components/shared/social-icon'
+import { db } from '@/lib/db/client'
+import { productCategories } from '@/lib/db/schema'
+import { asc, eq } from 'drizzle-orm'
 
-const groups = [
-  { 
-    title: 'Products', 
-    links: [
-      ['All Products', '/products'],
-      ['Vinyl Banners', '/products?category=vinyl-banner'],
-      ['Mesh Banners', '/products?category=mesh-banner'],
-      ['Flags', '/products?category=flags']
-    ] 
-  },
+type FooterGroup = { title: string; href?: string; links: Array<[string, string]> }
+const groups: FooterGroup[] = [
   { 
     title: 'Design services', 
     links: [
@@ -46,9 +41,12 @@ const groups = [
 
 export async function Footer() {
   const settings = await loadStoreSettings().catch(() => DEFAULT_STORE_SETTINGS)
+  const categories = await db.select({ name: productCategories.name, slug: productCategories.slug }).from(productCategories).where(eq(productCategories.enabled, true)).orderBy(asc(productCategories.displayOrder), asc(productCategories.name)).catch(() => [])
+  const productGroup: FooterGroup = { title: 'Products', links: [['All Products', '/products'], ...categories.map((category) => [category.name, `/products?category=${encodeURIComponent(category.slug)}`] as [string, string])] }
+  const navigationGroups = [productGroup, ...groups]
   const socials = settings.socialLinks.filter((link) => link.enabled).sort((a, b) => a.displayOrder - b.displayOrder)
   return <footer className="bg-[#111] text-white"><div className="mx-auto max-w-[1440px] px-4 py-14 sm:px-8 lg:py-20"><div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(4,1fr)]"><div><Link href="/"><Image src="/logo.png" alt={settings.storeName} width={250} height={82} className="h-14 w-auto object-contain object-left" /></Link><p className="mt-5 max-w-sm text-sm leading-6 text-white/60">Custom banners, flags and online artwork tools for businesses, events and promotions.</p><a href={`mailto:${settings.storeEmail}`} className="mt-5 block text-sm font-bold text-[#ff4b91]">{settings.storeEmail}</a>{settings.storePhone&&<a href={`tel:${settings.storePhone.replace(/[^+\d]/g,'')}`} className="mt-2 block text-sm text-white/70">{settings.storePhone}</a>}{settings.address&&<p className="mt-2 text-sm text-white/60">{settings.address}</p>}{socials.length>0&&<div className="mt-5 flex flex-wrap gap-2">{socials.map((link)=><a key={link.id} href={link.url} target="_blank" rel="noopener noreferrer" aria-label={link.platform} className="grid h-10 w-10 place-items-center rounded-full bg-white/10 transition hover:bg-[#ed1b68]"><SocialIcon platform={link.platform}/></a>)}</div>}</div>
-{groups.map((group, index) => (
+{navigationGroups.map((group, index) => (
   <div key={index} className="flex flex-col gap-2">
     {group.href ? (
       <a 

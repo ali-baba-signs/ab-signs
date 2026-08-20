@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { asc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { adminActivityLogs, productCategories, productImages, products, productSizes, productTemplateSizePrices, templates, templateSizes } from '@/lib/db/schema'
+import { adminActivityLogs, productCategories, productImages, products, productSizes } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { validateProductInput } from '@/lib/products/validation'
@@ -11,13 +11,11 @@ import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
   try {
-    const [productRows, categories, templateRows, allTemplateSizes] = await Promise.all([
+    const [productRows, categories] = await Promise.all([
       getProductsWithDetails(undefined, true),
       db.select().from(productCategories).orderBy(asc(productCategories.name)),
-      db.select().from(templates).orderBy(asc(templates.name)),
-      db.select().from(templateSizes).orderBy(asc(templateSizes.displayOrder)),
     ])
-    return NextResponse.json({ data: { products: productRows, categories, templates: templateRows.map((template) => ({ ...template, sizes: allTemplateSizes.filter((size) => size.templateId === template.id) })) } })
+    return NextResponse.json({ data: { products: productRows, categories } })
   } catch (error) {
     console.error('Admin products load failed', error)
     return NextResponse.json({ error: { code: 'PRODUCTS_LOAD_FAILED', message: 'Products could not be loaded. Apply the latest database migration and try again.' } }, { status: 500 })
@@ -29,13 +27,16 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
   let input: ReturnType<typeof validateProductInput> | undefined
   try {
-    input = validateProductInput(await request.json())
-    if (input.templateId) {
-      const [template] = await db.select().from(templates).where(eq(templates.id, input.templateId)).limit(1)
-      if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') throw new Error('Select an enabled, ready editable template.')
-      const allowed = new Set((await db.select({ id: templateSizes.id }).from(templateSizes).where(eq(templateSizes.templateId, input.templateId))).map((size) => size.id))
-      if (input.sizeMode === 'template_sizes' && input.templatePrices.some((price) => !allowed.has(price.templateSizeId))) throw new Error('A selected price does not belong to this template.')
+    const raw = await request.json() as Record<string, unknown>
+    // Keep manually supplied SKUs intact, while making every new product
+    // printable/traceable even when an admin leaves the field blank.
+    if (typeof raw.sku !== 'string' || !raw.sku.trim()) {
+      const categoryId = typeof raw.categoryId === 'string' ? raw.categoryId : ''
+      const [category] = categoryId ? await db.select({ slug: productCategories.slug }).from(productCategories).where(eq(productCategories.id, categoryId)).limit(1) : []
+      const namePart = typeof raw.name === 'string' ? raw.name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 35) : 'PRODUCT'
+      raw.sku = `${(category?.slug || 'PRODUCT').toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 24)}-${namePart || 'ITEM'}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
     }
+    input = validateProductInput(raw)
     const result = await db.transaction(async (tx) => {
       const [product] = await tx.insert(products).values({
         sku: input!.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2),
@@ -44,14 +45,11 @@ export async function POST(request: NextRequest) {
       await tx.insert(productImages).values(input!.images.map((image) => ({
         productId: product.id, url: image.key ? getStoredAssetUrl(image.key) : image.url!, storageKey: image.key, assetId: image.assetId, alt: image.alt, isPrimary: image.isPrimary, order: image.order,
       })))
-      if (input!.templateId && input!.sizeMode === 'template_sizes') await tx.insert(productTemplateSizePrices).values(input!.templatePrices.map((price) => ({ productId: product.id, templateSizeId: price.templateSizeId, unitPrice: price.unitPrice.toFixed(2), enabled: price.enabled })))
-      else {
-        const standalone = input!.sizes.length ? input!.sizes : [{ label: 'Standard', width: null, height: null, unit: 'mm', unitPrice: input!.basePrice, enabled: true, order: 0, assembledHeightDescription:null, frontTemplateId:null, backTemplateId:null }]
-        await tx.insert(productSizes).values(standalone.map((size) => ({ productId: product.id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: 'variantType' in size ? size.variantType : null, sizeGroup: 'sizeGroup' in size ? size.sizeGroup : null, sideMode: 'sideMode' in size ? size.sideMode : 'single', assembledHeightDescription:size.assembledHeightDescription, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId })))
-      }
+      const standalone = input!.sizes.length ? input!.sizes : [{ label: 'Standard', width: null, height: null, unit: 'mm', unitPrice: input!.basePrice, enabled: true, order: 0, assembledHeightDescription:null, fitMode:'contain' as const, safeMargin:'0', bleed:'3', trimMarks:true, isDefault:true, frontTemplateId:null, backTemplateId:null }]
+      await tx.insert(productSizes).values(standalone.map((size) => ({ productId: product.id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: 'variantType' in size ? size.variantType : null, sizeGroup: 'sizeGroup' in size ? size.sizeGroup : null, sideMode: 'sideMode' in size ? size.sideMode : 'single', assembledHeightDescription:size.assembledHeightDescription, fitMode: size.fitMode, safeMargin: size.safeMargin, bleed: size.bleed, trimMarks: size.trimMarks, isDefault: size.isDefault, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId })))
       await tx.insert(adminActivityLogs).values(activityValues(session, {
         actionType: 'product.created', entityType: 'product', entityId: product.id, entityName: product.name,
-        description: `Created product ${product.name}.`, metadata: { sku: product.sku, imageCount: input!.images.length, inheritedTemplateSizeCount: input!.templatePrices.length },
+        description: `Created product ${product.name}.`, metadata: { sku: product.sku, imageCount: input!.images.length, productSizeCount: standalone.length },
       }))
       return product
     })

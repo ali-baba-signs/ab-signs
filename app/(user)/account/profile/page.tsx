@@ -45,7 +45,7 @@ export default function ProfilePage() {
 
   return <main className="min-h-screen bg-background px-4 py-8"><div className="mx-auto max-w-5xl">
     <Link href="/" className="inline-flex gap-2"><ArrowLeft /> Home</Link><h1 className="mt-3 text-3xl font-black">My profile</h1>
-    <div className="mt-5 grid gap-3 sm:grid-cols-2"><Link href="/account/orders" className="flex items-center gap-3 rounded-xl border bg-card p-4 font-bold hover:border-primary"><Package className="text-primary"/> Previous orders, current orders and tracking</Link><a href="#my-reviews" className="flex items-center gap-3 rounded-xl border bg-card p-4 font-bold hover:border-primary"><Star className="text-primary"/> Reviews I have submitted</a></div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2"><Link href="/account/orders" className="flex items-center gap-3 rounded-xl border bg-card p-4 font-bold hover:border-primary"><Package className="text-primary"/> Previous orders, current orders and tracking</Link><Link href="/account/offers" className="flex items-center gap-3 rounded-xl border bg-card p-4 font-bold hover:border-primary"><Star className="text-primary"/> Available offers and voucher history</Link></div>
     {message && <p className="mt-4 rounded bg-secondary p-3">{message}</p>}
     <div className="mt-6 grid gap-6 lg:grid-cols-2">
       <section className="rounded-xl border bg-card p-5"><h2 className="font-bold">Contact profile</h2><div className="mt-4 space-y-3">

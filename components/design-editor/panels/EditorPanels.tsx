@@ -166,6 +166,8 @@ export function EditorPanels(props: Props) {
           <label className="text-xs">Rotation<Input type="number" value={Math.round(props.selected.angle ?? 0)} onChange={(e) => props.onChangeSelected({ angle: Number(e.target.value) })} /></label>
         </div>}
         <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button size="sm" type="button" variant="outline" onClick={() => props.onChangeSelected({ flipX: !props.selected?.flipX })}>Mirror horizontal</Button>
+          <Button size="sm" type="button" variant="outline" onClick={() => props.onChangeSelected({ flipY: !props.selected?.flipY })}>Mirror vertical</Button>
           <Button size="sm" variant="outline" onClick={props.onDuplicate}><Copy /> Duplicate</Button>
           <Button size="sm" variant="outline" className="text-red-600" onClick={props.onDelete}><Trash2 /> Delete</Button>
         </div>

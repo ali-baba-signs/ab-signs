@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { couponRedemptions, coupons, orders, paymentRecords } from '@/lib/db/schema'
+import { couponRedemptions, couponReservations, coupons, orders, paymentRecords } from '@/lib/db/schema'
 
 export async function POST(request: NextRequest) {
   const signature = request.headers.get('stripe-signature')
@@ -28,9 +28,16 @@ export async function POST(request: NextRequest) {
           // The unique order redemption makes repeated webhook delivery a no-op.
           const inserted = await tx.insert(couponRedemptions).values({ couponId: order.couponId, userId: order.userId, orderId: order.id, paymentRecordId: payment.id, discountAmount: order.discountAmount, status: 'redeemed' }).onConflictDoNothing().returning({ id: couponRedemptions.id })
           if (inserted.length) {
-            const changed = await tx.update(coupons).set({ usedCount: sql`${coupons.usedCount} + 1` }).where(and(eq(coupons.id, order.couponId), sql`(${coupons.usageLimit} IS NULL OR ${coupons.usedCount} < ${coupons.usageLimit})`)).returning({ id: coupons.id })
+            await tx.update(couponReservations).set({ status: 'redeemed', releasedAt: new Date(), releaseReason: 'payment_succeeded' }).where(and(eq(couponReservations.orderId, order.id), eq(couponReservations.status, 'reserved')))
+            const changed = await tx.update(coupons).set({ usedCount: sql`${coupons.usedCount} + 1`, reservedCount: sql`GREATEST(${coupons.reservedCount} - 1, 0)` }).where(eq(coupons.id, order.couponId)).returning({ id: coupons.id })
             if (!changed.length) throw new Error('Coupon usage limit was reached before payment confirmation.')
           }
+        }
+      } else if (event.type === 'payment_intent.canceled' && payment.status !== 'cancelled') {
+        const [order] = await tx.select({ couponId: orders.couponId }).from(orders).where(eq(orders.id, orderId)).limit(1)
+        if (order?.couponId) {
+          const released = await tx.update(couponReservations).set({ status: 'released', releasedAt: new Date(), releaseReason: 'payment_canceled' }).where(and(eq(couponReservations.orderId, orderId), eq(couponReservations.status, 'reserved'))).returning({ id: couponReservations.id })
+          if (released.length) await tx.update(coupons).set({ reservedCount: sql`GREATEST(${coupons.reservedCount} - 1, 0)` }).where(eq(coupons.id, order.couponId))
         }
       }
     })

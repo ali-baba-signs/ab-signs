@@ -6,6 +6,7 @@ import { createTemplateCanvasSize } from '../lib/templates/size-conversion'
 import { sanitizeSvgMarkup, validateFabricCanvasData } from '../lib/templates/svg-sanitization'
 import { createUploadKey, validateUpload } from '../lib/storage/upload-validation'
 import { validateProductInput } from '../lib/products/validation'
+import { validateTemplateInput } from '../lib/templates/validation'
 import { formatDimensions, parseMeasurement, sameMeasurement } from '../lib/measurements'
 import { BANNER_SIZE_PRESETS } from '../lib/products/size-presets'
 
@@ -17,12 +18,15 @@ test('integer and decimal physical dimensions normalize without artificial .01 o
   assert.deepEqual(BANNER_SIZE_PRESETS[0], [500,1000])
 })
 
-test('fixed flag variants require real print dimensions and preserve side mode', () => {
+test('fixed flag variants use the four exact production presets', () => {
   const base = { sku:'FLAG-1',name:'Feather flag',description:'<p>A sufficiently detailed flag product.</p>',basePrice:50,categoryId:'d94ab2d1-f1ec-49d8-9d56-b5ba0694baa3',sizeMode:'fixed_variants',images:[{key:'products/flag.png'}] }
   assert.throws(()=>validateProductInput({...base,sizes:[{label:'Feather / Small / Double-sided',unit:'mm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]}),/real print dimensions/i)
-  const product=validateProductInput({...base,sizes:[{label:'Feather / Small / Double-sided',height:'1800',width:'650.5',unit:'mm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]})
+  assert.throws(()=>validateProductInput({...base,sizes:[{label:'Wrong small',height:'60',width:'200',unit:'cm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'single'}]}),/50 × 200 cm/i)
+  const product=validateProductInput({...base,sizes:[{label:'Small – 2.6m',height:'200',width:'50',unit:'cm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]})
   assert.equal(product.sizes[0].sideMode,'double')
-  assert.equal(product.sizes[0].width,'650.5')
+  assert.equal(product.sizes[0].width,'50')
+  assert.equal(product.sizes[0].height,'200')
+  assert.equal(product.sizes[0].assembledHeightDescription,'Approximately 2.6 m assembled height')
 })
 
 test('template canvas mapping preserves physical aspect ratio without print-sized browser canvases', () => {
@@ -43,12 +47,13 @@ test('SVG and Fabric validation reject executable, external, and empty template 
   assert.deepEqual(validateFabricCanvasData({ version: '7.4.0', objects: [{ type: 'rect' }] }).objects, [{ type: 'rect' }])
 })
 
-test('template products require inherited template-size pricing and reject duplicate local images', () => {
-  const base = { sku: 'TEMPLATE-1', name: 'Template product', description: '<p>A sufficiently detailed product description.</p>', basePrice: 25, categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', images: [{ key: 'products/a.webp', assetId: 'b94ab2d1-f1ec-49d8-9d56-b5ba0694baa3' }], sizes: [] }
-  assert.throws(() => validateProductInput(base), /inherited template size/i)
-  const result = validateProductInput({ ...base, templatePrices: [{ templateSizeId: 'c94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', unitPrice: '29.995', enabled: true }] })
-  assert.equal(result.sizes.length, 0)
-  assert.equal(result.templatePrices[0].unitPrice, 30)
+test('products own sizes and template input links category to product without duplicate sizes', () => {
+  const product = validateProductInput({ sku: 'PRODUCT-1', name: 'Product owned sizes', description: '<p>A sufficiently detailed product description.</p>', basePrice: 25, categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', images: [{ key: 'products/a.webp', assetId: 'b94ab2d1-f1ec-49d8-9d56-b5ba0694baa3' }], sizes: [{ label: '500 × 1000 mm', width: 1000, height: 500, unit: 'mm', unitPrice: 30, enabled: true, isDefault: true }] })
+  assert.equal(product.templateId, null)
+  assert.equal(product.sizes.length, 1)
+  const template = validateTemplateInput({ name: 'Product template', productId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', width: 1000, height: 500, unit: 'mm', status: 'active', assets: {}, canvasData: { objects: [{ type: 'rect' }] } })
+  assert.equal(template.productId, 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3')
+  assert.equal('sizes' in template, false)
 })
 
 test('order workflow accepts only configured transitions and computes the six-hour deadline', () => {

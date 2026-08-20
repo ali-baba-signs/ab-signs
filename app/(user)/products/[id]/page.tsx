@@ -11,7 +11,8 @@ import { useCart } from '@/lib/cart-context'
 import { ArtworkUploadCard, type ArtworkSelection } from '@/components/products/artwork-upload-card'
 
 interface Size { id: string; label: string; width: string | null; height: string | null; unit: string; unitPrice: string; sideMode?: string; variantType?: string | null; sizeGroup?: string | null; assembledHeightDescription?:string|null; frontTemplateId?:string|null; backTemplateId?:string|null }
-interface Product { id: string; name: string; description: string; basePrice: string; templateId: string | null; sizeMode: string; allowCustomDimensions: boolean; category?: { name: string }; template: { id: string; name: string; status: string } | null; images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean }>; sizes: Size[] }
+interface CompatibleTemplate { id: string; name: string; status: string; conversionStatus: string; previewImageUrl?: string | null }
+interface Product { id: string; name: string; description: string; basePrice: string; templateId: string | null; sizeMode: string; allowCustomDimensions: boolean; category?: { name: string }; template: CompatibleTemplate | null; templates: CompatibleTemplate[]; images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean }>; sizes: Size[] }
 interface ReviewData { reviews: Array<{ id:string; displayName:string; overall:number; productQuality:number; printQuality:number; colourFinishQuality:number; timeliness:number; service:number; feedback:string|null; verifiedPurchase:boolean; createdAt:string }>; summary:{overallRating:number;count:number;distribution:Record<string,number>} }
 
 function StarRating({ rating, size = 'h-4 w-4' }: { rating: number; size?: string }) {
@@ -39,6 +40,7 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const { addItem } = useCart()
   const [product, setProduct] = useState<Product | null>(null)
   const [sizeId, setSizeId] = useState('')
+  const [templateId, setTemplateId] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [customSize,setCustomSize]=useState(false)
   const [customHeight,setCustomHeight]=useState('')
@@ -49,10 +51,11 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const [adding, setAdding] = useState(false)
   const [artwork, setArtwork] = useState<ArtworkSelection | null>(null)
   const [reviews,setReviews]=useState<ReviewData|null>(null)
-  useEffect(() => { void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); setProduct(payload.data.product); setSizeId(payload.data.product.sizes.some((size: Size) => size.id === requestedSizeId) ? requestedSizeId! : payload.data.product.sizes[0]?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId])
+  useEffect(() => { void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); setProduct(payload.data.product); setSizeId(payload.data.product.sizes.some((size: Size) => size.id === requestedSizeId) ? requestedSizeId! : payload.data.product.sizes[0]?.id || ''); setTemplateId(payload.data.product.templates?.[0]?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId])
   const selectedSize = useMemo(() => product?.sizes.find((size) => size.id === sizeId), [product, sizeId])
+  const selectedTemplate = useMemo(() => product?.templates.find((template) => template.id === templateId) || null, [product, templateId])
   function selectVariant(field:'variantType'|'sizeGroup'|'sideMode', value:string){if(!product)return;const target={variantType:selectedSize?.variantType,sizeGroup:selectedSize?.sizeGroup,sideMode:selectedSize?.sideMode,[field]:value};const exact=product.sizes.find((size)=>size.variantType===target.variantType&&size.sizeGroup===target.sizeGroup&&size.sideMode===target.sideMode);const fallback=product.sizes.find((size)=>size[field]===value);setSizeId((exact||fallback||product.sizes[0]).id)}
-  function add() { if (!product || !selectedSize) return setError('Select an available size.'); if(customSize&&(!(Number(customHeight)>0)||!(Number(customWidth)>0)))return setError('Enter valid custom Height and Width.'); setAdding(true); const designId = customizationRef && /^[0-9a-f-]{36}$/i.test(customizationRef) ? customizationRef : null; const designSource = artwork ? 'customer_upload' : customizationRef ? 'online_editor' : 'design_assistance'; const templateId=selectedSize.frontTemplateId||product.template?.id||null; addItem({ productId: product.id, productName: product.name, sizeId: selectedSize.id, sizeLabel: customSize?`${customHeight} × ${customWidth} ${selectedSize.unit}`:selectedSize.label, templateId, templateName: product.template?.name || null, designId, customizationRef, artworkId: artwork?.id || null, designSource, quantity, price: unitPrice, image: (product.images.find((image) => image.isPrimary) || product.images[0])?.url, specifications: { ...(customizationRef ? { customizationRef } : {}), ...(customSize?{customHeight,customWidth}:{}), designSource, frontTemplateId:templateId||'', backTemplateId:selectedSize.backTemplateId||'', sideMode:selectedSize.sideMode||'single' } }); router.push('/cart') }
+  function add() { if (!product || !selectedSize) return setError('Select an available size.'); if(customSize&&(!(Number(customHeight)>0)||!(Number(customWidth)>0)))return setError('Enter valid custom Height and Width.'); setAdding(true); const designId = customizationRef && /^[0-9a-f-]{36}$/i.test(customizationRef) ? customizationRef : null; const designSource = artwork ? 'customer_upload' : customizationRef ? 'online_editor' : 'design_assistance'; const compatibleTemplateId=selectedTemplate?.id||null; addItem({ productId: product.id, productName: product.name, sizeId: selectedSize.id, sizeLabel: customSize?`${customHeight} × ${customWidth} ${selectedSize.unit}`:selectedSize.label, templateId:compatibleTemplateId, templateName: selectedTemplate?.name || null, designId, customizationRef, artworkId: artwork?.id || null, designSource, quantity, price: unitPrice, image: (product.images.find((image) => image.isPrimary) || product.images[0])?.url, specifications: { ...(customizationRef ? { customizationRef } : {}), ...(customSize?{customHeight,customWidth}:{}), designSource, frontTemplateId:compatibleTemplateId||'', backTemplateId:'', sideMode:selectedSize.sideMode||'single' } }); router.push('/cart') }
   if (loading) return <div className="grid min-h-[70vh] place-items-center">Loading product…</div>
   if (!product) return <div className="grid min-h-[70vh] place-items-center text-center"><div><h1 className="text-2xl font-bold">Product unavailable</h1><p className="mt-2 text-muted-foreground">{error}</p><Link href="/products"><Button className="mt-5"><ArrowLeft /> Back to products</Button></Link></div></div>
   const image = product.images[imageIndex] || product.images[0]
@@ -127,7 +130,7 @@ return (
             {/* Size Selection */}
             {product.sizeMode==='fixed_variants'?<div className="grid gap-4 sm:grid-cols-3">
               <label className="text-sm font-semibold">Flag style<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.variantType||''} onChange={(e)=>selectVariant('variantType',e.target.value)}>{[...new Set(product.sizes.map((size)=>size.variantType).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value}</option>)}</select></label>
-              <label className="text-sm font-semibold">Size<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.sizeGroup||''} onChange={(e)=>selectVariant('sizeGroup',e.target.value)}>{[...new Set(product.sizes.map((size)=>size.sizeGroup).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value}</option>)}</select></label>
+              <label className="text-sm font-semibold">Size<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.sizeGroup||''} onChange={(e)=>selectVariant('sizeGroup',e.target.value)}>{[...new Set(product.sizes.map((size)=>size.sizeGroup).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value === 'extra_large' ? 'XL' : `${value!.charAt(0).toUpperCase()}${value!.slice(1)}`}</option>)}</select></label>
               <label className="text-sm font-semibold">Printing<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.sideMode||''} onChange={(e)=>selectVariant('sideMode',e.target.value)}>{[...new Set(product.sizes.map((size)=>size.sideMode).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value}-sided</option>)}</select></label>
               <div className="rounded-lg bg-secondary p-3 text-sm sm:col-span-3"><b>{selectedSize?.label}</b> · {selectedSize?.height} × {selectedSize?.width} {selectedSize?.unit} · ${Number(selectedSize?.unitPrice||0).toFixed(2)}{selectedSize?.assembledHeightDescription&&<span className="mt-1 block text-muted-foreground">{selectedSize.assembledHeightDescription}</span>}</div>
             </div>:<div>
@@ -151,18 +154,19 @@ return (
                 </p>
               )}
             </div>}
-            {product.allowCustomDimensions && !product.template && <div className="rounded-lg border p-3"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={customSize} onChange={(event)=>setCustomSize(event.target.checked)}/> Custom Size</label>{customSize&&<div className="mt-3 grid grid-cols-2 gap-3"><label className="text-sm">Height<Input type="number" min="0.001" step="0.001" value={customHeight} onChange={(event)=>setCustomHeight(event.target.value)}/></label><label className="text-sm">Width<Input type="number" min="0.001" step="0.001" value={customWidth} onChange={(event)=>setCustomWidth(event.target.value)}/></label><p className="col-span-2 text-xs text-muted-foreground">{selectedSize?.unit} · price scales by print area from the selected production preset.</p></div>}</div>}
+            {product.allowCustomDimensions && product.templates.length === 0 && <div className="rounded-lg border p-3"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={customSize} onChange={(event)=>setCustomSize(event.target.checked)}/> Custom Size</label>{customSize&&<div className="mt-3 grid grid-cols-2 gap-3"><label className="text-sm">Height<Input type="number" min="0.001" step="0.001" value={customHeight} onChange={(event)=>setCustomHeight(event.target.value)}/></label><label className="text-sm">Width<Input type="number" min="0.001" step="0.001" value={customWidth} onChange={(event)=>setCustomWidth(event.target.value)}/></label><p className="col-span-2 text-xs text-muted-foreground">{selectedSize?.unit} · price scales by print area from the selected production preset.</p></div>}</div>}
 
             {/* Template Editor Link */}
-            {(selectedSize?.frontTemplateId || product.template) && selectedSize && (
+            {product.templates.length > 0 && selectedSize && (
               <div className="rounded-lg bg-secondary p-4">
                 <p className="font-semibold">Editable design included</p>
-                <p className="text-sm text-muted-foreground">{selectedSize.frontTemplateId ? 'Variant-specific production template' : product.template?.name}</p>
+                <p className="text-sm text-muted-foreground">Only templates compatible with {product.name} are shown.</p>
+                {product.templates.length > 1 && <select aria-label="Compatible template" className="mt-3 h-10 w-full rounded-md border bg-background px-3" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>{product.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>}
                 <Link
-                  href={`/design?templateId=${selectedSize.frontTemplateId || product.template?.id}&productId=${product.id}&sizeId=${selectedSize.id}`}
+                  href={`/design?templateId=${selectedTemplate?.id}&productId=${product.id}&sizeId=${selectedSize.id}`}
                   className="mt-3 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
                 >
-                  Edit Template
+                  Edit {selectedTemplate?.name || 'template'}
                 </Link>
               </div>
             )}

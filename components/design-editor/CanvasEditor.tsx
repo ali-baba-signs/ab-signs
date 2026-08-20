@@ -513,10 +513,12 @@ export function CanvasEditor() {
     const customizationRef = await save()
     if (requestedProductId) {
       const params = new URLSearchParams()
+      if (!customizationRef || customizationRef.startsWith('local:')) { setStatus('Sign in and save your draft before generating a production preview.'); return }
       if (requestedSizeId) params.set('sizeId', requestedSizeId)
       if (templateId) params.set('templateId', templateId)
-      if (customizationRef) params.set('customizationRef', customizationRef)
-      router.push(`/products/${requestedProductId}?${params}`)
+      params.set('designId', customizationRef)
+      params.set('productId', requestedProductId)
+      router.push(`/design/preview?${params}`)
     } else {
       router.push('/products')
     }

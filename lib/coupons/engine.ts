@@ -1,10 +1,11 @@
 import 'server-only'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { couponCategories, couponProducts, couponRedemptions, coupons } from '@/lib/db/schema'
+import { couponCategories, couponCustomers, couponProducts, couponRedemptions, couponReservations, coupons } from '@/lib/db/schema'
+import { expireCouponReservations } from '@/lib/coupons/reservations'
 
 export type CouponItem = { productId: string; categoryId: string; totalCents: number }
-export type AppliedCoupon = { id: string; code: string; discountType: string; discountValue: string; discountCents: number; description: string | null }
+export type AppliedCoupon = { id: string; code: string; discountType: string; discountValue: string; discountCents: number; description: string | null; usageLimit: number | null; perCustomerUsageLimit: number | null }
 
 export function normalizeCouponCode(input: unknown) {
   const code = typeof input === 'string' ? input.trim().toUpperCase() : ''
@@ -13,6 +14,7 @@ export function normalizeCouponCode(input: unknown) {
 }
 
 export async function validateCoupon(codeInput: unknown, items: CouponItem[], userId?: string | null): Promise<AppliedCoupon> {
+  await expireCouponReservations()
   const code = normalizeCouponCode(codeInput)
   const [coupon] = await db.select().from(coupons).where(eq(coupons.code, code)).limit(1)
   if (!coupon) throw new Error('Invalid coupon code.')
@@ -20,10 +22,18 @@ export async function validateCoupon(codeInput: unknown, items: CouponItem[], us
   if (!coupon.active) throw new Error('This coupon is not active.')
   if (coupon.startsAt && now < coupon.startsAt) throw new Error('This coupon has not started yet.')
   if (coupon.endsAt && now > coupon.endsAt) throw new Error('This coupon has expired.')
-  if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) throw new Error('This coupon usage limit has been reached.')
+  if (coupon.usageLimit !== null && coupon.usedCount + coupon.reservedCount >= coupon.usageLimit) throw new Error('This coupon usage limit has been reached.')
+  if (coupon.visibility === 'customer_specific') {
+    if (!userId) throw new Error('Sign in to use this customer-specific coupon.')
+    const [assignment] = await db.select({ userId: couponCustomers.userId }).from(couponCustomers).where(and(eq(couponCustomers.couponId, coupon.id), eq(couponCustomers.userId, userId))).limit(1)
+    if (!assignment) throw new Error('This coupon is not available for your account.')
+  }
   if (coupon.perCustomerUsageLimit && userId) {
-    const uses = await db.select({ id: couponRedemptions.id }).from(couponRedemptions).where(and(eq(couponRedemptions.couponId, coupon.id), eq(couponRedemptions.userId, userId))).limit(coupon.perCustomerUsageLimit)
-    if (uses.length >= coupon.perCustomerUsageLimit) throw new Error('You have already used this coupon.')
+    const [uses, holds] = await Promise.all([
+      db.select({ id: couponRedemptions.id }).from(couponRedemptions).where(and(eq(couponRedemptions.couponId, coupon.id), eq(couponRedemptions.userId, userId))).limit(coupon.perCustomerUsageLimit),
+      db.select({ id: couponReservations.id }).from(couponReservations).where(and(eq(couponReservations.couponId, coupon.id), eq(couponReservations.userId, userId), eq(couponReservations.status, 'reserved'))).limit(coupon.perCustomerUsageLimit),
+    ])
+    if (uses.length + holds.length >= coupon.perCustomerUsageLimit) throw new Error('You have already used or reserved this coupon.')
   }
   const [allowedProducts, allowedCategories] = await Promise.all([
     db.select({ productId: couponProducts.productId }).from(couponProducts).where(eq(couponProducts.couponId, coupon.id)),
@@ -37,5 +47,5 @@ export async function validateCoupon(codeInput: unknown, items: CouponItem[], us
   const raw = coupon.discountType === 'percent' ? Math.round(eligibleCents * Number(coupon.discountValue) / 100) : Math.round(Number(coupon.discountValue) * 100)
   const maximum = coupon.maxDiscountAmount ? Math.round(Number(coupon.maxDiscountAmount) * 100) : raw
   const discountCents = Math.max(0, Math.min(raw, maximum, eligibleCents))
-  return { id: coupon.id, code: coupon.code, discountType: coupon.discountType, discountValue: String(coupon.discountValue), discountCents, description: coupon.description }
+  return { id: coupon.id, code: coupon.code, discountType: coupon.discountType, discountValue: String(coupon.discountValue), discountCents, description: coupon.description, usageLimit: coupon.usageLimit, perCustomerUsageLimit: coupon.perCustomerUsageLimit }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Edit2, FileCode2, ImageIcon, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -12,27 +12,24 @@ import { uploadAdminFile, type UploadedAsset } from '@/lib/storage/upload-client
 import { generateFabricJsonFromSvg } from '@/lib/templates/fabric-svg-client'
 import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
 import type { MeasurementUnit } from '@/lib/templates/size-conversion'
-import { BANNER_SIZE_PRESETS } from '@/lib/products/size-presets'
 
 type AssetField = 'previewImage' | 'svg'
-type FitMode = 'contain' | 'cover' | 'stretch'
 interface AssetValue { id: string; key: string; url: string; filename?: string; checksum?: string }
-interface SizeRow { id?: string; label: string; width: string; height: string; unit: MeasurementUnit; fitMode: FitMode; safeMargin: string; bleed: string; trimMarks: boolean; enabled: boolean; isDefault: boolean }
+interface SizeRow { id: string; label: string; width: string; height: string; unit: MeasurementUnit; enabled: boolean; isDefault: boolean; unitPrice: string; variantType?: string | null; sizeGroup?: string | null; assembledHeightDescription?: string | null }
+interface ProductRow { id: string; name: string; categoryId: string; active: boolean; sizes: SizeRow[] }
+interface ProductCategory { id: string; name: string; slug: string }
 interface TemplateRow {
-  id: string; name: string; description: string | null; category: string | null; status: string
-  previewImageUrl: string | null; previewImageKey: string | null; previewAssetId: string | null
-  svgUrl: string | null; svgKey: string | null; svgAssetId: string | null; svgChecksum: string | null
-  physicalWidth: string | null; physicalHeight: string | null; measurementUnit: MeasurementUnit | null
-  templateVersion: number; conversionVersion: number; conversionStatus: string; conversionError: string | null; generatedAt: string | null
-  sizes: Array<{ id: string; label: string; width: string; height: string; unit: MeasurementUnit; fitMode: FitMode; safeMargin: string; bleed: string; trimMarks: boolean; enabled: boolean; isDefault: boolean }>
+  id: string; productId: string | null; productName: string | null; categoryId: string | null; categoryName: string | null
+  name: string; description: string | null; status: string; previewImageUrl: string | null; previewImageKey: string | null; previewAssetId: string | null
+  svgUrl: string | null; svgKey: string | null; svgAssetId: string | null; svgChecksum: string | null; physicalWidth: string | null; physicalHeight: string | null
+  measurementUnit: MeasurementUnit | null; templateVersion: number; conversionVersion: number; conversionStatus: string; conversionError: string | null; generatedAt: string | null; sizes: SizeRow[]
 }
 
 const definitions = [
   { field: 'previewImage' as const, label: 'Preview image', accept: 'image/png,image/jpeg,image/webp', icon: ImageIcon },
   { field: 'svg' as const, label: 'Editable SVG source', accept: 'image/svg+xml,.svg', icon: FileCode2 },
 ]
-const blank = { name: '', description: '', category: 'templates', status: 'draft', width: '1828.8', height: '914.4', unit: 'mm' as MeasurementUnit }
-const blankSize = (): SizeRow => ({ label: '500 × 1000 mm', width: '1000', height: '500', unit: 'mm', fitMode: 'contain', safeMargin: '25', bleed: '3', trimMarks: true, enabled: true, isDefault: true })
+const emptyForm = { name: '', description: '', categoryId: '', productId: '', status: 'draft', width: '', height: '', unit: 'mm' as MeasurementUnit }
 
 function assetsOf(row: TemplateRow): Partial<Record<AssetField, AssetValue | null>> {
   return {
@@ -44,9 +41,10 @@ function assetsOf(row: TemplateRow): Partial<Record<AssetField, AssetValue | nul
 export default function TemplatesPage() {
   const { data: session, isPending } = useAdminSession()
   const [rows, setRows] = useState<TemplateRow[]>([])
+  const [categories, setCategories] = useState<ProductCategory[]>([])
+  const [products, setProducts] = useState<ProductRow[]>([])
   const [editing, setEditing] = useState<TemplateRow | null>(null)
-  const [form, setForm] = useState(blank)
-  const [sizes, setSizes] = useState<SizeRow[]>([blankSize()])
+  const [form, setForm] = useState(emptyForm)
   const [assets, setAssets] = useState<Partial<Record<AssetField, AssetValue | null>>>({})
   const [svgSource, setSvgSource] = useState<string | null>(null)
   const [regenerate, setRegenerate] = useState(false)
@@ -54,6 +52,15 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const filteredProducts = useMemo(() => products.filter((product) => product.active && product.categoryId === form.categoryId), [form.categoryId, products])
+  const selectedProduct = products.find((product) => product.id === form.productId)
+  const inheritedSizes = selectedProduct?.sizes.filter((size) => size.enabled) || []
+
+  function dimensionsFor(product?: ProductRow) {
+    const sizes = product?.sizes.filter((size) => size.enabled) || []
+    const size = sizes.find((item) => item.isDefault) || sizes[0]
+    return size ? { width: String(size.width), height: String(size.height), unit: size.unit } : { width: '', height: '', unit: 'mm' as MeasurementUnit }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -61,23 +68,37 @@ export default function TemplatesPage() {
       const response = await fetch('/api/admin/templates', { cache: 'no-store' })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error?.message || 'Templates could not be loaded.')
-      setRows(payload.data.templates)
+      setRows(payload.data.templates); setCategories(payload.data.categories || []); setProducts(payload.data.products || [])
+      setForm((current) => {
+        if (current.categoryId) return current
+        const category = payload.data.categories?.[0]
+        const product = payload.data.products?.find((item: ProductRow) => item.active && item.categoryId === category?.id)
+        return { ...current, categoryId: category?.id || '', productId: product?.id || '', ...dimensionsFor(product) }
+      })
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Templates could not be loaded.') }
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => {
-    if (getUserRole(session?.user) !== 'admin') return
-    const timer = window.setTimeout(() => void load(), 0)
-    return () => window.clearTimeout(timer)
-  }, [load, session?.user])
+  useEffect(() => { if (getUserRole(session?.user) !== 'admin') return; const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer) }, [load, session?.user])
 
   function start(row?: TemplateRow) {
     setEditing(row || null)
-    setForm(row ? { name: row.name, description: row.description || '', category: row.category || 'templates', status: row.status, width: row.physicalWidth || '', height: row.physicalHeight || '', unit: row.measurementUnit || 'mm' } : blank)
-    setAssets(row ? assetsOf(row) : {})
-    setSizes(row?.sizes?.length ? row.sizes.map((size) => ({ ...size, width: String(size.width), height: String(size.height), safeMargin: String(size.safeMargin) })) : [blankSize()])
-    setSvgSource(null); setRegenerate(false); setProgress({}); setMessage('')
+    const categoryId = row?.categoryId || categories[0]?.id || ''
+    const product = products.find((item) => item.id === row?.productId) || products.find((item) => item.active && item.categoryId === categoryId)
+    setForm({ name: row?.name || '', description: row?.description || '', categoryId, productId: product?.id || '', status: row?.status || 'draft', ...dimensionsFor(product) })
+    setAssets(row ? assetsOf(row) : {}); setSvgSource(null); setRegenerate(false); setProgress({}); setMessage('')
+  }
+
+  function chooseCategory(categoryId: string) {
+    const product = products.find((item) => item.active && item.categoryId === categoryId)
+    setForm((current) => ({ ...current, categoryId, productId: product?.id || '', ...dimensionsFor(product) }))
+    setRegenerate(true)
+  }
+
+  function chooseProduct(productId: string) {
+    const product = products.find((item) => item.id === productId)
+    setForm((current) => ({ ...current, productId, ...dimensionsFor(product) }))
+    setRegenerate(true)
   }
 
   async function upload(field: AssetField, file?: File) {
@@ -86,8 +107,7 @@ export default function TemplatesPage() {
     try {
       if (field === 'svg') setSvgSource(sanitizeSvgMarkup(await file.text()))
       const asset: UploadedAsset = await uploadAdminFile(file, 'template', 'design-editor/templates', (percent) => setProgress((value) => ({ ...value, [field]: percent })))
-      setAssets((value) => ({ ...value, [field]: asset }))
-      setMessage(`${definitions.find((item) => item.field === field)?.label} uploaded.`)
+      setAssets((value) => ({ ...value, [field]: asset })); setMessage(`${definitions.find((item) => item.field === field)?.label} uploaded.`)
     } catch (error) { setMessage(error instanceof Error ? error.message : 'The template asset could not be uploaded.') }
   }
 
@@ -99,42 +119,31 @@ export default function TemplatesPage() {
     return sanitizeSvgMarkup(await response.text())
   }
 
-  function updateSize(index: number, values: Partial<SizeRow>) {
-    setSizes((current) => current.map((size, position) => position === index ? { ...size, ...values } : values.isDefault ? { ...size, isDefault: false } : size))
-  }
-
-  function addPreset(height: number, width: number) {
-    const label = `${height} × ${width} mm`
-    if (sizes.some((size) => size.height === String(height) && size.width === String(width) && size.unit === 'mm')) return
-    setSizes((current) => [...current, { ...blankSize(), label, height: String(height), width: String(width), isDefault: current.length === 0 }])
-  }
-
   async function save(event: React.FormEvent) {
     event.preventDefault(); if (saving) return; setSaving(true)
     try {
       if (!assets.previewImage || !assets.svg) throw new Error('Upload both a preview image and an SVG source.')
-      if (!sizes.length) throw new Error('Add at least one supported size.')
+      if (!selectedProduct || !inheritedSizes.length) throw new Error('Select a product with at least one enabled size.')
       const svgChanged = !editing || editing.svgKey !== assets.svg.key
       const checksumChanged = !editing || Boolean(assets.svg.checksum && assets.svg.checksum !== editing.svgChecksum)
-      const shouldGenerate = !editing || svgChanged || checksumChanged || regenerate || editing.conversionVersion !== 1 || editing.conversionStatus !== 'ready'
+      const productChanged = Boolean(editing && editing.productId !== form.productId)
+      const shouldGenerate = !editing || svgChanged || checksumChanged || productChanged || regenerate || editing.conversionVersion !== 1 || editing.conversionStatus !== 'ready'
       setMessage(shouldGenerate ? 'Conversion status: Processing. Generating editable canvas once...' : 'Reusing the cached Fabric JSON...')
       const generated = shouldGenerate ? await generateFabricJsonFromSvg(await sourceForGeneration(), Number(form.width), Number(form.height), form.unit) : null
       const response = await fetch(editing ? `/api/admin/templates/${editing.id}` : '/api/admin/templates', {
         method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...form, assets, sizes, svgChecksum: assets.svg.checksum || editing?.svgChecksum, conversionVersion: 1, regenerate, canvasData: generated?.canvasData, scaleMetadata: generated ? { widthMm: generated.widthMm, heightMm: generated.heightMm, pixelsPerMm: generated.pixelsPerMm, sourceObjectCount: generated.sourceObjectCount, sourceToCanvasScale: generated.scale } : null }),
+        body: JSON.stringify({ ...form, assets, svgChecksum: assets.svg.checksum || editing?.svgChecksum, conversionVersion: 1, regenerate: shouldGenerate, canvasData: generated?.canvasData, scaleMetadata: generated ? { widthMm: generated.widthMm, heightMm: generated.heightMm, pixelsPerMm: generated.pixelsPerMm, sourceObjectCount: generated.sourceObjectCount, sourceToCanvasScale: generated.scale } : null }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error?.message || 'The template could not be saved.')
-      const success = shouldGenerate ? 'Conversion status: Ready. Fabric JSON generated and cached.' : 'Template updated. Cached Fabric JSON reused.'
-      start(); await load(); setMessage(success)
+      start(); await load(); setMessage(shouldGenerate ? 'Conversion status: Ready. Product sizes inherited.' : 'Template updated. Product sizes remain inherited.')
     } catch (error) { setMessage(`Conversion status: Failed. ${error instanceof Error ? error.message : 'The template could not be saved.'}`) }
     finally { setSaving(false) }
   }
 
   async function remove(row: TemplateRow) {
-    if (!window.confirm(`Delete “${row.name}”? Associated products must be detached first.`)) return
-    const response = await fetch(`/api/admin/templates/${row.id}`, { method: 'DELETE' })
-    const payload = await response.json()
+    if (!window.confirm(`Delete “${row.name}”?`)) return
+    const response = await fetch(`/api/admin/templates/${row.id}`, { method: 'DELETE' }); const payload = await response.json()
     if (!response.ok) return setMessage(payload.error?.message || 'The template could not be deleted.')
     setMessage('Template deleted.'); await load()
   }
@@ -145,13 +154,13 @@ export default function TemplatesPage() {
     <div className="flex items-center justify-between"><div><Link href={adminPath()} className="inline-flex items-center gap-2 text-sm font-semibold"><ArrowLeft className="h-4 w-4" /> Dashboard</Link><h1 className="mt-2 text-3xl font-black">Editable templates</h1></div><Button onClick={() => start()}><Plus /> New template</Button></div>
     {message && <p role="status" className="mt-5 rounded-md bg-secondary p-3 text-sm">{message}</p>}
     <form onSubmit={save} className="mt-6 rounded-xl border bg-card p-6"><h2 className="text-xl font-bold">{editing ? `Edit ${editing.name}` : 'Create from SVG'}</h2>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold">Template name<Input className="mt-2" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label className="text-sm font-semibold">Category<select className="mt-2 h-10 w-full rounded-md border bg-background px-3" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{[['custom_banners','Custom banners'],['mesh_banners','Mesh banners'],['vinyl_banners','Vinyl banners'],['templates','Templates'],['digital_designs','Digital designs']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="text-sm font-semibold sm:col-span-2">Optional description<textarea className="mt-2 min-h-24 w-full rounded-md border bg-background p-3" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><label className="text-sm font-semibold">Status<select className="mt-2 h-10 w-full rounded-md border bg-background px-3" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="active">Enabled</option><option value="inactive">Disabled</option></select></label></div>
-      <fieldset className="mt-5 rounded-lg border p-4"><legend className="px-2 text-sm font-bold">Base artwork canvas</legend><p className="mb-3 text-xs text-muted-foreground">The canonical coordinate system used once during SVG conversion. It is not customer-selectable unless separately added below.</p><div className="grid grid-cols-3 gap-3"><label className="text-xs font-semibold">Base width<Input required type="number" min="0.001" step="0.001" className="mt-1" value={form.width} onChange={(event) => setForm({ ...form, width: event.target.value })} /></label><label className="text-xs font-semibold">Base height<Input required type="number" min="0.001" step="0.001" className="mt-1" value={form.height} onChange={(event) => setForm({ ...form, height: event.target.value })} /></label><label className="text-xs font-semibold">Unit<select className="mt-1 h-10 w-full rounded border px-2" value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value as MeasurementUnit })}>{['mm','cm','in','ft','m'].map((unit) => <option key={unit}>{unit}</option>)}</select></label></div></fieldset>
-      <fieldset className="mt-5 rounded-lg border p-4"><div className="flex items-center justify-between"><div><legend className="px-2 text-sm font-bold">Available production sizes</legend><p className="mt-1 text-xs text-muted-foreground">Customer-selectable sizes are always shown as Height × Width.</p></div><Button type="button" size="sm" variant="outline" onClick={() => setSizes((current) => [...current, { ...blankSize(), isDefault: false, label: '' }])}><Plus /> Custom size</Button></div>{['custom_banners','mesh_banners','vinyl_banners'].includes(form.category) && <div className="mt-3 flex max-h-32 flex-wrap gap-1 overflow-auto rounded bg-secondary p-2">{BANNER_SIZE_PRESETS.map(([height,width]) => <button type="button" key={`${height}-${width}`} onClick={() => addPreset(height,width)} className="rounded border bg-background px-2 py-1 text-xs">{height} × {width} mm</button>)}</div>}<div className="mt-3 space-y-3">{sizes.map((size, index) => <div key={size.id || index} className="grid gap-2 rounded border p-3 sm:grid-cols-[1.3fr_.65fr_.65fr_.5fr_.65fr_.65fr_auto_auto]"><Input aria-label="Size label" placeholder="Optional name" value={size.label} onChange={(e) => updateSize(index, { label: e.target.value })} /><Input aria-label="Height" title="Height" type="number" min="0.001" step="0.001" placeholder="Height" value={size.height} onChange={(e) => updateSize(index, { height: e.target.value })} /><Input aria-label="Width" title="Width" type="number" min="0.001" step="0.001" placeholder="Width" value={size.width} onChange={(e) => updateSize(index, { width: e.target.value })} /><select aria-label="Unit" className="rounded border px-2" value={size.unit} onChange={(e) => updateSize(index, { unit: e.target.value as MeasurementUnit })}>{['mm','cm','in','ft','m'].map((unit) => <option key={unit}>{unit}</option>)}</select><Input aria-label="Bleed" title="Bleed" type="number" min="0" step="0.001" value={size.bleed} onChange={(e) => updateSize(index, { bleed: e.target.value })} /><Input aria-label="Safe margin" title="Safe margin" type="number" min="0" step="0.001" value={size.safeMargin} onChange={(e) => updateSize(index, { safeMargin: e.target.value })} /><label className="flex items-center gap-1 text-xs"><input type="radio" name="default-size" checked={size.isDefault} onChange={() => updateSize(index, { isDefault: true })} /> Default</label><button type="button" aria-label="Remove size" disabled={sizes.length === 1} onClick={() => setSizes((current) => current.filter((_, position) => position !== index))} className="rounded border p-2 text-red-600 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button><label className="text-xs"><input type="checkbox" checked={size.trimMarks} onChange={(e) => updateSize(index,{trimMarks:e.target.checked})} /> Trim marks</label><label className="text-xs"><input type="checkbox" checked={size.enabled} onChange={(e) => updateSize(index,{enabled:e.target.checked})} /> Enabled</label></div>)}</div></fieldset>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold">Template name<Input className="mt-2" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label className="text-sm font-semibold">Status<select className="mt-2 h-10 w-full rounded-md border bg-background px-3" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="active">Enabled</option><option value="inactive">Disabled</option></select></label><label className="text-sm font-semibold">Product category<select required className="mt-2 h-10 w-full rounded-md border bg-background px-3" value={form.categoryId} onChange={(event) => chooseCategory(event.target.value)}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="text-sm font-semibold">Product / subcategory<select required className="mt-2 h-10 w-full rounded-md border bg-background px-3" value={form.productId} onChange={(event) => chooseProduct(event.target.value)}><option value="">Select a product</option>{filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label><label className="text-sm font-semibold sm:col-span-2">Optional description<textarea className="mt-2 min-h-24 w-full rounded-md border bg-background p-3" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label></div>
+      <fieldset className="mt-5 rounded-lg border p-4"><legend className="px-2 text-sm font-bold">Inherited product sizes</legend><p className="mb-3 text-xs text-muted-foreground">Read-only. Add or change sizes in Product Management; compatible templates update automatically.</p>{inheritedSizes.length ? <div className="grid gap-2 sm:grid-cols-2">{inheritedSizes.map((size) => <div key={size.id} className="rounded border bg-secondary/40 p-3"><p className="font-semibold">{size.label}</p><p className="text-xs text-muted-foreground">{size.height} × {size.width} {size.unit} · {size.isDefault ? 'Default canvas' : 'Inherited'}</p>{size.assembledHeightDescription && <p className="text-xs text-muted-foreground">{size.assembledHeightDescription}</p>}</div>)}</div> : <p className="rounded border border-dashed p-5 text-sm text-muted-foreground">This product has no enabled sizes.</p>}</fieldset>
+      <fieldset className="mt-5 rounded-lg border p-4"><legend className="px-2 text-sm font-bold">Base artwork canvas</legend><p className="mb-3 text-xs text-muted-foreground">Automatically uses the product default size.</p><div className="grid grid-cols-3 gap-3"><label className="text-xs font-semibold">Width<Input readOnly className="mt-1" value={form.width} /></label><label className="text-xs font-semibold">Height<Input readOnly className="mt-1" value={form.height} /></label><label className="text-xs font-semibold">Unit<Input readOnly className="mt-1" value={form.unit} /></label></div></fieldset>
       <div className="mt-6 grid gap-3 sm:grid-cols-2">{definitions.map(({ field, label, accept, icon: Icon }) => { const asset = assets[field]; return <div key={field} className="rounded-lg border p-4"><div className="flex items-center gap-2 font-semibold"><Icon className="h-4 w-4 text-primary" /> {label}</div>{field === 'previewImage' && asset?.url ? <img src={asset.url} alt="Template preview" className="mt-3 h-28 w-full rounded object-cover" /> : <p className="mt-3 truncate text-xs">{asset?.filename || asset?.key || 'No file selected.'}</p>}<label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border px-3 py-2 text-xs font-semibold"><Upload className="h-3 w-3" /> {asset ? 'Replace' : 'Choose file'}<input type="file" accept={accept} className="sr-only" onChange={(event) => void upload(field, event.target.files?.[0])} /></label>{progress[field] !== undefined && progress[field]! < 100 && <p className="mt-2 text-xs">Uploading {progress[field]}%</p>}</div> })}</div>
       {editing && <label className="mt-5 flex items-center gap-2 text-sm"><input type="checkbox" checked={regenerate} onChange={(event) => setRegenerate(event.target.checked)} /> <RefreshCw className="h-4 w-4" /> Explicitly regenerate cached Fabric JSON</label>}
-      <div className="mt-6 flex gap-3"><Button type="submit" disabled={saving}>{saving ? 'Processing...' : editing ? 'Update template' : 'Create template'}</Button>{editing && <Button type="button" variant="outline" onClick={() => start()}>Cancel</Button>}</div>
+      <div className="mt-6 flex gap-3"><Button type="submit" disabled={saving || !form.productId || !inheritedSizes.length}>{saving ? 'Processing...' : editing ? 'Update template' : 'Create template'}</Button>{editing && <Button type="button" variant="outline" onClick={() => start()}>Cancel</Button>}</div>
     </form>
-    <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4 font-bold">Stored templates</div>{loading ? <p className="p-8 text-center">Loading...</p> : rows.length === 0 ? <p className="p-8 text-center text-muted-foreground">No templates have been created.</p> : <ul className="divide-y">{rows.map((row) => <li key={row.id} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3">{row.previewImageUrl ? <img src={row.previewImageUrl} alt={`${row.name} preview`} className="h-14 w-14 rounded object-cover" /> : <FileCode2 />}<div><p className="font-semibold">{row.name}</p><p className="text-xs text-muted-foreground">{row.status} · {row.sizes.length} size(s) · v{row.templateVersion}</p><p className={`text-xs font-semibold ${row.conversionStatus === 'ready' ? 'text-green-700' : row.conversionStatus === 'failed' ? 'text-red-700' : 'text-amber-700'}`}>Conversion: {row.conversionStatus}{row.generatedAt ? ` · ${new Date(row.generatedAt).toLocaleString()}` : ''}</p>{row.conversionError && <p className="text-xs text-red-700">{row.conversionError}</p>}</div></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => start(row)}><Edit2 /> Edit</Button><Button size="sm" variant="outline" className="text-red-600" onClick={() => void remove(row)}><Trash2 /> Delete</Button></div></li>)}</ul>}</section>
+    <section className="mt-6 overflow-hidden rounded-xl border bg-card"><div className="border-b p-4 font-bold">Stored templates</div>{loading ? <p className="p-8 text-center">Loading...</p> : rows.length === 0 ? <p className="p-8 text-center text-muted-foreground">No templates have been created.</p> : <ul className="divide-y">{rows.map((row) => <li key={row.id} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center"><div className="flex min-w-0 flex-1 items-center gap-3">{row.previewImageUrl ? <img src={row.previewImageUrl} alt={`${row.name} preview`} className="h-14 w-14 rounded object-cover" /> : <FileCode2 />}<div><p className="font-semibold">{row.name}</p><p className="text-xs text-muted-foreground">{row.categoryName || 'Unassigned'} → {row.productName || 'Legacy template'} · {row.sizes.filter((size) => size.enabled).length} inherited size(s) · v{row.templateVersion}</p><p className={`text-xs font-semibold ${row.conversionStatus === 'ready' ? 'text-green-700' : row.conversionStatus === 'failed' ? 'text-red-700' : 'text-amber-700'}`}>Conversion: {row.conversionStatus}</p></div></div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => start(row)}><Edit2 /> Edit</Button><Button size="sm" variant="outline" className="text-red-600" onClick={() => void remove(row)}><Trash2 /> Delete</Button></div></li>)}</ul>}</section>
   </div></main>
 }

@@ -1,32 +1,28 @@
-import { NextResponse } from 'next/server'
-import { asc, eq, inArray } from 'drizzle-orm'
+import { NextRequest, NextResponse } from 'next/server'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { products, productTemplateSizePrices, templateSizes, templates } from '@/lib/db/schema'
+import { productCategories, products, productSizes, templates } from '@/lib/db/schema'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Listing cards must never materialize the canonical Fabric JSON.
-    const rows = await db.select({ id: templates.id, name: templates.name, description: templates.description, category: templates.category, previewImageUrl: templates.previewImageUrl, templateVersion: templates.templateVersion, logicalCanvasWidth: templates.logicalCanvasWidth, logicalCanvasHeight: templates.logicalCanvasHeight, conversionStatus: templates.conversionStatus, status: templates.status, updatedAt: templates.updatedAt }).from(templates).where(eq(templates.status, 'active')).orderBy(asc(templates.name))
-    const valid = rows.filter((row) => row.conversionStatus === 'ready' && row.previewImageUrl)
-    const ids = valid.map((row) => row.id)
-    const [sizes, productRows] = ids.length ? await Promise.all([
-      db.select().from(templateSizes).where(inArray(templateSizes.templateId, ids)).orderBy(asc(templateSizes.displayOrder)),
-      db.select({ id: products.id, name: products.name, templateId: products.templateId, active: products.active }).from(products).where(inArray(products.templateId, ids)),
-    ]) : [[], []]
-    const productIds = productRows.filter((row) => row.active).map((row) => row.id)
-    const prices = productIds.length ? await db.select().from(productTemplateSizePrices).where(inArray(productTemplateSizePrices.productId, productIds)) : []
-    const sizesByTemplate = new Map<string, typeof sizes>()
-    for (const size of sizes) { const list = sizesByTemplate.get(size.templateId) || []; list.push(size); sizesByTemplate.set(size.templateId, list) }
-    const productsByTemplate = new Map<string, typeof productRows>()
-    for (const product of productRows) { if (product.active) { const list = productsByTemplate.get(product.templateId || '') || []; list.push(product); productsByTemplate.set(product.templateId || '', list) } }
-    const pricesByProduct = new Map<string, typeof prices>()
-    for (const price of prices) { if (price.enabled) { const list = pricesByProduct.get(price.productId) || []; list.push(price); pricesByProduct.set(price.productId, list) } }
-    return NextResponse.json({ data: { templates: valid.map((row) => ({
-      id: row.id, name: row.name, description: row.description, category: row.category, previewUrl: row.previewImageUrl,
-      version: row.templateVersion, logicalCanvasWidth: row.logicalCanvasWidth, logicalCanvasHeight: row.logicalCanvasHeight,
-      updatedAt: row.updatedAt, sizes: (sizesByTemplate.get(row.id) || []).filter((size) => size.enabled),
-      products: (productsByTemplate.get(row.id) || []).map((product) => ({ ...product, prices: pricesByProduct.get(product.id) || [] })),
-    })) } }, { headers: { 'cache-control': 'no-store, max-age=0' } })
+    const productId = request.nextUrl.searchParams.get('productId')
+    const rows = await db.select({ id: templates.id, productId: templates.productId, name: templates.name, description: templates.description, previewImageUrl: templates.previewImageUrl, templateVersion: templates.templateVersion, logicalCanvasWidth: templates.logicalCanvasWidth, logicalCanvasHeight: templates.logicalCanvasHeight, conversionStatus: templates.conversionStatus, updatedAt: templates.updatedAt }).from(templates)
+      .where(productId ? and(eq(templates.status, 'active'), eq(templates.productId, productId)) : eq(templates.status, 'active')).orderBy(asc(templates.name))
+    const valid = rows.filter((row) => row.productId && row.conversionStatus === 'ready' && row.previewImageUrl)
+    const productIds = [...new Set(valid.map((row) => row.productId!))]
+    const [productRows, sizes, categories] = productIds.length ? await Promise.all([
+      db.select({ id: products.id, name: products.name, categoryId: products.categoryId, active: products.active }).from(products).where(inArray(products.id, productIds)),
+      db.select().from(productSizes).where(inArray(productSizes.productId, productIds)).orderBy(asc(productSizes.order)),
+      db.select({ id: productCategories.id, name: productCategories.name }).from(productCategories),
+    ]) : [[], [], []]
+    const activeProducts = productRows.filter((product) => product.active)
+    return NextResponse.json({ data: { templates: valid.flatMap((row) => {
+      const product = activeProducts.find((item) => item.id === row.productId)
+      if (!product) return []
+      const category = categories.find((item) => item.id === product.categoryId)
+      const inheritedSizes = sizes.filter((size) => size.productId === product.id && size.enabled)
+      return [{ id: row.id, name: row.name, description: row.description, category: category?.name || 'Products', categoryId: product.categoryId, subcategory: product.name, previewUrl: row.previewImageUrl, version: row.templateVersion, logicalCanvasWidth: row.logicalCanvasWidth, logicalCanvasHeight: row.logicalCanvasHeight, updatedAt: row.updatedAt, sizes: inheritedSizes, products: [{ ...product, sizes: inheritedSizes }] }]
+    }) } }, { headers: { 'cache-control': 'no-store, max-age=0' } })
   } catch (error) {
     console.error('Public template listing failed', error)
     return NextResponse.json({ error: { code: 'TEMPLATES_LOAD_FAILED', message: 'Design Online templates could not be loaded.' } }, { status: 500 })

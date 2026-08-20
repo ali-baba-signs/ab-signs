@@ -4,10 +4,12 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Menu, Search, ShoppingBag, UserRound, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession, signOut } from '@/lib/auth-client'
 import { useCart } from '@/lib/cart-context'
-import { productNavigation, promoMessages } from '@/data/homepage'
+import { promoMessages } from '@/data/homepage'
+
+type NavigationCategory = { id: string; name: string; href: string; children: Array<{ id: string; name: string; href: string }> }
 
 export function Header() {
   const router = useRouter()
@@ -15,6 +17,11 @@ export function Header() {
   const { items } = useCart()
   const [menuOpen, setMenuOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [navigation, setNavigation] = useState<NavigationCategory[]>([])
+
+  useEffect(() => {
+    void fetch('/api/navigation').then((response) => response.ok ? response.json() : null).then((payload) => setNavigation(payload?.data?.navigation || [])).catch(() => setNavigation([]))
+  }, [])
 
   const logout = async () => {
     await signOut()
@@ -56,6 +63,7 @@ export function Header() {
                   <p className="truncate px-3 py-2 text-xs text-zinc-500">{session.user.email}</p>
                   <Link href="/account/profile" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My profile</Link>
                   <Link href="/account/orders" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My orders</Link>
+                  <Link href="/account/offers" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My offers</Link>
                   <button onClick={logout} className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Sign out</button>
                 </> : <>
                   <Link href="/sign-in" onClick={() => setAccountOpen(false)} className="block rounded bg-[#ed1b68] px-3 py-2 text-center text-sm font-bold text-white">Sign in</Link>
@@ -76,10 +84,10 @@ export function Header() {
         <div className="mx-auto flex max-w-[1440px] flex-col px-4 lg:h-12 lg:flex-row lg:items-center lg:gap-1 lg:px-8">
           <Link href="/products" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">All products</Link>
           <Link href="/offers" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold text-[#ed1b68] hover:text-[#ed1b68]">Offers &amp; Vouchers</Link>
-          {productNavigation.map((category) => <div key={category.id} className="group relative">
+          {navigation.map((category) => <div key={category.id} className="group relative">
             <Link href={category.href} onClick={() => setMenuOpen(false)} className="flex items-center justify-between gap-1 px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">{category.name}<ChevronDown className="hidden h-3.5 w-3.5 lg:block" /></Link>
             <div className="border-l border-zinc-200 pl-3 lg:invisible lg:absolute lg:left-0 lg:top-full lg:w-60 lg:rounded-b-lg lg:border lg:bg-white lg:p-2 lg:pl-2 lg:opacity-0 lg:shadow-xl lg:transition lg:group-hover:visible lg:group-hover:opacity-100">
-              {category.children.map((child) => <Link key={child.name} href={child.href} onClick={() => setMenuOpen(false)} className="block rounded px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-[#ed1b68]">{child.name}</Link>)}
+              {category.children.map((child) => <Link key={child.id} href={child.href} onClick={() => setMenuOpen(false)} className="block rounded px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-[#ed1b68]">{child.name}</Link>)}
             </div>
           </div>)}
           <Link href="/design" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-black text-[#ed1b68] lg:ml-auto">Design online</Link>

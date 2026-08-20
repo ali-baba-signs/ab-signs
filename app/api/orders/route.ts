@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productSizes, productTemplateSizePrices, products, templateSizes, templates } from '@/lib/db/schema'
+import { couponRedemptions, couponReservations, coupons, customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productSizes, productTemplateSizePrices, products, templateSizes, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { loadStoreSettings } from '@/lib/store/load-settings'
@@ -9,6 +9,7 @@ import { designDeadline } from '@/lib/orders/workflow'
 import { parseMeasurement } from '@/lib/measurements'
 import { currentPolicyAcceptance } from '@/lib/policies/registry'
 import { validateCoupon } from '@/lib/coupons/engine'
+import { couponReservationExpiry } from '@/lib/coupons/reservations'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
       db.select().from(productSizes).where(inArray(productSizes.id, sizeIds)),
       db.select().from(templateSizes).where(inArray(templateSizes.id, sizeIds)),
       db.select().from(productTemplateSizePrices),
-      db.select({ id: templates.id, status: templates.status }).from(templates),
+      db.select({ id: templates.id, productId: templates.productId, status: templates.status, conversionStatus: templates.conversionStatus }).from(templates),
       designIds.length ? db.select().from(designs).where(inArray(designs.id, designIds)) : Promise.resolve([]),
       artworkIds.length ? db.select().from(customerArtworks).where(inArray(customerArtworks.id, artworkIds)) : Promise.resolve([]),
     ])
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
       if (!product || !size || (templateSize && !price)) throw new Error('A product or selected size is no longer available.')
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('Quantity must be between 1 and 1000.')
       const selectedTemplateId = item.templateId || product.templateId
-      if (selectedTemplateId && !templateRows.some((template) => template.id === selectedTemplateId && template.status === 'active')) throw new Error('The selected editable template is no longer available.')
+      if (selectedTemplateId && !templateRows.some((template) => template.id === selectedTemplateId && template.productId === product.id && template.status === 'active' && template.conversionStatus === 'ready')) throw new Error('The selected editable template is not compatible with this product.')
       const design = item.designId ? designRows.find((row) => row.id === item.designId && row.productId === product.id && row.templateId === selectedTemplateId && row.userId === session?.user.id) : null
       if (item.designId && !design) throw new Error('The selected customization is unavailable or does not belong to this account.')
       const artwork = item.artworkId ? artworkRows.find((row) => row.id === item.artworkId && row.productId === product.id && row.userId === session?.user.id && (row.templateSizeId === size.id || row.productSizeId === size.id)) : null
@@ -122,7 +123,19 @@ export async function POST(request: NextRequest) {
     const taxCents = Math.round(discountedSubtotalCents * settings.taxRate / 100)
     const totalCents = discountedSubtotalCents + shippingCents + taxCents
     const orderNumber = `ABS-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
+    const reservationExpiresAt = coupon ? couponReservationExpiry() : null
     const [order] = await db.transaction(async (tx) => {
+      if (coupon?.id) {
+        const reserved = await tx.update(coupons).set({ reservedCount: sql`${coupons.reservedCount} + 1` }).where(and(eq(coupons.id, coupon.id), sql`(${coupons.usageLimit} IS NULL OR ${coupons.usedCount} + ${coupons.reservedCount} < ${coupons.usageLimit})`)).returning({ id: coupons.id })
+        if (!reserved.length) throw new Error('This coupon usage limit has been reached.')
+        if (coupon.perCustomerUsageLimit && session?.user.id) {
+          const [redeemedCount, reservedCount] = await Promise.all([
+            tx.select({ count: sql<number>`count(*)` }).from(couponRedemptions).where(and(eq(couponRedemptions.couponId, coupon.id), eq(couponRedemptions.userId, session.user.id))),
+            tx.select({ count: sql<number>`count(*)` }).from(couponReservations).where(and(eq(couponReservations.couponId, coupon.id), eq(couponReservations.userId, session.user.id), eq(couponReservations.status, 'reserved'))),
+          ])
+          if (Number(redeemedCount[0]?.count || 0) + Number(reservedCount[0]?.count || 0) >= coupon.perCustomerUsageLimit) throw new Error('You have already used or reserved this coupon.')
+        }
+      }
       const rows = await tx.insert(orders).values({
         userId: session?.user.id ?? null, orderNumber, status: 'pending_design_confirmation', paymentStatus: 'awaiting_payment', paymentMethod, designConfirmationDeadline: designDeadline(),
         currency: settings.currency, customerEmail: email, idempotencyKey, totalAmount: amount(totalCents), taxAmount: amount(taxCents), shippingAmount: amount(shippingCents), couponId: coupon?.id || null, discountAmount: amount(discountCents), couponSnapshot: coupon ? { id: coupon.id, code: coupon.code, discountType: coupon.discountType, discountValue: coupon.discountValue, discountAmount: amount(discountCents) } : null,
@@ -132,10 +145,11 @@ export async function POST(request: NextRequest) {
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
         quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource },
       })))
+      if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
       return rows
     })
-    return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), discount: amount(discountCents), couponCode: coupon?.code || null, tax: amount(taxCents), shipping: amount(shippingCents), total: amount(totalCents), currency: settings.currency } } }, { status: 201 })
+    return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), discount: amount(discountCents), couponCode: coupon?.code || null, tax: amount(taxCents), shipping: amount(shippingCents), total: amount(totalCents), currency: settings.currency }, paymentExpiresAt: reservationExpiresAt?.toISOString() || null } }, { status: 201 })
   } catch (error) {
     console.error('Order create failed', error)
     const message = error instanceof Error && /cart|valid|available|Quantity|Shipping|customer|payment|idempotency|product|size|template|accept|delivery|pickup/i.test(error.message) ? error.message : 'The order could not be created.'

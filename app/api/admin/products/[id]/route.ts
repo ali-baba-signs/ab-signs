@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { adminActivityLogs, productImages, products, productSizes, productTemplateSizePrices, templates, templateSizes } from '@/lib/db/schema'
+import { adminActivityLogs, productImages, products, productSizes } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { validateProductInput } from '@/lib/products/validation'
@@ -25,12 +25,6 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     input = validateProductInput(await request.json())
     const [existingProduct] = await db.select().from(products).where(eq(products.id, id)).limit(1)
     if (!existingProduct) throw new Error('Product not found.')
-    if (input.templateId) {
-      const [template] = await db.select().from(templates).where(eq(templates.id, input.templateId)).limit(1)
-      if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') throw new Error('Select an enabled, ready editable template.')
-      const allowed = new Set((await db.select({ id: templateSizes.id }).from(templateSizes).where(eq(templateSizes.templateId, input.templateId))).map((size) => size.id))
-      if (input.sizeMode === 'template_sizes' && input.templatePrices.some((price) => !allowed.has(price.templateSizeId))) throw new Error('A selected price does not belong to this template.')
-    }
     const oldImages = await db.select().from(productImages).where(eq(productImages.productId, id))
     const existingIds = new Set(oldImages.map((image) => image.id))
     if (input.images.some((image) => image.id && !existingIds.has(image.id))) throw new Error('An existing image does not belong to this product.')
@@ -47,27 +41,21 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         if (image.id) await tx.update(productImages).set({ alt: image.alt, isPrimary: image.isPrimary, order: image.order }).where(and(eq(productImages.id, image.id), eq(productImages.productId, id)))
         else await tx.insert(productImages).values({ productId: id, url: getStoredAssetUrl(image.key!), storageKey: image.key, assetId: image.assetId, alt: image.alt, isPrimary: image.isPrimary, order: image.order })
       }
-      await tx.delete(productTemplateSizePrices).where(eq(productTemplateSizePrices.productId, id))
-      if (input!.templateId && input!.sizeMode === 'template_sizes') {
-        await tx.delete(productSizes).where(eq(productSizes.productId, id))
-        await tx.insert(productTemplateSizePrices).values(input!.templatePrices.map((price) => ({ productId: id, templateSizeId: price.templateSizeId, unitPrice: price.unitPrice.toFixed(2), enabled: price.enabled })))
-      } else {
-        const existingSizes = await tx.select().from(productSizes).where(eq(productSizes.productId, id))
-        const retained = new Set<string>()
-        for (const size of input!.sizes) {
-          if (size.id && existingSizes.some((row) => row.id === size.id)) {
-            await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
-            retained.add(size.id)
-          } else {
-            const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId }).returning({ id: productSizes.id })
-            retained.add(created.id)
-          }
+      const existingSizes = await tx.select().from(productSizes).where(eq(productSizes.productId, id))
+      const retained = new Set<string>()
+      for (const size of input!.sizes) {
+        if (size.id && existingSizes.some((row) => row.id === size.id)) {
+          await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, fitMode:size.fitMode, safeMargin:size.safeMargin, bleed:size.bleed, trimMarks:size.trimMarks, isDefault:size.isDefault, frontTemplateId:null, backTemplateId:null, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
+          retained.add(size.id)
+        } else {
+          const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, fitMode:size.fitMode, safeMargin:size.safeMargin, bleed:size.bleed, trimMarks:size.trimMarks, isDefault:size.isDefault, frontTemplateId:null, backTemplateId:null }).returning({ id: productSizes.id })
+          retained.add(created.id)
         }
-        for (const size of existingSizes) if (!retained.has(size.id)) await tx.delete(productSizes).where(eq(productSizes.id, size.id))
       }
+      for (const size of existingSizes) if (!retained.has(size.id)) await tx.delete(productSizes).where(eq(productSizes.id, size.id))
       await tx.insert(adminActivityLogs).values(activityValues(session, {
         actionType: 'product.updated', entityType: 'product', entityId: id, entityName: input!.name,
-        description: `Updated product ${input!.name}.`, metadata: { sku: input!.sku, removedImages: removedImages.length, imageCount: input!.images.length, inheritedTemplateSizeCount: input!.templatePrices.length },
+        description: `Updated product ${input!.name}.`, metadata: { sku: input!.sku, removedImages: removedImages.length, imageCount: input!.images.length, productSizeCount: input!.sizes.length },
       }))
     })
     await Promise.allSettled(removedImages.flatMap((image) => image.storageKey ? [deleteAssetIfOrphaned(image.storageKey)] : []))

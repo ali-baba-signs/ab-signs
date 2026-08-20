@@ -180,6 +180,11 @@ export const productSizes = pgTable('product_sizes', {
   sizeGroup: varchar('size_group', { length: 20 }),
   sideMode: varchar('side_mode', { length: 10 }).default('single').notNull(),
   assembledHeightDescription: varchar('assembled_height_description', { length: 255 }),
+  fitMode: varchar('fit_mode', { length: 10 }).default('contain').notNull(),
+  safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('0').notNull(),
+  bleed: decimal('bleed', { precision: 10, scale: 3 }).default('3').notNull(),
+  trimMarks: boolean('trim_marks').default(true).notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
   frontTemplateId: uuid('front_template_id'),
   backTemplateId: uuid('back_template_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -189,6 +194,7 @@ export const productSizes = pgTable('product_sizes', {
 // Templates
 export const templates = pgTable('templates', {
   id: uuid('id').primaryKey().defaultRandom(),
+  productId: uuid('product_id').references(() => products.id, { onDelete: 'restrict' }),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   thumbnail: text('thumbnail'),
@@ -221,7 +227,7 @@ export const templates = pgTable('templates', {
   createdBy: text('created_by').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+}, (table) => [index('templates_product_idx').on(table.productId), index('templates_status_product_idx').on(table.status, table.productId)])
 
 export const templateSizes = pgTable('template_sizes', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -394,6 +400,7 @@ export const coupons = pgTable('coupons', {
   endsAt: timestamp('ends_at'),
   usageLimit: integer('usage_limit'),
   usedCount: integer('used_count').default(0).notNull(),
+  reservedCount: integer('reserved_count').default(0).notNull(),
   perCustomerUsageLimit: integer('per_customer_usage_limit'),
   minimumSubtotal: decimal('minimum_subtotal', { precision: 12, scale: 2 }),
   maxDiscountAmount: decimal('max_discount_amount', { precision: 12, scale: 2 }),
@@ -410,6 +417,25 @@ export const couponCategories = pgTable('coupon_categories', {
   couponId: uuid('coupon_id').notNull().references(() => coupons.id, { onDelete: 'cascade' }),
   categoryId: uuid('category_id').notNull().references(() => productCategories.id, { onDelete: 'cascade' }),
 }, (table) => [uniqueIndex('coupon_categories_unique').on(table.couponId, table.categoryId)])
+
+// A customer-specific coupon is still a coupon; this table only scopes who may
+// redeem it. Keeping the relationship separate avoids duplicating discount data.
+export const couponCustomers = pgTable('coupon_customers', {
+  couponId: uuid('coupon_id').notNull().references(() => coupons.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+}, (table) => [uniqueIndex('coupon_customers_unique').on(table.couponId, table.userId), index('coupon_customers_user_idx').on(table.userId)])
+
+export const couponReservations = pgTable('coupon_reservations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  couponId: uuid('coupon_id').notNull().references(() => coupons.id, { onDelete: 'cascade' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 20 }).default('reserved').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  releasedAt: timestamp('released_at'),
+  releaseReason: varchar('release_reason', { length: 80 }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('coupon_reservations_order_unique').on(table.orderId), index('coupon_reservations_expiry_idx').on(table.status, table.expiresAt), index('coupon_reservations_customer_idx').on(table.couponId, table.userId)])
 
 export const couponRedemptions = pgTable('coupon_redemptions', {
   id: uuid('id').primaryKey().defaultRandom(),
