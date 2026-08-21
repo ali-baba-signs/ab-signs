@@ -54,7 +54,7 @@ export default async function HomePage() {
       desktopImageKey: slide.desktopAsset!.objectKey,
       mobileImageKey: slide.mobileAsset?.objectKey || slide.desktopAsset!.objectKey,
       fallbackImage: slide.desktopAsset!.url,
-      altText: slide.altText,
+      altText: slide.altText||'',
       href: slide.buttonUrl || '',
       buttonLabel: slide.buttonLabel || '',
       alignment: slide.horizontalAlignment as 'left' | 'center' | 'right',
