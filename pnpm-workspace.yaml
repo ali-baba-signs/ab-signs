@@ -1,0 +1,8 @@
+packages:
+  - '.'
+
+# Fabric's Node renderer declares node-canvas as an optional dependency. The
+# application uses Fabric only in the browser and must not install that native
+# package in Windows development or Vercel builds.
+ignoredOptionalDependencies:
+  - canvas

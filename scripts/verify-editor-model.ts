@@ -1,24 +1,19 @@
 import { sanitizeSvgMarkup, SvgValidationError } from '../lib/templates/svg-sanitization'
 import { validateProductInput } from '../lib/products/validation'
 import { createTemplateCanvasSize } from '../lib/templates/size-conversion'
-import { FabricObject, loadSVGFromString, util } from 'fabric/node'
 import { createUploadKey, validateUpload } from '../lib/storage/upload-validation'
 
-async function generateWithInstalledFabric(svg: string, width: number, height: number) {
+function verifySvgModel(svg: string, width: number, height: number) {
   const size = createTemplateCanvasSize(width, height, 'ft')
-  const parsed = await loadSVGFromString(sanitizeSvgMarkup(svg))
-  const objects = parsed.objects.filter((object): object is FabricObject => Boolean(object))
-  if (!objects.length) throw new Error('Fabric SVG parser returned no objects.')
-  const root = util.groupSVGElements(objects, parsed.options)
-  const canvasData = { version: '7.4.0', objects: [root.toObject()] }
-  return { canvasData, ...size }
+  const sanitized = sanitizeSvgMarkup(svg)
+  if (!sanitized.includes('<rect') || !sanitized.includes('<circle')) throw new Error('Safe SVG artwork was removed during sanitization.')
+  return size
 }
 
 async function main() {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300"><rect width="600" height="300" fill="#ed1b68"/><circle cx="300" cy="150" r="80" fill="white"/></svg>'
-  const first = await generateWithInstalledFabric(svg, 6, 3)
-  const resized = await generateWithInstalledFabric(svg, 4, 2)
-  if (!Array.isArray(first.canvasData.objects) || !first.canvasData.objects.length) throw new Error('Fabric generation produced an empty canvas.')
+  const first = verifySvgModel(svg, 6, 3)
+  const resized = verifySvgModel(svg, 4, 2)
   if (first.logicalCanvasWidth !== 1200 || first.logicalCanvasHeight !== 600 || resized.logicalCanvasWidth !== 1200 || resized.logicalCanvasHeight !== 600) throw new Error('Physical-to-canvas aspect conversion is incorrect.')
   try {
     sanitizeSvgMarkup('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
@@ -42,7 +37,7 @@ async function main() {
   try { validateUpload({ filename: 'manual.json', contentType: 'application/json', size: 100, purpose: 'template' }) }
   catch { legacyDefinitionRejected = true }
   if (!legacyDefinitionRejected) throw new Error('Manual JSON template upload is still accepted.')
-  console.log('Editor model verification passed: safe SVG parsing, unsafe SVG rejection, Fabric JSON generation, physical size mapping, new/existing image validation, local-only image rejection, template R2 routing, and manual JSON rejection.')
+  console.log('Editor model verification passed: safe SVG validation, unsafe SVG rejection, physical size mapping, new/existing image validation, local-only image rejection, template R2 routing, and manual JSON rejection.')
 }
 
 void main().catch((error) => {

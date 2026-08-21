@@ -8,6 +8,7 @@ export const R2_PATHS = {
   homepageCollections: 'homepage/collections',
   homepageShowcase: 'homepage/showcase',
   homepageBlog: 'homepage/blog',
+  offers: 'offers',
   products: 'products',
   editorTemplates: 'design-editor/templates',
   editorGraphics: 'design-editor/graphics',
@@ -26,15 +27,18 @@ export const R2_PATHS = {
 export type UploadPurpose =
   | 'design-artwork'
   | 'design-draft'
+  | 'design-preview'
   | 'logo'
   | 'template'
   | 'homepage'
+  | 'offer-image'
   | 'product-image'
   | 'order-document'
 
 export const ADMIN_UPLOAD_PURPOSES = new Set<UploadPurpose>([
   'template',
   'homepage',
+  'offer-image',
   'product-image',
   'order-document',
 ])

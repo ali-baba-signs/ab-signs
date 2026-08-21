@@ -100,15 +100,12 @@ export function validateProductInput(value: unknown): ValidProductInput {
     const variantType = FLAG_TYPES.includes(size.variantType as typeof FLAG_TYPES[number]) ? size.variantType as typeof FLAG_TYPES[number] : null
     const sizeGroup = FLAG_SIZE_GROUPS.includes(size.sizeGroup as typeof FLAG_SIZE_GROUPS[number]) ? size.sizeGroup as typeof FLAG_SIZE_GROUPS[number] : null
     const sideMode = SIDE_MODES.includes(size.sideMode as typeof SIDE_MODES[number]) ? size.sideMode as typeof SIDE_MODES[number] : 'single'
-    const frontTemplateId = null
-    const backTemplateId = null
+    const frontTemplateId = typeof size.frontTemplateId === 'string' && uuid.test(size.frontTemplateId) ? size.frontTemplateId : null
+    const backTemplateId = typeof size.backTemplateId === 'string' && uuid.test(size.backTemplateId) ? size.backTemplateId : null
     if (sizeMode === 'fixed_variants' && (!variantType || !sizeGroup || !size.width || !size.height)) throw new Error(`${label} must define flag type, size group, side mode, and real print dimensions.`)
     const width = optionalDimension(size.width, `${label} width`)
     const height = optionalDimension(size.height, `${label} height`)
-    if (sizeMode === 'fixed_variants' && sizeGroup) {
-      const preset = FLAG_PRINT_PRESETS[sizeGroup]
-      if (unit !== 'cm' || Number(width) !== preset.width || Number(height) !== preset.height) throw new Error(`${label} must use the fixed ${preset.width} × ${preset.height} cm print size for ${sizeGroup.replace('_', ' ')}.`)
-    }
+    if (sideMode === 'double' && backTemplateId && !frontTemplateId) throw new Error(`${label} needs a front template when a back template is selected.`)
     const fitMode = ['contain', 'cover', 'stretch'].includes(String(size.fitMode)) ? size.fitMode as 'contain' | 'cover' | 'stretch' : 'contain'
     const safeMargin = nonNegativeDimension(size.safeMargin ?? 0, `${label} safe margin`)
     const bleed = nonNegativeDimension(size.bleed ?? 3, `${label} bleed`)

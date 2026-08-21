@@ -15,12 +15,18 @@ export async function POST(request: NextRequest) {
     const intent = event.data.object as Stripe.PaymentIntent
     const orderId = intent.metadata.orderId
     if (!orderId) return NextResponse.json({ received: true })
+    let cardMetadata: Record<string, string> = {}
+    if (event.type === 'payment_intent.succeeded' && intent.latest_charge) {
+      const charge = typeof intent.latest_charge === 'string' ? await stripe.charges.retrieve(intent.latest_charge) : intent.latest_charge
+      const card = charge.payment_method_details?.card
+      if (card?.brand && card.last4) cardMetadata = { cardBrand: card.brand, cardLast4: card.last4, paymentMethodType: charge.payment_method_details?.type || 'card' }
+    }
     await db.transaction(async (tx) => {
       const [payment] = await tx.select().from(paymentRecords).where(and(eq(paymentRecords.orderId, orderId), eq(paymentRecords.externalId, intent.id))).limit(1)
       if (!payment) return
       const successful = event.type === 'payment_intent.succeeded'
       const status = successful ? 'paid' : event.type === 'payment_intent.canceled' ? 'cancelled' : 'payment_failed'
-      await tx.update(paymentRecords).set({ status, metadata: { paymentIntentId: intent.id, eventId: event.id }, updatedAt: new Date() }).where(eq(paymentRecords.id, payment.id))
+      await tx.update(paymentRecords).set({ status, metadata: { ...((payment.metadata || {}) as Record<string, unknown>), paymentIntentId: intent.id, eventId: event.id, ...cardMetadata }, updatedAt: new Date() }).where(eq(paymentRecords.id, payment.id))
       await tx.update(orders).set({ paymentStatus: status, paymentMethod: 'stripe', ...(successful ? { status: 'payment_confirmed' as const } : {}), updatedAt: new Date() }).where(eq(orders.id, orderId))
       if (successful) {
         const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1)

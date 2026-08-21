@@ -2,7 +2,7 @@ import 'server-only'
 
 import { eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { customerArtworks, designs, heroSlides, orders, productCategories, productImages, storageAssets, templates } from '@/lib/db/schema'
+import { customerArtworks, designs, heroSlides, offers, orders, productCategories, productImages, storageAssets, templates } from '@/lib/db/schema'
 import { createPresignedDownloadUrl, deleteObject, getObjectMetadata, listObjects } from './r2'
 import { getStoredAssetUrl } from './r2-public-url'
 
@@ -125,19 +125,20 @@ export async function listAndReconcileAssets(input: {
 }
 
 export async function getAssetReferences(assetId: string, key: string) {
-  const [images, templateRows, heroes, artworks, designRows, categories, orderDocuments] = await Promise.all([
+  const [images, templateRows, heroes, offerRows, artworks, designRows, categories, orderDocuments] = await Promise.all([
     db.select({ id: productImages.id }).from(productImages).where(or(eq(productImages.assetId, assetId), eq(productImages.storageKey, key))),
     db.select({ id: templates.id }).from(templates).where(or(
       eq(templates.previewAssetId, assetId), eq(templates.svgAssetId, assetId),
       eq(templates.previewImageKey, key), eq(templates.svgKey, key), eq(templates.jsonKey, key),
     )),
     db.select({ id: heroSlides.id }).from(heroSlides).where(or(eq(heroSlides.desktopAssetId, assetId), eq(heroSlides.mobileAssetId, assetId))),
+    db.select({ id: offers.id }).from(offers).where(or(eq(offers.imageAssetId, assetId), eq(offers.mobileImageAssetId, assetId))),
     db.select({ id: customerArtworks.id }).from(customerArtworks).where(eq(customerArtworks.assetId, assetId)),
     db.select({ id: designs.id }).from(designs).where(eq(designs.assetId, assetId)),
     db.select({ id: productCategories.id }).from(productCategories).where(eq(productCategories.imageAssetId, assetId)),
     db.select({ id: orders.id }).from(orders).where(eq(orders.receiptAssetId, assetId)),
   ])
-  return { products: images.length, templates: templateRows.length, heroes: heroes.length, artworks: artworks.length, designs: designRows.length, categories: categories.length, orderDocuments: orderDocuments.length, total: images.length + templateRows.length + heroes.length + artworks.length + designRows.length + categories.length + orderDocuments.length }
+  return { products: images.length, templates: templateRows.length, heroes: heroes.length, offers: offerRows.length, artworks: artworks.length, designs: designRows.length, categories: categories.length, orderDocuments: orderDocuments.length, total: images.length + templateRows.length + heroes.length + offerRows.length + artworks.length + designRows.length + categories.length + orderDocuments.length }
 }
 
 export async function findStorageAsset(key: string) {

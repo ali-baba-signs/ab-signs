@@ -81,6 +81,8 @@ export function createUploadKey(input: UploadRequest, identity: string) {
       return [R2_PATHS.userUploads, safeIdentity, safeDesignId || 'temporary', filename].join('/')
     case 'design-draft':
       return [R2_PATHS.designUploads, safeIdentity, safeDesignId || 'drafts', filename].join('/')
+    case 'design-preview':
+      return [R2_PATHS.designPreviews, safeIdentity, safeDesignId || 'drafts', filename].join('/')
     case 'template':
       return `${R2_PATHS.editorTemplates}/vinyl-banners/${input.contentType === 'image/svg+xml' ? 'source' : 'previews'}/${filename}`
     case 'homepage':
@@ -91,6 +93,8 @@ export function createUploadKey(input: UploadRequest, identity: string) {
         R2_PATHS.homepagePromotionsDesktop,
         R2_PATHS.homepagePromotionsMobile,
       ] as string[]).includes(input.destination ?? '') ? input.destination : R2_PATHS.homepageHeroDesktop}/${filename}`
+    case 'offer-image':
+      return `${R2_PATHS.offers}/${input.destination === 'mobile' ? 'mobile' : 'hero'}/${filename}`
     case 'product-image':
       return `${input.destination === R2_PATHS.products ? input.destination : `${R2_PATHS.products}/uncategorized`}/${filename}`
     case 'order-document':

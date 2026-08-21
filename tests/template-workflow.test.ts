@@ -18,10 +18,12 @@ test('integer and decimal physical dimensions normalize without artificial .01 o
   assert.deepEqual(BANNER_SIZE_PRESETS[0], [500,1000])
 })
 
-test('fixed flag variants use the four exact production presets', () => {
+test('fixed flag presets start with production dimensions but remain admin-editable', () => {
   const base = { sku:'FLAG-1',name:'Feather flag',description:'<p>A sufficiently detailed flag product.</p>',basePrice:50,categoryId:'d94ab2d1-f1ec-49d8-9d56-b5ba0694baa3',sizeMode:'fixed_variants',images:[{key:'products/flag.png'}] }
   assert.throws(()=>validateProductInput({...base,sizes:[{label:'Feather / Small / Double-sided',unit:'mm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]}),/real print dimensions/i)
-  assert.throws(()=>validateProductInput({...base,sizes:[{label:'Wrong small',height:'60',width:'200',unit:'cm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'single'}]}),/50 × 200 cm/i)
+  const customized = validateProductInput({...base,sizes:[{label:'Custom small',height:'210',width:'55',unit:'cm',unitPrice:95,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'single'}]})
+  assert.equal(customized.sizes[0].width, '55')
+  assert.equal(customized.sizes[0].unitPrice, 95)
   const product=validateProductInput({...base,sizes:[{label:'Small – 2.6m',height:'200',width:'50',unit:'cm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]})
   assert.equal(product.sizes[0].sideMode,'double')
   assert.equal(product.sizes[0].width,'50')
@@ -52,7 +54,7 @@ test('products own sizes and template input links category to product without du
   assert.equal(product.templateId, null)
   assert.equal(product.sizes.length, 1)
   const template = validateTemplateInput({ name: 'Product template', productId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', width: 1000, height: 500, unit: 'mm', status: 'active', assets: {}, canvasData: { objects: [{ type: 'rect' }] } })
-  assert.equal(template.productId, 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3')
+  assert.deepEqual(template.productIds, ['a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3'])
   assert.equal('sizes' in template, false)
 })
 

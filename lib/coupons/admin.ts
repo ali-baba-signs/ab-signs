@@ -41,3 +41,12 @@ export function idList(value: unknown) {
   if (!Array.isArray(value)) return [] as string[]
   return [...new Set(value.filter((id): id is string => typeof id === 'string' && id.length > 0))]
 }
+
+export function couponAdminError(error: unknown, fallback: string) {
+  const databaseCode = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : ''
+  const message = error instanceof Error ? error.message : ''
+  if (databaseCode === '23505' || /unique constraint|coupons_code/i.test(message)) return { status: 409, error: { code: 'COUPON_CODE_EXISTS', field: 'code', message: 'That coupon code already exists. Enter a different code.' } }
+  if (databaseCode || /column .* does not exist|relation .* does not exist/i.test(message)) return { status: 500, error: { code: 'COUPON_DATABASE_ERROR', message: 'Coupons are temporarily unavailable because the database is not up to date. Apply the latest migration and retry.' } }
+  const field = /coupon code/i.test(message) ? 'code' : /discount/i.test(message) ? 'discountValue' : /start date|end date/i.test(message) ? 'endsAt' : /usage limit/i.test(message) ? 'usageLimit' : /per-customer/i.test(message) ? 'perCustomerUsageLimit' : /minimum subtotal/i.test(message) ? 'minimumSubtotal' : /maximum discount/i.test(message) ? 'maxDiscountAmount' : /customer-specific/i.test(message) ? 'customerIds' : undefined
+  return { status: 400, error: { code: 'COUPON_VALIDATION_ERROR', ...(field ? { field } : {}), message: message || fallback } }
+}

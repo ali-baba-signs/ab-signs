@@ -1,18 +1,15 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { renderProductionDesign } from '../lib/production/design-render'
+import { renderProductionJpeg } from '../lib/production/design-render'
 
-test('online-editor production renderer creates preview and dimensioned PDF with external trim marks', { timeout: 60000 }, async () => {
-  const payload = {
-    version: 2,
-    productConfig: { logicalCanvasWidth: 400, logicalCanvasHeight: 200 },
-    canvasJson: { version: '7.4.0', background: '#ffffff', objects: [{ type: 'Rect', left: 40, top: 30, width: 200, height: 80, fill: '#ed1b68' }] },
-    sides: { front: { canvasJson: { version: '7.4.0', background: '#ffffff', objects: [{ type: 'Rect', left: 40, top: 30, width: 200, height: 80, fill: '#ed1b68' }] } } },
-  }
-  const output = await renderProductionDesign(payload, { side: 'front', widthMm: 1000, heightMm: 500, bleedMm: 3, trimMarks: true })
-  assert.equal(output.preview.subarray(1,4).toString(), 'PNG')
+test('browser JPEG is packaged into a dimensioned production PDF without native canvas', async () => {
+  const jpeg = await readFile(new URL('../public/placeholder.jpg', import.meta.url))
+  const output = renderProductionJpeg(jpeg, { widthMm: 1000, heightMm: 500, bleedMm: 3, trimMarks: true })
   assert.equal(output.pdf.subarray(0,8).toString(), '%PDF-1.4')
   assert.equal(output.metadata.trimWidthMm, 1000)
   assert.equal(output.metadata.bleedMm, 3)
-  await assert.rejects(() => renderProductionDesign(payload, { side: 'back', widthMm: 1000, heightMm: 500, bleedMm: 3, trimMarks: true }), /Back artwork/)
+  assert.ok(output.metadata.pixelWidth > 0)
+  assert.ok(output.metadata.pixelHeight > 0)
+  assert.throws(() => renderProductionJpeg(Buffer.from('not a jpeg'), { widthMm: 1000, heightMm: 500, bleedMm: 3, trimMarks: true }), /valid JPEG/)
 })

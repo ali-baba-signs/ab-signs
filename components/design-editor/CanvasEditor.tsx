@@ -14,6 +14,7 @@ import { DEFAULT_PRODUCT_CONFIG, normalizeProductConfig } from '@/lib/editor/edi
 import { useSession } from '@/lib/auth-client'
 import { fetchTemplate } from '@/lib/editor/templates'
 import { loadDesign as loadStoredDesign, saveDesign, serializeDesign } from '@/lib/editor/design-serialization'
+import { renderBrowserSide, uploadBrowserRender } from '@/lib/editor/browser-preview'
 import {
   CUSTOM_PROPERTIES,
   type DesignTemplate,
@@ -454,30 +455,54 @@ export function CanvasEditor() {
       return `local:${templateId || 'blank'}:${Date.now()}`
     }
 
-    setStatus('Saving private draft…')
-    const databaseResponse = await fetch('/api/designs/draft', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        id: savedDesignId.current ?? undefined,
-        name: 'Untitled design',
-        design,
-        templateId,
-        productId: requestedProductId,
-        variantId: requestedSizeId,
-      }),
-    })
-    const databasePayload = await databaseResponse.json()
-    if (databaseResponse.ok) {
-      savedDesignId.current =
-        databasePayload.data?.design?.id ??
-        databasePayload.design?.id ??
-        savedDesignId.current
+    try {
+      setStatus('Rendering production preview…')
+      const renderGroupId = savedDesignId.current ?? crypto.randomUUID()
+      const renderAndUpload = async (canvasJson: Record<string, unknown>, side: 'front' | 'back') => {
+        const rendered = await renderBrowserSide(canvasJson, configRef.current)
+        const [preview, production] = await Promise.all([
+          uploadBrowserRender(rendered.preview, `${side}-preview.png`, renderGroupId),
+          uploadBrowserRender(rendered.production, `${side}-production.jpg`, renderGroupId),
+        ])
+        return { preview, production }
+      }
+      const frontJson = sides?.front.canvasJson ?? design.canvasJson
+      const front = await renderAndUpload(frontJson, 'front')
+      // Match the previous server renderer: an untouched back side starts from
+      // the front state until the customer explicitly edits it.
+      const back = configRef.current.sideMode === 'double'
+        ? await renderAndUpload(sides?.back?.canvasJson ?? frontJson, 'back')
+        : undefined
+
+      setStatus('Saving private draft…')
+      const databaseResponse = await fetch('/api/designs/draft', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: savedDesignId.current ?? undefined,
+          name: 'Untitled design',
+          design,
+          previews: { front, ...(back ? { back } : {}) },
+          templateId,
+          productId: requestedProductId,
+          variantId: requestedSizeId,
+        }),
+      })
+      const databasePayload = await databaseResponse.json()
+      if (databaseResponse.ok) {
+        savedDesignId.current =
+          databasePayload.data?.design?.id ??
+          databasePayload.design?.id ??
+          savedDesignId.current
+      }
+      setStatus(databaseResponse.ok
+        ? `Private draft saved ${new Date().toLocaleTimeString()}`
+        : databasePayload.error?.message || 'Private design could not be saved.')
+      return databaseResponse.ok ? savedDesignId.current : null
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Private design could not be saved.')
+      return null
     }
-    setStatus(databaseResponse.ok
-      ? `Private draft saved ${new Date().toLocaleTimeString()}`
-      : databasePayload.error?.message || 'Private design could not be saved.')
-    return databaseResponse.ok ? savedDesignId.current : null
   }, [requestedProductId, requestedSizeId, session?.user, templateId])
 
   const switchSide = useCallback(async (next: 'front' | 'back') => {

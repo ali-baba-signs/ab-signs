@@ -229,6 +229,12 @@ export const templates = pgTable('templates', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('templates_product_idx').on(table.productId), index('templates_status_product_idx').on(table.status, table.productId)])
 
+export const templateProducts = pgTable('template_products', {
+  templateId: uuid('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('template_products_unique').on(table.templateId, table.productId), index('template_products_product_idx').on(table.productId)])
+
 export const templateSizes = pgTable('template_sizes', {
   id: uuid('id').primaryKey().defaultRandom(),
   templateId: uuid('template_id').notNull().references(() => templates.id, { onDelete: 'cascade' }),
@@ -456,6 +462,8 @@ export const offers = pgTable('offers', {
   shortDescription: text('short_description'),
   fullDescription: text('full_description'),
   terms: text('terms'),
+  imageAssetId: uuid('image_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  mobileImageAssetId: uuid('mobile_image_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   imageUrl: text('image_url'),
   mobileImageUrl: text('mobile_image_url'),
   badgeText: varchar('badge_text', { length: 100 }),
@@ -514,14 +522,15 @@ export const adminActivityLogs = pgTable('admin_activity_logs', {
 
 export const heroSlides = pgTable('hero_slides', {
   id: uuid('id').primaryKey().defaultRandom(),
-  desktopAssetId: uuid('desktop_asset_id').notNull().references(() => storageAssets.id, { onDelete: 'restrict' }),
+  offerId: uuid('offer_id').references(() => offers.id, { onDelete: 'restrict' }),
+  desktopAssetId: uuid('desktop_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   mobileAssetId: uuid('mobile_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   title: varchar('title', { length: 255 }),
   description: text('description'),
   eyebrow: varchar('eyebrow', { length: 255 }),
   buttonLabel: varchar('button_label', { length: 120 }),
   buttonUrl: text('button_url'),
-  altText: varchar('alt_text', { length: 255 }).notNull(),
+  altText: varchar('alt_text', { length: 255 }),
   horizontalAlignment: varchar('horizontal_alignment', { length: 10 }).default('left').notNull(),
   verticalAlignment: varchar('vertical_alignment', { length: 10 }).default('middle').notNull(),
   featured: boolean('featured').default(true).notNull(),

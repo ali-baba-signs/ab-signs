@@ -3,35 +3,17 @@ import { resolve } from 'node:path'
 import { createReceiptPdf } from '../lib/pdf/receipt'
 
 async function main() {
-const outputDirectory = resolve('tmp', 'receipt-verification')
+const outputDirectory = resolve('tmp', 'pdfs')
 const output = resolve(outputDirectory, 'sample-receipt.pdf')
 await mkdir(outputDirectory, { recursive: true })
-await writeFile(output, createReceiptPdf([
-  'Alibaba Signs',
-  'accounts@alibabasigns.com.au',
-  '+61 2 0000 0000',
-  'Sydney, NSW, Australia',
-  '',
-  'PAYMENT RECEIPT',
-  'Order: ABS-VERIFY-001',
-  'Order date: 2026-08-06T09:00:00.000Z',
-  'Receipt generated: 2026-08-06T10:00:00.000Z',
-  'Customer: customer@example.com',
-  'Billing address: 10 Example Street, Sydney, NSW, 2000, Australia',
-  '',
-  'ITEMS',
-  'Vinyl Banner | 6 x 3 ft | qty 2 | AUD 120.00',
-  '',
-  'Subtotal: AUD 240.00',
-  'Discounts: AUD 0.00',
-  'Tax: AUD 24.00',
-  'Shipping: AUD 15.00',
-  'Total: AUD 279.00',
-  'Payment method: card',
-  'Payment status: paid',
-  'Transaction reference: verify_001',
-  'Payment date: 2026-08-06T09:05:00.000Z',
-]))
+await writeFile(output, createReceiptPdf({
+  storeName: 'Ali Baba Signs', storeEmail: 'sales@alibabasigns.com.au', storePhone: '04 33 88 55 79', storeAddress: 'Southern River, Western Australia',
+  orderNumber: 'ABS-VERIFY-001', orderDate: '21/08/2026, 9:00 am', paymentDate: '21/08/2026, 9:05 am', fulfilmentType: 'Delivery', receiptNumber: 'receipt_verify_001', paymentStatus: 'paid',
+  customerName: 'Test Customer', customerEmail: 'customer@example.com', shippingAddress: '10 Example Street, Perth, WA, 6000, Australia',
+  stripePaymentIntentId: 'pi_3VerifyAliBabaSigns', cardBrand: 'visa', cardLast4: '4242', currency: 'AUD',
+  items: [{ name: 'Vinyl Banner', sku: 'VB-6X3', size: '6 x 3 ft', options: 'Single-sided / design assistance', quantity: 2, unitPrice: 120, lineTotal: 240 }],
+  subtotal: 240, discount: 20, tax: 22, shipping: 15, total: 257, generatedAt: '21/08/2026, 9:05 am',
+}))
 console.log(output)
 }
 

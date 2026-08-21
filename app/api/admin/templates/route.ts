@@ -1,36 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { asc, desc, eq, inArray } from 'drizzle-orm'
+import { asc, desc, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { adminActivityLogs, productCategories, products, productSizes, storageAssets, templates } from '@/lib/db/schema'
+import { adminActivityLogs, productCategories, products, productSizes, storageAssets, templateProducts, templates } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
-import { validateTemplateInput, type TemplateInput } from '@/lib/templates/validation'
+import { validateTemplateInput } from '@/lib/templates/validation'
+import { resolveTemplateProducts } from '@/lib/templates/product-selection'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { safeErrorMessage } from '@/lib/api/safe-error'
-
-export async function resolveTemplateProduct(input: TemplateInput) {
-  const [product] = await db.select().from(products).where(eq(products.id, input.productId)).limit(1)
-  if (!product || !product.active) throw new Error('Select an active product for this template.')
-  if (product.categoryId !== input.categoryId) throw new Error('The selected product does not belong to the selected category.')
-  const sizes = await db.select().from(productSizes).where(eq(productSizes.productId, product.id)).orderBy(asc(productSizes.order))
-  const enabledSizes = sizes.filter((size) => size.enabled && Number(size.width) > 0 && Number(size.height) > 0)
-  if (!enabledSizes.length) throw new Error('Configure at least one enabled product size before creating a template.')
-  const baseSize = enabledSizes.find((size) => size.isDefault) || enabledSizes[0]
-  if (baseSize.unit !== input.unit || Math.abs(Number(baseSize.width) - Number(input.width)) > 0.001 || Math.abs(Number(baseSize.height) - Number(input.height)) > 0.001) throw new Error('The template canvas must use the product default size.')
-  return { product, sizes: enabledSizes, baseSize }
-}
 
 export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
   try {
-    const [rows, categories, productRows, sizes] = await Promise.all([
+    const [rows, categories, productRows, sizes, links] = await Promise.all([
       db.select().from(templates).orderBy(desc(templates.updatedAt)),
       db.select({ id: productCategories.id, name: productCategories.name, slug: productCategories.slug }).from(productCategories).orderBy(asc(productCategories.displayOrder), asc(productCategories.name)),
       db.select({ id: products.id, name: products.name, categoryId: products.categoryId, active: products.active }).from(products).orderBy(asc(products.name)),
       db.select().from(productSizes).orderBy(asc(productSizes.order)),
+      db.select().from(templateProducts),
     ])
     const productsWithSizes = productRows.map((product) => ({ ...product, sizes: sizes.filter((size) => size.productId === product.id) }))
-    return NextResponse.json({ data: { templates: rows.map((row) => { const product = productsWithSizes.find((item) => item.id === row.productId); const category = categories.find((item) => item.id === product?.categoryId); return { ...row, categoryId: product?.categoryId || null, categoryName: category?.name || null, productName: product?.name || null, sizes: product?.sizes || [] } }), categories, products: productsWithSizes } }, { headers: { 'cache-control': 'no-store' } })
+    return NextResponse.json({ data: { templates: rows.map((row) => { const productIds = links.filter((link) => link.templateId === row.id).map((link) => link.productId); const assigned = productsWithSizes.filter((item) => productIds.includes(item.id)); const category = categories.find((item) => item.id === assigned[0]?.categoryId); return { ...row, productIds, categoryId: assigned[0]?.categoryId || null, categoryName: category?.name || null, productName: assigned.map((item) => item.name).join(', ') || null, products: assigned, sizes: assigned[0]?.sizes || [] } }), categories, products: productsWithSizes } }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     console.error('Template list failed', error)
     return NextResponse.json({ error: { code: 'TEMPLATES_LOAD_FAILED', message: 'Templates could not be loaded. Apply the latest database migration and try again.' } }, { status: 500 })
@@ -42,7 +32,7 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
   try {
     const input = validateTemplateInput(await request.json())
-    const { product, baseSize } = await resolveTemplateProduct(input)
+    const { products: selectedProducts, primaryProduct, baseSize } = await resolveTemplateProducts(input)
     if (!input.assets.previewImage || !input.assets.svg) throw new Error('Upload both a preview image and an SVG template source.')
     const assetRows = await db.select().from(storageAssets).where(inArray(storageAssets.id, [input.assets.previewImage.id, input.assets.svg.id]))
     const preview = assetRows.find((asset) => asset.id === input.assets.previewImage!.id)
@@ -52,14 +42,15 @@ export async function POST(request: NextRequest) {
     if (!input.svgChecksum || svg.etag !== input.svgChecksum) throw new Error('The generated data checksum does not match the uploaded sanitized SVG.')
     const [created] = await db.transaction(async (tx) => {
       const rows = await tx.insert(templates).values({
-        productId: product.id, name: input.name, description: input.description, category: null, status: input.status,
+        productId: primaryProduct.id, name: input.name, description: input.description, category: null, status: input.status,
         canvasData: input.canvasData!, thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
         physicalWidth: baseSize.width, physicalHeight: baseSize.height, measurementUnit: baseSize.unit,
         logicalCanvasWidth: input.logicalCanvasWidth, logicalCanvasHeight: input.logicalCanvasHeight, scaleMetadata: input.scaleMetadata,
         templateVersion: 1, svgChecksum: input.svgChecksum, conversionVersion: input.conversionVersion, conversionStatus: 'ready', conversionError: null, generatedAt: new Date(),
       }).returning()
-      await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: 'template.created', entityType: 'template', entityId: rows[0].id, entityName: rows[0].name, description: `Created SVG editable template ${rows[0].name} for ${product.name}.`, metadata: { productId: product.id, categoryId: product.categoryId } }))
+      await tx.insert(templateProducts).values(selectedProducts.map((product) => ({ templateId: rows[0].id, productId: product.id })))
+      await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: 'template.created', entityType: 'template', entityId: rows[0].id, entityName: rows[0].name, description: `Created SVG editable template ${rows[0].name} for ${selectedProducts.length} product(s).`, metadata: { productIds: input.productIds, categoryId: input.categoryId } }))
       return rows
     })
     return NextResponse.json({ data: { template: created } }, { status: 201 })

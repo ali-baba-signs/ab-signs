@@ -3,7 +3,7 @@ import { desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { couponCategories, couponCustomers, couponProducts, coupons, productCategories, products, users } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
-import { idList, parseCouponAdminInput } from '@/lib/coupons/admin'
+import { couponAdminError, idList, parseCouponAdminInput } from '@/lib/coupons/admin'
 
 async function couponDetails() {
   const [rows, productLinks, categoryLinks, customerLinks, productRows, categoryRows, customerRows] = await Promise.all([
@@ -28,7 +28,8 @@ async function ensureKnownIds(productIds: string[], categoryIds: string[], custo
 
 export async function GET() {
   if (!await getAdminSession()) return NextResponse.json({ error: { message: 'Admin access required.' } }, { status: 401 })
-  return NextResponse.json({ data: await couponDetails() })
+  try { return NextResponse.json({ data: await couponDetails() }) }
+  catch (error) { console.error('Coupon list failed', error); const result = couponAdminError(error, 'Coupons could not be loaded.'); return NextResponse.json({ error: result.error }, { status: result.status }) }
 }
 
 export async function POST(request: NextRequest) {
@@ -47,6 +48,8 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json({ data: { coupon } }, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: { message: error instanceof Error ? error.message : 'Coupon could not be created.' } }, { status: 400 })
+    console.error('Coupon create failed', error)
+    const result = couponAdminError(error, 'Coupon could not be created.')
+    return NextResponse.json({ error: result.error }, { status: result.status })
   }
 }

@@ -2,7 +2,7 @@
 
 export interface UploadedAsset { id: string; key: string; url: string; filename: string; contentType: string; size: number; checksum?: string }
 
-export function uploadAdminFile(file: File, purpose: 'product-image' | 'template' | 'homepage' | 'order-document', destination: string, onProgress?: (percent: number) => void) {
+export function uploadAdminFile(file: File, purpose: 'product-image' | 'template' | 'homepage' | 'offer-image' | 'order-document', destination: string, onProgress?: (percent: number) => void) {
   return new Promise<UploadedAsset>((resolve, reject) => {
     const request = new XMLHttpRequest()
     request.open('POST', '/api/admin/uploads')

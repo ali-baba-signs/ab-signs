@@ -18,30 +18,34 @@ try {
     select
       exists(select 1 from information_schema.columns where table_name='templates' and column_name='product_id') as template_product,
       exists(select 1 from information_schema.columns where table_name='product_sizes' and column_name='fit_mode') as size_config,
-      exists(select 1 from pg_indexes where indexname='templates_status_product_idx') as compatibility_index
+      exists(select 1 from pg_indexes where indexname='templates_status_product_idx') as compatibility_index,
+      exists(select 1 from information_schema.tables where table_name='template_products') as template_products
   `)
-  assert(schema.rows[0].template_product && schema.rows[0].size_config && schema.rows[0].compatibility_index, 'Phase 2 migration is not applied.')
+  assert(schema.rows[0].template_product && schema.rows[0].size_config && schema.rows[0].compatibility_index && schema.rows[0].template_products, 'Phase 2 correction migration is not applied.')
 
   const flagCategory = await client.query("insert into product_categories (name, slug, category, enabled) values ('Flags', $1, 'custom_banners', true) returning id, name", [`flags-${marker}`])
   const bannerCategory = await client.query("insert into product_categories (name, slug, category, enabled) values ('Banners', $1, 'custom_banners', true) returning id, name", [`banners-${marker}`])
   const feather = await client.query("insert into products (category_id, sku, name, description, base_price, size_mode, active) values ($1, $2, 'Feather Flag', 'Phase 2 verification product', 100, 'fixed_variants', true) returning id, name", [flagCategory.rows[0].id, `FLAG-${marker}`])
+  const featherSecond = await client.query("insert into products (category_id, sku, name, description, base_price, size_mode, active) values ($1, $2, 'Teardrop Flag', 'Second compatible verification product', 110, 'fixed_variants', true) returning id, name", [flagCategory.rows[0].id, `TEARDROP-${marker}`])
   const banner = await client.query("insert into products (category_id, sku, name, description, base_price, size_mode, active) values ($1, $2, 'Vinyl Banner', 'Phase 2 banner verification product', 80, 'preset_sizes', true) returning id, name", [bannerCategory.rows[0].id, `BANNER-${marker}`])
 
   const flagSizes = [
     ['Small – 2.6m', 50, 200, 'small', 'Approximately 2.6 m assembled height'],
-    ['Medium – 3.4m', 60, 260, 'medium', 'Approximately 3.1 m assembled height'],
-    ['Large – 4.5m', 70, 340, 'large', 'Approximately 4.1 m assembled height'],
-    ['Extra Large – 5.5m', 80, 410, 'extra_large', 'Approximately 5.0 m assembled height'],
+    ['Medium – 3.4m', 60, 260, 'medium', 'Approximately 3.4 m assembled height'],
+    ['Large – 4.5m', 70, 340, 'large', 'Approximately 4.5 m assembled height'],
+    ['Extra Large – 5.5m', 80, 410, 'extra_large', 'Approximately 5.5 m assembled height'],
   ]
   for (const [label, width, height, sizeGroup, assembledHeight] of flagSizes) {
     await client.query('insert into product_sizes (product_id, label, width, height, unit, unit_price, enabled, sort_order, variant_type, size_group, side_mode, assembled_height_description, is_default) values ($1,$2,$3,$4,\'cm\',100,true,$5,\'feather\',$6,\'single\',$7,$8)', [feather.rows[0].id, label, width, height, flagSizes.findIndex((item) => item[0] === label), sizeGroup, assembledHeight, sizeGroup === 'small'])
   }
+  await client.query("insert into product_sizes (product_id, label, width, height, unit, unit_price, enabled, sort_order, variant_type, size_group, side_mode, is_default) values ($1,'Custom Teardrop',55,210,'cm',110,true,0,'teardrop','small','single',true)", [featherSecond.rows[0].id])
   for (const [order, height, width] of [[0, 500, 1000], [1, 600, 900], [2, 1000, 1500]]) {
     await client.query('insert into product_sizes (product_id, label, width, height, unit, unit_price, enabled, sort_order, is_default) values ($1,$2,$3,$4,\'mm\',80,true,$5,$6)', [banner.rows[0].id, `${height} × ${width} mm`, width, height, order, order === 0])
   }
 
   const flagTemplate = await client.query("insert into templates (product_id, name, description, preview_image_url, physical_width, physical_height, measurement_unit, logical_canvas_width, logical_canvas_height, canvas_data, conversion_status, status) values ($1, 'Feather Flag template', 'Verification template', 'https://example.invalid/flag.webp', 50, 200, 'cm', 300, 1200, $2::json, 'ready', 'active') returning id, product_id", [feather.rows[0].id, JSON.stringify({ version: '7.4.0', objects: [{ type: 'rect' }] })])
   const bannerTemplate = await client.query("insert into templates (product_id, name, description, preview_image_url, physical_width, physical_height, measurement_unit, logical_canvas_width, logical_canvas_height, canvas_data, conversion_status, status) values ($1, 'Vinyl Banner template', 'Verification template', 'https://example.invalid/banner.webp', 1000, 500, 'mm', 1200, 600, $2::json, 'ready', 'active') returning id, product_id", [banner.rows[0].id, JSON.stringify({ version: '7.4.0', objects: [{ type: 'rect' }] })])
+  await client.query('insert into template_products (template_id, product_id) values ($1,$2),($1,$3),($4,$5)', [flagTemplate.rows[0].id, feather.rows[0].id, featherSecond.rows[0].id, bannerTemplate.rows[0].id, banner.rows[0].id])
 
   const inherited = await client.query('select ps.label, ps.width, ps.height, ps.unit from templates t join product_sizes ps on ps.product_id=t.product_id and ps.enabled where t.id=$1 order by ps.sort_order', [flagTemplate.rows[0].id])
   assert(inherited.rowCount === 4, 'Flag template did not inherit exactly four product sizes.')
@@ -49,20 +53,22 @@ try {
   const duplicateSizes = await client.query('select count(*)::int as count from template_sizes where template_id in ($1,$2)', [flagTemplate.rows[0].id, bannerTemplate.rows[0].id])
   assert(duplicateSizes.rows[0].count === 0, 'New templates created duplicate template_sizes rows.')
 
-  const flagCompatible = await client.query("select id, name from templates where status='active' and conversion_status='ready' and product_id=$1", [feather.rows[0].id])
-  const bannerCompatible = await client.query("select id, name from templates where status='active' and conversion_status='ready' and product_id=$1", [banner.rows[0].id])
+  const flagCompatible = await client.query("select t.id, t.name from templates t join template_products tp on tp.template_id=t.id where t.status='active' and t.conversion_status='ready' and tp.product_id=$1", [feather.rows[0].id])
+  const secondFlagCompatible = await client.query("select t.id, t.name from templates t join template_products tp on tp.template_id=t.id where t.status='active' and t.conversion_status='ready' and tp.product_id=$1", [featherSecond.rows[0].id])
+  const bannerCompatible = await client.query("select t.id, t.name from templates t join template_products tp on tp.template_id=t.id where t.status='active' and t.conversion_status='ready' and tp.product_id=$1", [banner.rows[0].id])
   assert(flagCompatible.rowCount === 1 && flagCompatible.rows[0].id === flagTemplate.rows[0].id, 'Flag filtering returned an unrelated template.')
+  assert(secondFlagCompatible.rowCount === 1 && secondFlagCompatible.rows[0].id === flagTemplate.rows[0].id, 'Many-to-many template was not available to the second assigned product.')
   assert(bannerCompatible.rowCount === 1 && bannerCompatible.rows[0].id === bannerTemplate.rows[0].id, 'Banner filtering returned an unrelated template.')
   const bannerSizes = await client.query('select label from product_sizes where product_id=$1 and enabled order by sort_order', [banner.rows[0].id])
   assert(bannerSizes.rowCount === 3, 'Banner sizes were not served from the shared product size engine.')
-  const derivedTaxonomy = await client.query('select pc.name as category, p.name as subcategory from templates t join products p on p.id=t.product_id join product_categories pc on pc.id=p.category_id where t.id=$1', [flagTemplate.rows[0].id])
+  const derivedTaxonomy = await client.query('select pc.name as category, p.name as subcategory from templates t join template_products tp on tp.template_id=t.id join products p on p.id=tp.product_id join product_categories pc on pc.id=p.category_id where t.id=$1 and p.id=$2', [flagTemplate.rows[0].id, feather.rows[0].id])
   assert(derivedTaxonomy.rows[0].category === 'Flags' && derivedTaxonomy.rows[0].subcategory === 'Feather Flag', 'Template taxonomy was not derived from product/category.')
 
   const legacy = await client.query("select count(*)::int as remaining from products where size_mode='template_sizes'")
   assert(legacy.rows[0].remaining === 0, 'Legacy template_sizes products remain after migration.')
   results.schema = schema.rows[0]
   results.admin = { category: flagCategory.rows[0].name, product: feather.rows[0].name, sizes: inherited.rows, template: 'Feather Flag template', duplicateTemplateSizeRows: duplicateSizes.rows[0].count }
-  results.customer = { flagSizes: inherited.rows.map((row) => row.label), bannerSizes: bannerSizes.rows.map((row) => row.label), flagTemplates: flagCompatible.rows.map((row) => row.name), bannerTemplates: bannerCompatible.rows.map((row) => row.name) }
+  results.customer = { flagSizes: inherited.rows.map((row) => row.label), bannerSizes: bannerSizes.rows.map((row) => row.label), flagTemplates: flagCompatible.rows.map((row) => row.name), secondProductTemplates: secondFlagCompatible.rows.map((row) => row.name), bannerTemplates: bannerCompatible.rows.map((row) => row.name) }
   results.taxonomy = derivedTaxonomy.rows[0]
   results.legacyTemplateSizeProducts = legacy.rows[0].remaining
   console.log(JSON.stringify({ pass: true, ...results }, null, 2))

@@ -16,7 +16,6 @@ try {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['canvas', 'fabric'],
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: r2RemotePattern ? [r2RemotePattern] : [],

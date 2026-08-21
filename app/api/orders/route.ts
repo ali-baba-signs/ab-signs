@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { couponRedemptions, couponReservations, coupons, customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productSizes, productTemplateSizePrices, products, templateSizes, templates } from '@/lib/db/schema'
+import { couponRedemptions, couponReservations, coupons, customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productSizes, productTemplateSizePrices, products, templateProducts, templateSizes, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { loadStoreSettings } from '@/lib/store/load-settings'
@@ -10,6 +10,7 @@ import { parseMeasurement } from '@/lib/measurements'
 import { currentPolicyAcceptance } from '@/lib/policies/registry'
 import { validateCoupon } from '@/lib/coupons/engine'
 import { couponReservationExpiry } from '@/lib/coupons/reservations'
+import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -78,12 +79,13 @@ export async function POST(request: NextRequest) {
     if (productIds.length !== new Set(items.map((item) => item.productId)).size || !sizeIds.length) throw new Error('Every cart item needs a valid product and size.')
     const designIds = [...new Set(items.map((item) => item.designId).filter((id): id is string => Boolean(id)))]
     const artworkIds = [...new Set(items.map((item) => item.artworkId).filter((id): id is string => Boolean(id)))]
-    const [productRows, sizeRows, templateSizeRows, priceRows, templateRows, designRows, artworkRows] = await Promise.all([
+    const [productRows, sizeRows, templateSizeRows, priceRows, templateRows, templateLinks, designRows, artworkRows] = await Promise.all([
       db.select().from(products).where(inArray(products.id, productIds)),
       db.select().from(productSizes).where(inArray(productSizes.id, sizeIds)),
       db.select().from(templateSizes).where(inArray(templateSizes.id, sizeIds)),
       db.select().from(productTemplateSizePrices),
-      db.select({ id: templates.id, productId: templates.productId, status: templates.status, conversionStatus: templates.conversionStatus }).from(templates),
+      db.select({ id: templates.id, status: templates.status, conversionStatus: templates.conversionStatus }).from(templates),
+      db.select().from(templateProducts),
       designIds.length ? db.select().from(designs).where(inArray(designs.id, designIds)) : Promise.resolve([]),
       artworkIds.length ? db.select().from(customerArtworks).where(inArray(customerArtworks.id, artworkIds)) : Promise.resolve([]),
     ])
@@ -97,7 +99,8 @@ export async function POST(request: NextRequest) {
       if (!product || !size || (templateSize && !price)) throw new Error('A product or selected size is no longer available.')
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('Quantity must be between 1 and 1000.')
       const selectedTemplateId = item.templateId || product.templateId
-      if (selectedTemplateId && !templateRows.some((template) => template.id === selectedTemplateId && template.productId === product.id && template.status === 'active' && template.conversionStatus === 'ready')) throw new Error('The selected editable template is not compatible with this product.')
+      if (selectedTemplateId && (!templateRows.some((template) => template.id === selectedTemplateId && template.status === 'active' && template.conversionStatus === 'ready') || !templateLinks.some((link) => link.templateId === selectedTemplateId && link.productId === product.id))) throw new Error('The selected editable template is not compatible with this product.')
+      if (selectedTemplateId && legacySize && !isTemplateCompatibleWithSize(selectedTemplateId, legacySize)) throw new Error('This template is not available for the selected size. Please choose another size.')
       const design = item.designId ? designRows.find((row) => row.id === item.designId && row.productId === product.id && row.templateId === selectedTemplateId && row.userId === session?.user.id) : null
       if (item.designId && !design) throw new Error('The selected customization is unavailable or does not belong to this account.')
       const artwork = item.artworkId ? artworkRows.find((row) => row.id === item.artworkId && row.productId === product.id && row.userId === session?.user.id && (row.templateSizeId === size.id || row.productSizeId === size.id)) : null
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest) {
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource },
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource },
       })))
       if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { orderItems, orders, paymentRecords, products, storageAssets } from '@/lib/db/schema'
@@ -23,10 +24,50 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const productRows = items.length ? await db.select().from(products).where(inArray(products.id, items.map((item) => item.productId))) : []
   const [payment] = await db.select().from(paymentRecords).where(eq(paymentRecords.orderId, id)).limit(1)
   const settings = await loadStoreSettings()
-  const shipping = order.shippingAddress as Record<string, string>
-  const billing = order.billingAddress as Record<string, string>
-  const subtotal = Number(order.totalAmount) - Number(order.taxAmount) - Number(order.shippingAmount)
-  const lines = [settings.storeName, settings.storeEmail, settings.storePhone, settings.address, '', 'PAYMENT RECEIPT', `Order: ${order.orderNumber}`, `Order date: ${order.createdAt.toISOString()}`, `Receipt generated: ${new Date().toISOString()}`, `Customer: ${order.customerEmail}`, `Billing address: ${Object.values(billing || {}).filter(Boolean).join(', ')}`, `Shipping address: ${Object.values(shipping || {}).filter(Boolean).join(', ')}`, '', 'ITEMS', ...items.map((item) => { const product = productRows.find((row) => row.id === item.productId); const specs = item.specifications as Record<string, string>; return `${product?.name || 'Product'} | ${specs?.sizeLabel || 'Standard'} | qty ${item.quantity} | ${order.currency} ${Number(item.totalPrice).toFixed(2)}` }), '', `Subtotal: ${order.currency} ${subtotal.toFixed(2)}`, `Discounts: ${order.currency} 0.00`, `Tax: ${order.currency} ${Number(order.taxAmount).toFixed(2)}`, `Shipping: ${order.currency} ${Number(order.shippingAmount).toFixed(2)}`, `Total: ${order.currency} ${Number(order.totalAmount).toFixed(2)}`, `Payment method: ${order.paymentMethod || payment?.provider || 'Not recorded'}`, `Payment status: ${order.paymentStatus}`, `Transaction reference: ${payment?.externalId || 'Not recorded'}`, `Payment date: ${payment?.updatedAt?.toISOString() || order.updatedAt.toISOString()}`]
-  const pdf = createReceiptPdf(lines)
+  const shipping = (order.shippingAddress || {}) as Record<string, string>
+  let paymentMetadata = (payment?.metadata || {}) as Record<string, unknown>
+  if ((!paymentMetadata.cardBrand || !paymentMetadata.cardLast4) && payment?.provider === 'stripe' && payment.externalId && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+      const intent = await stripe.paymentIntents.retrieve(payment.externalId, { expand: ['latest_charge'] })
+      const charge = typeof intent.latest_charge === 'object' ? intent.latest_charge : null
+      const card = charge?.payment_method_details?.card
+      if (card?.brand && card.last4) paymentMetadata = { ...paymentMetadata, cardBrand: card.brand, cardLast4: card.last4 }
+    } catch (error) { console.error('Historical Stripe receipt card details could not be loaded', { orderId: id, error }) }
+  }
+  const subtotal = items.reduce((sum, item) => sum + Number(item.totalPrice), 0)
+  const customerName = [shipping.firstName, shipping.lastName].filter(Boolean).join(' ') || order.customerEmail
+  const address = [shipping.address, shipping.addressLine2, shipping.city, shipping.state, shipping.postalCode, shipping.country].filter(Boolean).join(', ')
+  const generatedAt = new Date().toISOString()
+  const pdf = createReceiptPdf({
+    storeName: settings.storeName,
+    storeEmail: settings.storeEmail,
+    storePhone: settings.storePhone,
+    storeAddress: settings.address,
+    orderNumber: order.orderNumber,
+    orderDate: order.createdAt.toLocaleString('en-AU'),
+    paymentDate: (payment?.updatedAt || order.updatedAt).toLocaleString('en-AU'),
+    fulfilmentType: order.deliveryType === 'pickup' ? 'Pickup' : 'Delivery',
+    receiptNumber: payment?.id || order.id,
+    paymentStatus: order.paymentStatus,
+    customerName,
+    customerEmail: order.customerEmail,
+    shippingAddress: address,
+    stripePaymentIntentId: payment?.externalId || 'Not recorded',
+    cardBrand: typeof paymentMetadata.cardBrand === 'string' ? paymentMetadata.cardBrand : 'Not recorded',
+    cardLast4: typeof paymentMetadata.cardLast4 === 'string' ? paymentMetadata.cardLast4 : 'Not recorded',
+    currency: order.currency,
+    items: items.map((item) => {
+      const product = productRows.find((row) => row.id === item.productId)
+      const specs = (item.specifications || {}) as Record<string, string>
+      return { name: product?.name || specs.productName || 'Product', sku: product?.sku || specs.sku || 'Unavailable', size: specs.sizeLabel || specs.variant || 'Standard', options: [specs.sideMode === 'double' ? 'Double-sided' : 'Single-sided', specs.designSource?.replaceAll('_', ' ')].filter(Boolean).join(' / '), quantity: item.quantity, unitPrice: Number(item.unitPrice), lineTotal: Number(item.totalPrice) }
+    }),
+    subtotal,
+    discount: Number(order.discountAmount || 0),
+    tax: Number(order.taxAmount),
+    shipping: Number(order.shippingAmount),
+    total: Number(order.totalAmount),
+    generatedAt: new Date(generatedAt).toLocaleString('en-AU'),
+  })
   return new NextResponse(pdf, { headers: { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${order.orderNumber}-receipt.pdf"`, 'cache-control': 'private, no-store' } })
 }

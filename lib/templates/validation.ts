@@ -7,7 +7,7 @@ export interface TemplateAssetInput { id: string; key: string; url?: string; fil
 export interface TemplateInput {
   name: string
   description: string
-  productId: string
+  productIds: string[]
   categoryId: string
   status: 'draft' | 'active' | 'inactive'
   assets: Partial<Record<TemplateAssetName, TemplateAssetInput | null>>
@@ -31,12 +31,12 @@ export function validateTemplateInput(value: unknown, requireGeneratedData = tru
   const input = value as Record<string, unknown>
   const name = typeof input.name === 'string' ? input.name.trim().slice(0, 255) : ''
   const description = typeof input.description === 'string' ? input.description.trim().slice(0, 5000) : ''
-  const productId = typeof input.productId === 'string' ? input.productId : ''
+  const productIds = [...new Set(Array.isArray(input.productIds) ? input.productIds.filter((id): id is string => typeof id === 'string' && uuid.test(id)) : typeof input.productId === 'string' && uuid.test(input.productId) ? [input.productId] : [])]
   const categoryId = typeof input.categoryId === 'string' ? input.categoryId : ''
   const status = typeof input.status === 'string' && statuses.has(input.status) ? input.status as TemplateInput['status'] : 'draft'
   if (name.length < 2) throw new Error('Template name must contain at least two characters.')
   if (!uuid.test(categoryId)) throw new Error('Select a valid product category.')
-  if (!uuid.test(productId)) throw new Error('Select a valid product for this template.')
+  if (!productIds.length) throw new Error('Select at least one compatible product for this template.')
   const rawAssets = input.assets && typeof input.assets === 'object' ? input.assets as Record<string, unknown> : {}
   const assets: TemplateInput['assets'] = {}
   for (const field of ['previewImage', 'svg'] as const) {
@@ -59,5 +59,5 @@ export function validateTemplateInput(value: unknown, requireGeneratedData = tru
   const scaleMetadata = input.scaleMetadata && typeof input.scaleMetadata === 'object' ? input.scaleMetadata as Record<string, unknown> : null
   const svgChecksum = typeof input.svgChecksum === 'string' && /^[a-f0-9]{64}$/i.test(input.svgChecksum) ? input.svgChecksum.toLowerCase() : ''
   const conversionVersion = Math.max(1, Math.min(1000, Math.floor(Number(input.conversionVersion) || 1)))
-  return { name, description, productId, categoryId, status, assets, width, height, unit, logicalCanvasWidth: canvasSize.logicalCanvasWidth, logicalCanvasHeight: canvasSize.logicalCanvasHeight, canvasData, scaleMetadata, svgChecksum, conversionVersion, regenerate: input.regenerate === true }
+  return { name, description, productIds, categoryId, status, assets, width, height, unit, logicalCanvasWidth: canvasSize.logicalCanvasWidth, logicalCanvasHeight: canvasSize.logicalCanvasHeight, canvasData, scaleMetadata, svgChecksum, conversionVersion, regenerate: input.regenerate === true }
 }

@@ -3,7 +3,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { couponCategories, couponCustomers, couponProducts, coupons, productCategories, products, users } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
-import { idList, parseCouponAdminInput } from '@/lib/coupons/admin'
+import { couponAdminError, idList, parseCouponAdminInput } from '@/lib/coupons/admin'
 
 async function ensureKnownIds(productIds: string[], categoryIds: string[], customerIds: string[]) {
   const [knownProducts, knownCategories, knownCustomers] = await Promise.all([
@@ -31,12 +31,18 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
       return result
     })
     return coupon ? NextResponse.json({ data: { coupon } }) : NextResponse.json({ error: { message: 'Coupon not found.' } }, { status: 404 })
-  } catch (error) { return NextResponse.json({ error: { message: error instanceof Error ? error.message : 'Coupon could not be updated.' } }, { status: 400 }) }
+  } catch (error) { console.error('Coupon update failed', error); const result = couponAdminError(error, 'Coupon could not be updated.'); return NextResponse.json({ error: result.error }, { status: result.status }) }
 }
 
 export async function DELETE(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   if (!await getAdminSession()) return NextResponse.json({ error: { message: 'Admin access required.' } }, { status: 401 })
   const { id } = await context.params
-  const [coupon] = await db.delete(coupons).where(eq(coupons.id, id)).returning({ id: coupons.id })
-  return coupon ? NextResponse.json({ data: { deleted: true } }) : NextResponse.json({ error: { message: 'Coupon not found.' } }, { status: 404 })
+  try {
+    const [coupon] = await db.delete(coupons).where(eq(coupons.id, id)).returning({ id: coupons.id })
+    return coupon ? NextResponse.json({ data: { deleted: true, archived: false } }) : NextResponse.json({ error: { message: 'Coupon not found.' } }, { status: 404 })
+  } catch (error) {
+    const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : ''
+    if (code === '23503') { const [coupon] = await db.update(coupons).set({ active: false }).where(eq(coupons.id, id)).returning({ id: coupons.id }); return coupon ? NextResponse.json({ data: { deleted: false, archived: true } }) : NextResponse.json({ error: { message: 'Coupon not found.' } }, { status: 404 }) }
+    console.error('Coupon delete failed', error); const result = couponAdminError(error, 'Coupon could not be deleted or archived.'); return NextResponse.json({ error: result.error }, { status: result.status })
+  }
 }

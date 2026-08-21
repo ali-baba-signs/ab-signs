@@ -13,7 +13,7 @@ import { sanitizeSvgMarkup, SvgValidationError } from '@/lib/templates/svg-sanit
 import { createHash } from 'node:crypto'
 import { deleteAssetIfOrphaned, findStorageAsset, getAssetReferences } from '@/lib/storage/asset-records'
 
-const purposes = new Set<UploadPurpose>(['product-image', 'template', 'homepage', 'order-document'])
+const purposes = new Set<UploadPurpose>(['product-image', 'template', 'homepage', 'offer-image', 'order-document'])
 
 function inferredType(file: File) {
   if (file.type) return file.type
@@ -69,7 +69,7 @@ export async function DELETE(request: NextRequest) {
   if (!session) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
   try {
     const { key } = await request.json() as { key?: string }
-    if (!key || !/^(products|design-editor\/templates|homepage|orders)\//.test(key)) {
+    if (!key || !/^(products|design-editor\/templates|homepage|offers|orders)\//.test(key)) {
       return NextResponse.json({ error: { code: 'INVALID_KEY', message: 'This storage object cannot be removed.' } }, { status: 400 })
     }
     const asset = await findStorageAsset(key)
