@@ -10,7 +10,7 @@ import { validateHeroInput } from '@/lib/home/hero-validation'
 
 async function ensureImageAssets(ids: string[]) {
   const rows = await db.select().from(storageAssets).where(and(inArray(storageAssets.id, ids), eq(storageAssets.status, 'available')))
-  if (rows.length !== new Set(ids).size || rows.some((asset) => !asset.contentType.startsWith('image/'))) throw new Error('Every hero image must be an available image asset.')
+  if (rows.length !== new Set(ids).size || rows.some((asset) => !['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType))) throw new Error('Every hero image must be an available PNG, JPG, or WebP asset.')
 }
 
 export async function GET() {

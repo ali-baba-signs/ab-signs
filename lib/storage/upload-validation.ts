@@ -1,6 +1,10 @@
 import { R2_PATHS, type UploadPurpose } from './r2-paths'
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const DESIGN_TYPES = new Set([
+  'application/pdf', 'image/svg+xml', 'application/postscript', 'application/eps',
+  'application/x-eps', 'application/illustrator', 'application/vnd.adobe.illustrator', 'image/png',
+])
 const TEMPLATE_TYPES = new Set(['image/svg+xml', ...IMAGE_TYPES])
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024
 const MAX_ARTWORK_SIZE = 100 * 1024 * 1024
@@ -21,6 +25,9 @@ export class UploadValidationError extends Error {
   }
 }
 
+export const DESIGN_UPLOAD_ERROR = 'Unsupported file type. Please upload only supported formats: PDF, SVG, EPS, AI, PNG.'
+export const IMAGE_UPLOAD_ERROR = 'Unsupported image type. Please upload only PNG, JPG, JPEG, or WebP.'
+
 export function sanitizeFilename(filename: string) {
   const parts = filename.toLowerCase().split('.')
   const extension = parts.length > 1 ? `.${parts.pop()?.replace(/[^a-z0-9]/g, '')}` : ''
@@ -36,13 +43,15 @@ export function validateUpload(input: UploadRequest) {
   const allowedTypes =
     input.purpose === 'template'
       ? TEMPLATE_TYPES
+      : input.purpose === 'design-artwork'
+        ? DESIGN_TYPES
       : input.purpose === 'design-draft'
         ? new Set(['application/json'])
         : input.purpose === 'order-document'
           ? new Set(['application/pdf'])
         : IMAGE_TYPES
   if (!allowedTypes.has(input.contentType)) {
-    throw new UploadValidationError('INVALID_FILE_TYPE', 'This file type is not allowed.')
+    throw new UploadValidationError('INVALID_FILE_TYPE', input.purpose === 'design-artwork' ? DESIGN_UPLOAD_ERROR : IMAGE_UPLOAD_ERROR)
   }
 
   const maxSize =
@@ -63,10 +72,15 @@ export function validateUpload(input: UploadRequest) {
     'image/webp': ['webp'],
     'image/svg+xml': ['svg'],
     'application/json': ['json'],
-    'application/pdf': ['pdf'],
+    'application/pdf': input.purpose === 'design-artwork' ? ['pdf', 'ai'] : ['pdf'],
+    'application/postscript': ['eps', 'ai'],
+    'application/eps': ['eps'],
+    'application/x-eps': ['eps'],
+    'application/illustrator': ['ai'],
+    'application/vnd.adobe.illustrator': ['ai'],
   }
   if (!extension || !expected[input.contentType]?.includes(extension)) {
-    throw new UploadValidationError('INVALID_FILE_TYPE', 'The filename extension does not match the file type.')
+    throw new UploadValidationError('INVALID_FILE_TYPE', input.purpose === 'design-artwork' ? DESIGN_UPLOAD_ERROR : 'The filename extension does not match the file type.')
   }
 }
 

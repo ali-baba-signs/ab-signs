@@ -65,7 +65,11 @@ export function ImageCropUpload({ label, recommendedWidth, recommendedHeight, va
 
   function choose(file?: File) {
     if (!file) return
-    if (!file.type.startsWith('image/')) return setError('Choose a PNG, JPEG, or WebP image.')
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    const validType = ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
+    const validExtension = extension === 'png' || extension === 'jpg' || extension === 'jpeg' || extension === 'webp'
+    if (!validType || !validExtension) return setError('Unsupported image type. Please upload only PNG, JPG, JPEG, or WebP.')
+    if (file.size <= 0 || file.size > 20 * 1024 * 1024) return setError('The image must be between 1 byte and 20 MB.')
     if (sourceUrl.startsWith('blob:')) URL.revokeObjectURL(sourceUrl)
     const nextUrl = URL.createObjectURL(file)
     setSourceUrl(nextUrl)
@@ -99,8 +103,12 @@ export function ImageCropUpload({ label, recommendedWidth, recommendedHeight, va
       const top = (stageSize.height - displayedHeight) / 2 + safeOffset.y
       const sourceX = clamp(-left / cropMetrics.scale, 0, imageSize.width)
       const sourceY = clamp(-top / cropMetrics.scale, 0, imageSize.height)
-      const sourceWidth = Math.min(stageSize.width / cropMetrics.scale, imageSize.width - sourceX)
-      const sourceHeight = Math.min(stageSize.height / cropMetrics.scale, imageSize.height - sourceY)
+      let sourceWidth = Math.min(stageSize.width / cropMetrics.scale, imageSize.width - sourceX)
+      let sourceHeight = sourceWidth / targetRatio
+      if (sourceHeight > imageSize.height - sourceY) {
+        sourceHeight = imageSize.height - sourceY
+        sourceWidth = sourceHeight * targetRatio
+      }
       const canvas = document.createElement('canvas')
       canvas.width = recommendedWidth
       canvas.height = recommendedHeight
@@ -138,7 +146,7 @@ export function ImageCropUpload({ label, recommendedWidth, recommendedHeight, va
       <div
         ref={stageRef}
         className="relative w-full touch-none cursor-grab overflow-hidden rounded-md bg-zinc-900 active:cursor-grabbing"
-        style={{ aspectRatio: `${recommendedWidth} / ${recommendedHeight}`, maxHeight: 420 }}
+        style={{ aspectRatio: `${recommendedWidth} / ${recommendedHeight}`, maxWidth: targetRatio >= 1 ? 760 : 420 * targetRatio }}
         onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, origin: safeOffset } }}
         onPointerMove={move}
         onPointerUp={(event) => { if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null }}
@@ -162,7 +170,7 @@ export function ImageCropUpload({ label, recommendedWidth, recommendedHeight, va
       <Button type="button" size="sm" disabled={processing || !imageSize.width} onClick={() => void applyCrop()}><Scissors className="h-4 w-4" /> {processing ? 'Preparing…' : 'Apply crop & upload'}</Button>
     </div>}
 
-    {(previewUrl || value) && <div className="mt-4"><p className="mb-2 text-xs font-semibold">Final preview</p><img src={previewUrl || value} alt={`${label} final preview`} className="max-h-48 w-full rounded-md border bg-white object-contain" style={{ aspectRatio: `${recommendedWidth} / ${recommendedHeight}` }} /></div>}
+    {(previewUrl || value) && <div className="mt-4"><p className="mb-2 text-xs font-semibold">Final preview</p><div className="max-h-48 w-full overflow-hidden rounded-md border bg-white" style={{ aspectRatio: `${recommendedWidth} / ${recommendedHeight}`, maxWidth: targetRatio >= 1 ? 520 : 192 * targetRatio }}><img src={previewUrl || value} alt={`${label} final preview`} className="h-full w-full object-contain" /></div></div>}
     {error && <p role="alert" className="mt-3 text-xs font-semibold text-red-600">{error}</p>}
   </div>
 }

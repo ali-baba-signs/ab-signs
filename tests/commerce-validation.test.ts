@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sanitizeRichText } from '../lib/content/sanitize-html'
 import { validateProductInput } from '../lib/products/validation'
+import { authoritativeTotalCents, stripeEventPaymentStatus } from '../lib/payments/integrity'
 
 test('rich text sanitization removes scripts, event handlers, and unsafe links', () => {
   const result = sanitizeRichText('<p onclick="steal()">Hello <strong>world</strong><script>alert(1)</script><a href="javascript:bad()">bad</a></p>')
@@ -29,4 +30,12 @@ test('product validation normalizes prices and limits primary image to one', () 
   assert.equal(product.basePrice, 12.35)
   assert.equal(product.sizes[0].unitPrice, 20)
   assert.equal(product.images.filter((image) => image.isPrimary).length, 1)
+})
+
+test('authoritative payment totals reject drift and map Stripe outcomes explicitly', () => {
+  assert.equal(authoritativeTotalCents({ itemTotals: ['100.00', '25.00'], discount: '10.00', shipping: '8.00', tax: '12.30', total: '135.30' }), 13530)
+  assert.throws(() => authoritativeTotalCents({ itemTotals: ['100.00'], discount: '0', shipping: '0', tax: '10', total: '109.99' }), /inconsistent/i)
+  assert.equal(stripeEventPaymentStatus('payment_intent.succeeded'), 'paid')
+  assert.equal(stripeEventPaymentStatus('payment_intent.payment_failed'), 'payment_failed')
+  assert.equal(stripeEventPaymentStatus('payment_intent.processing'), 'processing')
 })

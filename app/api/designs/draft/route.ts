@@ -5,10 +5,9 @@ import { db } from '@/lib/db/client'
 import { designs, designVersions, productSizes, products, templateProducts, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { registerStorageAsset, deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
-import { deleteObject, getObjectBody, getObjectMetadata, uploadObject } from '@/lib/storage/r2'
+import { getObjectMetadata, uploadObject } from '@/lib/storage/r2'
 import { createUploadKey } from '@/lib/storage/upload-validation'
 import { R2_PATHS } from '@/lib/storage/r2-paths'
-import { renderProductionJpeg } from '@/lib/production/design-render'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -16,20 +15,13 @@ const unitToMm: Record<string, number> = { mm: 1, cm: 10, in: 25.4, ft: 304.8, m
 
 type UploadedRender = {
   key: string
-  contentType: 'image/png' | 'image/jpeg'
+  contentType: 'image/png'
   size: number
   pixelWidth: number
   pixelHeight: number
 }
-type SideRender = { preview: UploadedRender; production: UploadedRender }
 
-async function persistRenderedAsset(ownerId: string, groupId: string, filename: string, contentType: string, body: Buffer) {
-  const key = `${R2_PATHS.designUploads}/${ownerId.replace(/[^a-zA-Z0-9_-]/g, '')}/${groupId}/${crypto.randomUUID()}-${filename}`
-  await uploadObject({ key, body, contentType, metadata: { ownerId, private: 'true', generated: 'true' } })
-  return registerStorageAsset({ key, contentType, size: body.length, etag: createHash('sha256').update(body).digest('hex') })
-}
-
-function uploadedRender(value: unknown, contentType: UploadedRender['contentType']): UploadedRender {
+function uploadedRender(value: unknown): UploadedRender {
   const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}
   const result = {
     key: typeof row.key === 'string' ? row.key : '',
@@ -38,18 +30,13 @@ function uploadedRender(value: unknown, contentType: UploadedRender['contentType
     pixelWidth: Number(row.pixelWidth),
     pixelHeight: Number(row.pixelHeight),
   }
-  if (!result.key || result.contentType !== contentType || !Number.isInteger(result.size) || result.size <= 0 || result.size > 20 * 1024 * 1024) {
-    throw new Error(`The browser ${contentType === 'image/png' ? 'preview' : 'production render'} is missing or invalid.`)
+  if (!result.key || result.contentType !== 'image/png' || !Number.isInteger(result.size) || result.size <= 0 || result.size > 20 * 1024 * 1024) {
+    throw new Error('The browser preview is missing or invalid.')
   }
   if (!Number.isInteger(result.pixelWidth) || !Number.isInteger(result.pixelHeight) || result.pixelWidth < 100 || result.pixelHeight < 100 || result.pixelWidth > 10000 || result.pixelHeight > 10000) {
     throw new Error('The browser render dimensions are invalid.')
   }
   return result as UploadedRender
-}
-
-function sideRender(value: unknown): SideRender {
-  const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}
-  return { preview: uploadedRender(row.preview, 'image/png'), production: uploadedRender(row.production, 'image/jpeg') }
 }
 
 async function verifyUploadedRender(render: UploadedRender, ownerId: string) {
@@ -60,32 +47,15 @@ async function verifyUploadedRender(render: UploadedRender, ownerId: string) {
   return metadata
 }
 
-async function acceptSideRender(
-  render: SideRender,
-  ownerId: string,
-  groupId: string,
-  side: 'front' | 'back',
-  options: { widthMm: number; heightMm: number; bleedMm: number; trimMarks: boolean },
-) {
-  const [previewMetadata, productionMetadata] = await Promise.all([
-    verifyUploadedRender(render.preview, ownerId),
-    verifyUploadedRender(render.production, ownerId),
-  ])
-  const preview = await registerStorageAsset({
-    key: render.preview.key,
-    contentType: render.preview.contentType,
-    size: render.preview.size,
-    uploadedAt: previewMetadata.LastModified,
-    etag: previewMetadata.ETag?.replace(/^"|"$/g, '') || null,
+async function acceptPreview(render: UploadedRender, ownerId: string) {
+  const metadata = await verifyUploadedRender(render, ownerId)
+  return registerStorageAsset({
+    key: render.key,
+    contentType: render.contentType,
+    size: render.size,
+    uploadedAt: metadata.LastModified,
+    etag: metadata.ETag?.replace(/^"|"$/g, '') || null,
   })
-  try {
-    const jpeg = await getObjectBody(render.production.key)
-    const output = renderProductionJpeg(jpeg, options)
-    const production = await persistRenderedAsset(ownerId, groupId, `${side}-production.pdf`, 'application/pdf', output.pdf)
-    return { preview, production, metadata: output.metadata }
-  } finally {
-    await deleteObject(render.production.key).catch(() => undefined)
-  }
 }
 
 export async function POST(request: NextRequest) {
@@ -99,7 +69,7 @@ export async function POST(request: NextRequest) {
     const design = input.design
     if (!design || typeof design !== 'object') throw new Error('Design data is missing.')
     const previewInput = input.previews && typeof input.previews === 'object' ? input.previews as Record<string, unknown> : {}
-    const frontInput = sideRender(previewInput.front)
+    const frontInput = uploadedRender(previewInput.front)
     const variantId = typeof input.variantId === 'string' && uuid.test(input.variantId) ? input.variantId : typeof input.sizeId === 'string' && uuid.test(input.sizeId) ? input.sizeId : null
     if (!productId || !templateId || !variantId) throw new Error('Choose a valid product, template, and production variant before saving the design.')
 
@@ -123,13 +93,13 @@ export async function POST(request: NextRequest) {
     if (id && (!existing || existing.userId !== session.user.id)) return NextResponse.json({ error: { message: 'Design not found or access denied.' } }, { status: 404 })
 
     const factor = unitToMm[String(size.unit)] || 1
-    const renderOptions = { widthMm: Number(size.width) * factor, heightMm: Number(size.height) * factor, bleedMm: Number(size.bleed), trimMarks: Boolean(size.trimMarks) }
+    const widthMm = Number(size.width) * factor
+    const heightMm = Number(size.height) * factor
     const sideMode = size.sideMode
-    const backInput = sideMode === 'double' ? sideRender(previewInput.back) : null
-    const groupId = id || crypto.randomUUID()
+    const backInput = sideMode === 'double' ? uploadedRender(previewInput.back) : null
     const [front, back] = await Promise.all([
-      acceptSideRender(frontInput, session.user.id, groupId, 'front', renderOptions),
-      backInput ? acceptSideRender(backInput, session.user.id, groupId, 'back', renderOptions) : Promise.resolve(null),
+      acceptPreview(frontInput, session.user.id),
+      backInput ? acceptPreview(backInput, session.user.id) : Promise.resolve(null),
     ])
 
     const key = createUploadKey({ filename: 'design-draft.json', contentType: 'application/json', size: body.length, purpose: 'design-draft', designId: id || undefined }, session.user.id)
@@ -140,9 +110,20 @@ export async function POST(request: NextRequest) {
       assetKey: key,
       assetId: asset.id,
       variantId,
+      product: {
+        id: productId,
+        category: template.templateKind,
+        categoryId: product.categoryId,
+        sizeId: variantId,
+        widthMm,
+        heightMm,
+        sideMode,
+      },
+      templateReference: templateId,
+      previewUrl: `/api/designs/${id || 'pending'}/preview`,
       renderedAssets: {
-        front: { previewKey: front.preview.objectKey, productionKey: front.production.objectKey, metadata: front.metadata },
-        ...(back ? { back: { previewKey: back.preview.objectKey, productionKey: back.production.objectKey, metadata: back.metadata } } : {}),
+        front: { previewKey: front.objectKey },
+        ...(back ? { back: { previewKey: back.objectKey } } : {}),
       },
     }
     const oldKey = existing && existing.assetId ? (existing.canvasData as Record<string, unknown>)?.assetKey : null
@@ -150,13 +131,16 @@ export async function POST(request: NextRequest) {
     const saved = await db.transaction(async (tx) => {
       if (existing) {
         const [latest] = await tx.select({ version: designVersions.version }).from(designVersions).where(eq(designVersions.designId, existing.id)).orderBy(desc(designVersions.version)).limit(1)
-        await tx.insert(designVersions).values({ designId: existing.id, version: (latest?.version || 0) + 1, canvasData })
-        const [row] = await tx.update(designs).set({ canvasData, assetId: asset.id, previewAssetId: front.preview.id, frontPreviewAssetId: front.preview.id, backPreviewAssetId: back?.preview.id || null, productionAssetId: front.production.id, thumbnail: front.preview.objectKey, templateId, productId, updatedAt: new Date() }).where(eq(designs.id, existing.id)).returning()
+        const finalCanvasData = { ...canvasData, designId: existing.id, previewUrl: `/api/designs/${existing.id}/preview` }
+        await tx.insert(designVersions).values({ designId: existing.id, version: (latest?.version || 0) + 1, canvasData: finalCanvasData })
+        const [row] = await tx.update(designs).set({ canvasData: finalCanvasData, assetId: asset.id, previewAssetId: front.id, frontPreviewAssetId: front.id, backPreviewAssetId: back?.id || null, productionAssetId: null, thumbnail: front.objectKey, templateId, productId, updatedAt: new Date() }).where(eq(designs.id, existing.id)).returning()
         return row
       }
-      const [row] = await tx.insert(designs).values({ userId: session.user.id, name: typeof input.name === 'string' ? input.name.trim().slice(0, 255) || 'Untitled design' : 'Untitled design', canvasData, assetId: asset.id, previewAssetId: front.preview.id, frontPreviewAssetId: front.preview.id, backPreviewAssetId: back?.preview.id || null, productionAssetId: front.production.id, thumbnail: front.preview.objectKey, templateId, productId, isPublic: false }).returning()
-      await tx.insert(designVersions).values({ designId: row.id, version: 1, canvasData })
-      return row
+      const [row] = await tx.insert(designs).values({ userId: session.user.id, name: typeof input.name === 'string' ? input.name.trim().slice(0, 255) || 'Untitled design' : 'Untitled design', canvasData, assetId: asset.id, previewAssetId: front.id, frontPreviewAssetId: front.id, backPreviewAssetId: back?.id || null, productionAssetId: null, thumbnail: front.objectKey, templateId, productId, isPublic: false }).returning()
+      const finalCanvasData = { ...canvasData, designId: row.id, previewUrl: `/api/designs/${row.id}/preview` }
+      await tx.update(designs).set({ canvasData: finalCanvasData }).where(eq(designs.id, row.id))
+      await tx.insert(designVersions).values({ designId: row.id, version: 1, canvasData: finalCanvasData })
+      return { ...row, canvasData: finalCanvasData }
     })
     if (typeof oldKey === 'string' && oldKey !== key) await deleteAssetIfOrphaned(oldKey)
     return NextResponse.json({ data: { design: saved } }, { status: existing ? 200 : 201 })

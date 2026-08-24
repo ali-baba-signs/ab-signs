@@ -11,6 +11,24 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
   const [paused, setPaused] = useState(false)
 
   useEffect(() => {
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'ArrowLeft') {
+      setActive((value) => (value - 1 + slides.length) % slides.length)
+    }
+
+    if (event.key === 'ArrowRight') {
+      setActive((value) => (value + 1) % slides.length)
+    }
+  }
+
+  window.addEventListener('keydown', handleKeyDown)
+
+  return () => {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
+}, [slides.length])
+
+  useEffect(() => {
     if (paused || slides.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const timer = window.setInterval(() => setActive((value) => (value + 1) % slides.length), 7000)
     return () => window.clearInterval(timer)
@@ -21,9 +39,10 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
 
   return (
     <section
-      aria-roledescription="carousel"
-      aria-label="Featured products and design services"
-      className="relative min-h-[520px] overflow-hidden bg-[#111]"
+  aria-roledescription="carousel"
+  aria-label="Featured products and design services"
+  tabIndex={0}
+  className="relative w-full h-[650px] overflow-hidden bg-[#111] sm:h-[700px] lg:h-[760px] focus:outline-none"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -37,7 +56,7 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
               fill
               priority={index === 0}
               sizes="100vw"
-              className="object-cover"
+              className="object-cover object-center"
               onError={(event) => {
                 if (!event.currentTarget.src.endsWith(item.fallbackImage)) {
                   event.currentTarget.src = item.fallbackImage
@@ -48,7 +67,30 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
           <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/15" />
         </div>
       ))}
-      <div className={`relative mx-auto flex min-h-[520px] max-w-[1440px] px-5 py-16 sm:px-8 lg:px-12 ${slide.verticalAlignment === 'top' ? 'items-start' : slide.verticalAlignment === 'bottom' ? 'items-end' : 'items-center'}`}>
+      <div className="absolute inset-0 z-0 flex">
+  
+  {/* Left click zone */}
+  <button
+    type="button"
+    aria-label="Previous slide"
+    className="h-full w-1/2 cursor-w-resize"
+    onClick={() =>
+      setActive((value) => (value - 1 + slides.length) % slides.length)
+    }
+  />
+
+  {/* Right click zone */}
+  <button
+    type="button"
+    aria-label="Next slide"
+    className="h-full w-1/2 cursor-e-resize"
+    onClick={() =>
+      setActive((value) => (value + 1) % slides.length)
+    }
+  />
+
+</div>
+      <div className={`relative z-20 flex h-full w-full mx-auto max-w-[1440px] px-5 py-10 sm:px-8 sm:py-16 lg:px-12 ${slide.verticalAlignment === 'top' ? 'items-start' : slide.verticalAlignment === 'bottom' ? 'items-end' : 'items-center'}`}>
         <div className={`max-w-2xl text-white ${slide.alignment === 'right' ? 'lg:ml-auto lg:text-right' : slide.alignment === 'center' ? 'mx-auto text-center' : ''}`}>
           {slide.eyebrow && <p className="mb-4 text-xs font-bold uppercase tracking-[.22em] text-[#ff4b91]">{slide.eyebrow}</p>}
           {slide.title && <h1 className="text-4xl font-black leading-[1.02] sm:text-5xl lg:text-7xl">{slide.title}</h1>}
@@ -60,13 +102,13 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
       </div>
       {slides.length > 1 && (
         <>
-          <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 gap-2">
+          <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 gap-2 opacity-60 hover:opacity-100">
             {slides.map((item, index) => <button key={item.id} type="button" aria-label={`Show slide ${index + 1}`} aria-current={index === active} onClick={() => setActive(index)} className={`h-2.5 rounded-full transition-all ${index === active ? 'w-8 bg-[#ed1b68]' : 'w-2.5 bg-white/60'}`} />)}
           </div>
-          <div className="absolute bottom-4 right-4 flex gap-2 sm:right-8">
+          {/* <div className="absolute bottom-4 right-4 flex gap-2 sm:right-8">
             <button type="button" onClick={() => move(-1)} aria-label="Previous slide" className="grid h-11 w-11 place-items-center rounded-full border border-white/30 bg-black/30 text-white backdrop-blur hover:bg-black/60"><ArrowLeft /></button>
             <button type="button" onClick={() => move(1)} aria-label="Next slide" className="grid h-11 w-11 place-items-center rounded-full border border-white/30 bg-black/30 text-white backdrop-blur hover:bg-black/60"><ArrowRight /></button>
-          </div>
+          </div> */}
         </>
       )}
     </section>

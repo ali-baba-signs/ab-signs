@@ -22,6 +22,7 @@ export function inferContentType(key: string) {
   const types: Record<string, string> = {
     png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
     svg: 'image/svg+xml', json: 'application/json', pdf: 'application/pdf',
+    eps: 'application/postscript', ai: 'application/vnd.adobe.illustrator',
   }
   return types[extension || ''] || 'application/octet-stream'
 }

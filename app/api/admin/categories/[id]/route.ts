@@ -22,7 +22,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     const [duplicate] = await db.select().from(productCategories).where(sql`lower(${productCategories.name}) = lower(${name}) and ${productCategories.id} <> ${id}::uuid`).limit(1)
     if (duplicate) return NextResponse.json({ error: { message: 'A category with this name already exists.' } }, { status: 409 })
     const imageAssetId = typeof body.imageAssetId === 'string' && body.imageAssetId ? body.imageAssetId : null
-    if (imageAssetId) { const [asset] = await db.select().from(storageAssets).where(sql`${storageAssets.id} = ${imageAssetId}::uuid`).limit(1); if (!asset?.contentType.startsWith('image/')) throw new Error('Select a valid category image.') }
+    if (imageAssetId) { const [asset] = await db.select().from(storageAssets).where(sql`${storageAssets.id} = ${imageAssetId}::uuid`).limit(1); if (!asset || !['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType)) throw new Error('Select a valid PNG, JPG, or WebP category image.') }
     const [updated] = await db.transaction(async (tx) => {
       const rows = await tx.update(productCategories).set({ name, slug, description: typeof body.description === 'string' ? body.description.trim().slice(0, 2000) : '', imageAssetId, enabled: body.enabled !== false, showOnHomepage: body.showOnHomepage === true, displayOrder: Math.max(0, Math.floor(Number(body.displayOrder) || 0)), updatedAt: new Date() }).where(eq(productCategories.id, id)).returning()
       if (!rows[0]) throw new Error('Category not found.')

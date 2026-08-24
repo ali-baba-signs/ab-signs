@@ -208,6 +208,12 @@ export const templates = pgTable('templates', {
   svgUrl: text('svg_url'),
   svgKey: text('svg_key'),
   svgAssetId: uuid('svg_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  fixedSvgUrl: text('fixed_svg_url'),
+  fixedSvgKey: text('fixed_svg_key'),
+  fixedSvgAssetId: uuid('fixed_svg_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
+  templateKind: varchar('template_kind', { length: 20 }).default('banner').notNull(),
+  fixedCanvasData: json('fixed_canvas_data'),
+  printableArea: json('printable_area'),
   physicalWidth: decimal('physical_width', { precision: 12, scale: 3 }),
   physicalHeight: decimal('physical_height', { precision: 12, scale: 3 }),
   measurementUnit: varchar('measurement_unit', { length: 10 }).default('mm'),
@@ -391,7 +397,27 @@ export const paymentRecords = pgTable('payment_records', {
   metadata: json('metadata'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => [index('payment_records_order_idx').on(table.orderId)])
+}, (table) => [index('payment_records_order_idx').on(table.orderId), uniqueIndex('payment_records_order_provider_unique').on(table.orderId, table.provider), uniqueIndex('payment_records_external_unique').on(table.externalId)])
+
+export const stripeWebhookEvents = pgTable('stripe_webhook_events', {
+  eventId: varchar('event_id', { length: 255 }).primaryKey(),
+  eventType: varchar('event_type', { length: 120 }).notNull(),
+  objectId: varchar('object_id', { length: 255 }),
+  processedAt: timestamp('processed_at').defaultNow().notNull(),
+})
+
+export const orderEmailEvents = pgTable('order_email_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  eventType: varchar('event_type', { length: 40 }).notNull(),
+  status: varchar('status', { length: 20 }).default('processing').notNull(),
+  attempts: integer('attempts').default(1).notNull(),
+  providerMessageId: varchar('provider_message_id', { length: 500 }),
+  error: text('error'),
+  sentAt: timestamp('sent_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [uniqueIndex('order_email_events_unique').on(table.orderId, table.eventType), index('order_email_events_status_idx').on(table.status, table.updatedAt)])
 
 // Coupons remain the one authoritative discount-code table. Presentation and
 // eligibility live in related tables below so checkout has one pricing engine.

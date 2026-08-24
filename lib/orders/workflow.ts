@@ -7,6 +7,20 @@ export const ORDER_STATUSES = [
 ] as const
 
 export type OrderWorkflowStatus = typeof ORDER_STATUSES[number]
+export type OrderMilestone = 'pending' | 'confirmed' | 'production' | 'dispatch' | 'completed' | 'attention'
+
+export const ORDER_MILESTONE_LABELS: Record<OrderMilestone, string> = {
+  pending: 'Pending', confirmed: 'Confirmed', production: 'In Production', dispatch: 'Dispatch / Pickup', completed: 'Completed', attention: 'Needs Attention',
+}
+
+const statusMilestones: Record<OrderWorkflowStatus, OrderMilestone> = {
+  pending_design_confirmation: 'pending', design_revision_required: 'pending', awaiting_payment: 'pending',
+  design_confirmed: 'confirmed', payment_confirmed: 'confirmed', order_confirmed: 'confirmed',
+  queued_for_printing: 'production', printing: 'production', printing_completed: 'production', quality_check: 'production', production_completed: 'production',
+  ready_for_pickup: 'dispatch', ready_for_dispatch: 'dispatch', dispatched: 'dispatch', out_for_delivery: 'dispatch',
+  delivered: 'completed', completed: 'completed',
+  on_hold: 'attention', cancelled: 'attention', refund_requested: 'attention', refunded: 'attention',
+}
 
 export const ORDER_STATUS_LABELS: Record<OrderWorkflowStatus, string> = {
   pending_design_confirmation: 'Pending Design Confirmation',
@@ -69,6 +83,8 @@ const legacyStatus: Record<string, OrderWorkflowStatus> = {
 export function normalizeOrderStatus(status: string): OrderWorkflowStatus {
   return isOrderStatus(status) ? status : legacyStatus[status] || 'pending_design_confirmation'
 }
+export function orderMilestone(status: string): OrderMilestone { return statusMilestones[normalizeOrderStatus(status)] }
+export function orderMilestoneLabel(status: string) { return ORDER_MILESTONE_LABELS[orderMilestone(status)] }
 export function allowedTransitions(status: string) { return transitions[normalizeOrderStatus(status)] }
 export function assertTransition(current: string, next: unknown) {
   if (!isOrderStatus(next)) throw new Error('Select a valid order status.')

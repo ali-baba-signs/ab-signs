@@ -108,3 +108,11 @@ export async function sendContactEmail(input: ContactEmailInput) {
     })
   }
 }
+
+export async function sendTransactionalEmail(input: { to: string; subject: string; text: string; html: string }) {
+  validateMailConfiguration()
+  const fromEmail = requiredEnvironment('SMTP_FROM_EMAIL')
+  const fromName = process.env.SMTP_FROM_NAME?.trim() || 'Ali Baba Signs'
+  const result = await transport().sendMail({ from: { name: fromName, address: fromEmail }, ...input })
+  return result.messageId || null
+}

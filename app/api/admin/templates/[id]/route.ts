@@ -13,7 +13,8 @@ import { safeErrorMessage } from '@/lib/api/safe-error'
 function currentAssets(template: typeof templates.$inferSelect) {
   return {
     previewImage: template.previewImageKey && template.previewAssetId ? { id: template.previewAssetId, key: template.previewImageKey, url: template.previewImageUrl ?? undefined } : null,
-    svg: template.svgKey && template.svgAssetId ? { id: template.svgAssetId, key: template.svgKey, url: template.svgUrl ?? undefined } : null,
+    editableSvg: template.svgKey && template.svgAssetId ? { id: template.svgAssetId, key: template.svgKey, url: template.svgUrl ?? undefined } : null,
+    fixedSvg: template.fixedSvgKey && template.fixedSvgAssetId ? { id: template.fixedSvgAssetId, key: template.fixedSvgKey, url: template.fixedSvgUrl ?? undefined } : null,
   }
 }
 
@@ -39,23 +40,34 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     const input = validateTemplateInput(await request.json(), false)
     const { products: selectedProducts, primaryProduct, baseSize } = await resolveTemplateProducts(input)
     const old = currentAssets(existing)
-    const merged = { previewImage: input.assets.previewImage === undefined ? old.previewImage : input.assets.previewImage, svg: input.assets.svg === undefined ? old.svg : input.assets.svg }
-    if (!merged.previewImage || !merged.svg) throw new Error('Preserve or upload both the preview image and SVG source.')
-    const svgChanged = merged.svg.key !== old.svg?.key
+    const merged = {
+      previewImage: input.assets.previewImage === undefined ? old.previewImage : input.assets.previewImage,
+      editableSvg: input.assets.editableSvg === undefined ? old.editableSvg : input.assets.editableSvg,
+      fixedSvg: input.assets.fixedSvg === undefined ? old.fixedSvg : input.assets.fixedSvg,
+    }
+    if (!merged.previewImage || !merged.editableSvg) throw new Error('Preserve or upload both the preview image and editable SVG source.')
+    if (input.templateKind === 'flag' && !merged.fixedSvg) throw new Error('Flag templates require a fixed shape SVG.')
+    const svgChanged = merged.editableSvg.key !== old.editableSvg?.key || merged.fixedSvg?.key !== old.fixedSvg?.key
     const requiresGeneration = svgChanged || input.regenerate || existing.svgChecksum !== input.svgChecksum || existing.conversionVersion !== input.conversionVersion
     if (requiresGeneration && !input.canvasData) throw new Error('The changed SVG, product size, or conversion version requires regenerated Fabric data.')
     const canvasData = requiresGeneration ? input.canvasData! : existing.canvasData as Record<string, unknown>
-    const assets = await db.select().from(storageAssets).where(inArray(storageAssets.id, [merged.previewImage.id, merged.svg.id]))
+    const assetIds = [merged.previewImage.id, merged.editableSvg.id, merged.fixedSvg?.id].filter((assetId): assetId is string => Boolean(assetId))
+    const assets = await db.select().from(storageAssets).where(inArray(storageAssets.id, assetIds))
     const preview = assets.find((asset) => asset.id === merged.previewImage!.id)
-    const svg = assets.find((asset) => asset.id === merged.svg!.id)
-    if (!preview?.contentType.startsWith('image/') || preview.contentType === 'image/svg+xml' || svg?.contentType !== 'image/svg+xml') throw new Error('Template asset types are invalid.')
+    const svg = assets.find((asset) => asset.id === merged.editableSvg!.id)
+    const fixedSvg = merged.fixedSvg ? assets.find((asset) => asset.id === merged.fixedSvg!.id) : null
+    if (!preview?.contentType.startsWith('image/') || preview.contentType === 'image/svg+xml' || svg?.contentType !== 'image/svg+xml' || (fixedSvg && fixedSvg.contentType !== 'image/svg+xml')) throw new Error('Template asset types are invalid.')
     if (requiresGeneration && (!input.svgChecksum || svg.etag !== input.svgChecksum)) throw new Error('The generated data checksum does not match the uploaded sanitized SVG.')
-    const removedKeys = [old.previewImage, old.svg].flatMap((asset) => asset && ![merged.previewImage!.key, merged.svg!.key].includes(asset.key) ? [asset.key] : [])
+    const retainedKeys = [merged.previewImage.key, merged.editableSvg.key, merged.fixedSvg?.key].filter(Boolean)
+    const removedKeys = [old.previewImage, old.editableSvg, old.fixedSvg].flatMap((asset) => asset && !retainedKeys.includes(asset.key) ? [asset.key] : [])
     const [updated] = await db.transaction(async (tx) => {
       const rows = await tx.update(templates).set({
         productId: primaryProduct.id, name: input.name, description: input.description, category: null, status: input.status, canvasData,
+        fixedCanvasData: requiresGeneration ? input.fixedCanvasData : existing.fixedCanvasData,
+        templateKind: input.templateKind, printableArea: input.printableArea,
         thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
+        fixedSvgUrl: fixedSvg ? getStoredAssetUrl(fixedSvg.objectKey) : null, fixedSvgKey: fixedSvg?.objectKey || null, fixedSvgAssetId: fixedSvg?.id || null,
         physicalWidth: requiresGeneration ? baseSize.width : existing.physicalWidth, physicalHeight: requiresGeneration ? baseSize.height : existing.physicalHeight, measurementUnit: requiresGeneration ? baseSize.unit : existing.measurementUnit,
         logicalCanvasWidth: requiresGeneration ? input.logicalCanvasWidth : existing.logicalCanvasWidth, logicalCanvasHeight: requiresGeneration ? input.logicalCanvasHeight : existing.logicalCanvasHeight,
         scaleMetadata: requiresGeneration ? input.scaleMetadata : existing.scaleMetadata, templateVersion: (existing.templateVersion || 1) + (requiresGeneration ? 1 : 0),
@@ -99,6 +111,6 @@ export async function DELETE(_: NextRequest, context: { params: Promise<{ id: st
     await tx.delete(templates).where(eq(templates.id, id))
     await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: 'template.deleted', entityType: 'template', entityId: id, entityName: existing.name, description: `Deleted editable template ${existing.name}.` }))
   })
-  await Promise.allSettled([existing.previewImageKey, existing.svgKey].filter((key): key is string => Boolean(key)).map(deleteAssetIfOrphaned))
+  await Promise.allSettled([existing.previewImageKey, existing.svgKey, existing.fixedSvgKey].filter((key): key is string => Boolean(key)).map(deleteAssetIfOrphaned))
   return NextResponse.json({ data: { deleted: id } })
 }

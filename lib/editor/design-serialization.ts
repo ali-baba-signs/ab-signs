@@ -9,11 +9,19 @@ export function serializeDesign(
   templateId: string | null,
   sides?: SavedDesign['sides'],
 ): SavedDesign {
+  const canvasJson = canvas.toJSON() as Record<string, unknown>
+  const objectsJson = Array.isArray(canvasJson.objects)
+    ? canvasJson.objects.filter((object) => {
+        const role = object && typeof object === 'object' ? (object as Record<string, unknown>).role : null
+        return role !== 'fixed-product-layer'
+      })
+    : []
   return {
     version: sides ? 2 : 1,
     productConfig,
     templateId,
-    canvasJson: canvas.toJSON(),
+    canvasJson,
+    objectsJson,
     sides,
     updatedAt: new Date().toISOString(),
   }

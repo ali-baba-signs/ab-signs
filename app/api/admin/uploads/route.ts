@@ -18,7 +18,15 @@ const purposes = new Set<UploadPurpose>(['product-image', 'template', 'homepage'
 function inferredType(file: File) {
   if (file.type) return file.type
   const extension = file.name.split('.').pop()?.toLowerCase()
-  return extension === 'json' ? 'application/json' : extension === 'svg' ? 'image/svg+xml' : extension === 'pdf' ? 'application/pdf' : extension === 'webm' ? 'video/webm' : ''
+  return extension === 'json' ? 'application/json' : extension === 'svg' ? 'image/svg+xml' : extension === 'pdf' ? 'application/pdf' : ''
+}
+
+function validateSignature(contentType: string, body: Buffer) {
+  const hex = body.subarray(0, 16).toString('hex')
+  if (contentType === 'image/png' && !hex.startsWith('89504e470d0a1a0a')) throw new UploadValidationError('INVALID_FILE_CONTENT', 'The PNG file signature is invalid.')
+  if (contentType === 'image/jpeg' && !hex.startsWith('ffd8ff')) throw new UploadValidationError('INVALID_FILE_CONTENT', 'The JPEG file signature is invalid.')
+  if (contentType === 'image/webp' && !(body.subarray(0, 4).toString('ascii') === 'RIFF' && body.subarray(8, 12).toString('ascii') === 'WEBP')) throw new UploadValidationError('INVALID_FILE_CONTENT', 'The WebP file signature is invalid.')
+  if (contentType === 'application/pdf' && !body.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new UploadValidationError('INVALID_FILE_CONTENT', 'The PDF file signature is invalid.')
 }
 
 export async function POST(request: NextRequest) {
@@ -37,6 +45,7 @@ export async function POST(request: NextRequest) {
     validateUpload(requestData)
     const key = createUploadKey(requestData, session.user.id)
     const source = Buffer.from(await file.arrayBuffer())
+    validateSignature(contentType, source)
     const body = contentType === 'image/svg+xml' ? Buffer.from(sanitizeSvgMarkup(source.toString('utf8')), 'utf8') : source
     const checksum = createHash('sha256').update(body).digest('hex')
     await uploadObject({ key, body, contentType, metadata: { uploadedBy: session.user.id, originalName: file.name.slice(0, 250), checksum, ...(contentType === 'image/svg+xml' ? { svgValidated: 'true' } : {}) } })

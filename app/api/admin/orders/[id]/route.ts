@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { adminActivityLogs, customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, products, storageAssets, templates } from '@/lib/db/schema'
+import { adminActivityLogs, customerArtworks, designs, orderEmailEvents, orderItems, orderStatusHistory, orders, paymentRecords, products, storageAssets, templates } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { assertTransition, deadlineState } from '@/lib/orders/workflow'
 import { createPresignedDownloadUrl } from '@/lib/storage/r2'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
+import { deliverOrderEmailEvent } from '@/lib/orders/emails'
 
 async function details(id: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
@@ -35,7 +36,7 @@ async function details(id: string) {
     const expectedRatio = Number(specs?.width) / Number(specs?.height)
     const sourceRatio = artwork?.sourceWidthPx && artwork.sourceHeightPx ? artwork.sourceWidthPx / artwork.sourceHeightPx : 0
     const dimensionWarning = expectedRatio > 0 && sourceRatio > 0 && Math.abs(expectedRatio - sourceRatio) / expectedRatio > 0.05 ? 'Uploaded artwork aspect ratio differs from the ordered production size. Review before printing.' : null
-    return { ...item, product: productRows.find((product) => product.id === item.productId), template: templateRows.find((template) => template.id === item.templateId) || null, artwork: artwork ? { ...artwork, dimensionWarning } : null, designUrl: item.designId ? designUrls.get(item.designId) : null, productionPreviewUrl: item.frontPreviewAssetId ? assetUrls.get(item.frontPreviewAssetId) : item.previewAssetId ? assetUrls.get(item.previewAssetId) : null, productionUrl: item.productionAssetId ? assetUrls.get(item.productionAssetId) : null, backProductionPreviewUrl: item.backPreviewAssetId ? assetUrls.get(item.backPreviewAssetId) : null, backProductionUrl: null }
+    return { ...item, product: productRows.find((product) => product.id === item.productId), template: templateRows.find((template) => template.id === item.templateId) || null, artwork: artwork ? { ...artwork, dimensionWarning } : null, designUrl: item.designId ? designUrls.get(item.designId) : null, productionPreviewUrl: item.frontPreviewAssetId ? assetUrls.get(item.frontPreviewAssetId) : item.previewAssetId ? assetUrls.get(item.previewAssetId) : null, productionUrl: item.designId ? `/api/admin/orders/${id}/items/${item.id}/production?side=front&format=best` : null, backProductionPreviewUrl: item.backPreviewAssetId ? assetUrls.get(item.backPreviewAssetId) : null, backProductionUrl: item.designId && (specs?.sideMode === 'double') ? `/api/admin/orders/${id}/items/${item.id}/production?side=back&format=best` : null }
   }), history, payments }
 }
 
@@ -65,7 +66,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     const deliveryType = Object.hasOwn(body, 'deliveryType') ? body.deliveryType : order.deliveryType
     if (!['delivery', 'pickup'].includes(String(deliveryType))) throw new Error('Select delivery or pickup.')
     const [oldReceipt] = order.receiptAssetId && order.receiptAssetId !== receiptAssetId ? await db.select().from(storageAssets).where(eq(storageAssets.id, order.receiptAssetId)).limit(1) : []
-    const [updated] = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       const updates: Partial<typeof orders.$inferInsert> = {
         status: nextStatus,
         paymentStatus: nextStatus === 'payment_confirmed' ? 'paid' : requestedPaymentStatus,
@@ -90,9 +91,19 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       const rows = await tx.update(orders).set(updates).where(eq(orders.id, id)).returning()
       if (nextStatus !== order.status) await tx.insert(orderStatusHistory).values({ orderId: id, status: nextStatus, previousStatus: order.status, newStatus: nextStatus, changedByAdmin: session.user.id, notes: typeof body.note === 'string' ? body.note.trim().slice(0, 2000) : null, internalNote: typeof body.internalNote === 'string' ? body.internalNote.trim().slice(0, 5000) : null, customerVisibleNote: typeof body.customerNote === 'string' ? body.customerNote.trim().slice(0, 5000) : null, expectedCompletionAt: date(body.expectedCompletionAt, 'Expected completion'), actualCompletionAt: now })
       await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: nextStatus !== order.status ? 'order.status_changed' : receiptAssetId !== order.receiptAssetId ? 'order.receipt_uploaded' : 'order.updated', entityType: 'order', entityId: id, entityName: order.orderNumber, description: nextStatus !== order.status ? `Changed ${order.orderNumber} from ${order.status} to ${nextStatus}.` : receiptAssetId !== order.receiptAssetId ? `Attached a payment receipt to ${order.orderNumber}.` : `Updated order ${order.orderNumber}.`, metadata: { previousStatus: order.status, newStatus: nextStatus } }))
-      return rows
+      let emailEventId: string | null = null
+      if (['delivered', 'completed'].includes(nextStatus) && nextStatus !== order.status) {
+        const claimed = await tx.insert(orderEmailEvents).values({ orderId: id, eventType: 'order_completed', status: 'processing' }).onConflictDoNothing().returning({ id: orderEmailEvents.id })
+        emailEventId = claimed[0]?.id || null
+      } else if (['delivered', 'completed'].includes(nextStatus)) {
+        const staleBefore = new Date(now.getTime() - 5 * 60 * 1000)
+        const retried = await tx.update(orderEmailEvents).set({ status: 'processing', attempts: sql`${orderEmailEvents.attempts} + 1`, error: null, updatedAt: now }).where(and(eq(orderEmailEvents.orderId, id), eq(orderEmailEvents.eventType, 'order_completed'), or(eq(orderEmailEvents.status, 'failed'), and(eq(orderEmailEvents.status, 'processing'), lt(orderEmailEvents.updatedAt, staleBefore))))).returning({ id: orderEmailEvents.id })
+        emailEventId = retried[0]?.id || null
+      }
+      return { updated: rows[0], emailEventId }
     })
     if (oldReceipt) await deleteAssetIfOrphaned(oldReceipt.objectKey)
-    return NextResponse.json({ data: { order: updated, details: await details(id) } })
+    if (result.emailEventId) await deliverOrderEmailEvent(result.emailEventId)
+    return NextResponse.json({ data: { order: result.updated, details: await details(id) } })
   } catch (error) { console.error('Admin order update failed', { orderId: id, error }); const actionable = error instanceof Error && /Select a valid|cannot transition|must be a valid|not found|registered PDF/i.test(error.message) ? error.message : 'Order could not be updated. The server rejected the requested status or payment change.'; return NextResponse.json({ error: { code: 'ORDER_UPDATE_FAILED', message: actionable } }, { status: 400 }) }
 }

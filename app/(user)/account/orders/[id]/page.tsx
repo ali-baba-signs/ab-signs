@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ORDER_STATUS_LABELS, type OrderWorkflowStatus } from '@/lib/orders/workflow'
+import { orderMilestoneLabel } from '@/lib/orders/workflow'
 
 interface Order {
   id: string; orderNumber: string; createdAt: string; status: string; paymentStatus: string; currency: string; totalAmount: string; taxAmount: string; shippingAmount: string
@@ -30,7 +30,7 @@ export default function CustomerOrderDetail({ params }: { params: Promise<{ id: 
   }, [id])
   if (!order) return <div className="grid min-h-[70vh] place-items-center">{error || 'Loading order...'}</div>
   const subtotal = Number(order.totalAmount) - Number(order.taxAmount) - Number(order.shippingAmount)
-  const label = (status: string) => ORDER_STATUS_LABELS[status as OrderWorkflowStatus] || status.replaceAll('_', ' ')
+  const label = orderMilestoneLabel
   return <main className="min-h-screen bg-background px-4 py-8"><div className="mx-auto max-w-5xl">
     <Link href="/account/orders" className="inline-flex gap-2"><ArrowLeft /> My orders</Link>
     <div className="mt-3 flex flex-wrap justify-between gap-4"><div><h1 className="text-3xl font-black">{order.orderNumber}</h1><p className="text-sm text-muted-foreground">Placed {new Date(order.createdAt).toLocaleString()}</p></div><div><p className="font-bold">{label(order.status)}</p><p className="text-sm">Payment: {order.paymentStatus.replaceAll('_', ' ')}</p></div></div>

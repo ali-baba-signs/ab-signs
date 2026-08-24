@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Clock, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ORDER_STATUS_LABELS, type OrderWorkflowStatus } from '@/lib/orders/workflow'
+import { orderMilestoneLabel } from '@/lib/orders/workflow'
 
 interface Order {
   id: string; orderNumber: string; status: string; paymentStatus: string; currency: string; totalAmount: string; createdAt: string
@@ -27,7 +27,7 @@ export default function OrdersPage() {
     return () => { window.clearTimeout(timer); controller.abort() }
   }, [])
 
-  const label = (status: string) => ORDER_STATUS_LABELS[status as OrderWorkflowStatus] || status.replaceAll('_', ' ')
+  const label = orderMilestoneLabel
   return <main className="min-h-screen bg-background"><header className="border-b bg-card"><div className="mx-auto max-w-4xl px-4 py-8"><Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-primary"><ArrowLeft className="h-4 w-4" /> Home</Link><h1 className="mt-3 text-3xl font-black">My orders</h1><p className="mt-2 text-muted-foreground">Track design approval, production, delivery, payment, and receipts.</p></div></header><div className="mx-auto max-w-4xl px-4 py-10">
     {loading ? <p className="text-center">Loading orders...</p> : error ? <div className="rounded-xl border bg-card p-10 text-center"><p className="text-red-700">{error}</p><Link href="/sign-in"><Button className="mt-5">Sign in</Button></Link></div> : orders.length === 0 ? <div className="rounded-xl border bg-card p-12 text-center"><Package className="mx-auto h-14 w-14 text-muted-foreground" /><h2 className="mt-4 text-xl font-bold">No orders yet</h2><Link href="/products"><Button className="mt-5">Browse products</Button></Link></div> : <div className="space-y-5">{orders.map((order) => {
       const delayed = order.status === 'pending_design_confirmation' && order.designConfirmationDeadline && new Date(order.designConfirmationDeadline).getTime() < PAGE_LOAD_TIME

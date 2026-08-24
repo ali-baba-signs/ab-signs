@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { couponRedemptions, couponReservations, coupons, customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productSizes, productTemplateSizePrices, products, templateProducts, templateSizes, templates } from '@/lib/db/schema'
+import { couponRedemptions, couponReservations, coupons, customerArtworks, designs, orderItems, orderStatusHistory, orders, paymentRecords, productCategories, productImages, productSizes, productTemplateSizePrices, products, templateProducts, templateSizes, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { loadStoreSettings } from '@/lib/store/load-settings'
@@ -37,7 +37,7 @@ export async function GET() {
       db.select().from(orderStatusHistory).where(inArray(orderStatusHistory.orderId, ids)).orderBy(desc(orderStatusHistory.changedAt)),
     ]) : [[], [], []]
     const itemProductIds = [...new Set(items.map((item) => item.productId))]
-    const productRows = itemProductIds.length ? await db.select({ id: products.id, name: products.name, categoryId: products.categoryId }).from(products).where(inArray(products.id, itemProductIds)) : []
+    const productRows = itemProductIds.length ? await db.select({ id: products.id, name: products.name, sku: products.sku, categoryId: products.categoryId }).from(products).where(inArray(products.id, itemProductIds)) : []
     const categoryIds = [...new Set(productRows.map((product) => product.categoryId))]
     const categoryRows = categoryIds.length ? await db.select({ id: productCategories.id, name: productCategories.name }).from(productCategories).where(inArray(productCategories.id, categoryIds)) : []
     return NextResponse.json({ data: { orders: rows.map((order) => ({ ...order, items: items.filter((item) => item.orderId === order.id).map((item) => { const product = productRows.find((row) => row.id === item.productId); return { ...item, product: product ? { ...product, categoryName: categoryRows.find((category) => category.id === product.categoryId)?.name || '' } : null } }), payments: payments.filter((payment) => payment.orderId === order.id), history: history.filter((item) => item.orderId === order.id) })) } })
@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
     const [existing] = await db.select().from(orders).where(eq(orders.idempotencyKey, idempotencyKey)).limit(1)
     if (existing) {
       if (existing.customerEmail !== email || existing.userId !== (session?.user.id ?? null)) return NextResponse.json({ error: { code: 'IDEMPOTENCY_CONFLICT', message: 'This checkout token is already in use.' } }, { status: 409 })
-      return NextResponse.json({ data: { order: existing, duplicate: true } })
+      const existingItems = await db.select().from(orderItems).where(eq(orderItems.orderId, existing.id))
+      return NextResponse.json({ data: { order: existing, duplicate: true, totals: { subtotal: amount(cents(existingItems.reduce((sum, item) => sum + Number(item.totalPrice), 0))), discount: Number(existing.discountAmount).toFixed(2), couponCode: ((existing.couponSnapshot || {}) as Record<string, unknown>).code || null, tax: Number(existing.taxAmount).toFixed(2), shipping: Number(existing.shippingAmount).toFixed(2), total: Number(existing.totalAmount).toFixed(2), currency: existing.currency } } })
     }
 
     const productIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id)))]
@@ -79,8 +80,9 @@ export async function POST(request: NextRequest) {
     if (productIds.length !== new Set(items.map((item) => item.productId)).size || !sizeIds.length) throw new Error('Every cart item needs a valid product and size.')
     const designIds = [...new Set(items.map((item) => item.designId).filter((id): id is string => Boolean(id)))]
     const artworkIds = [...new Set(items.map((item) => item.artworkId).filter((id): id is string => Boolean(id)))]
-    const [productRows, sizeRows, templateSizeRows, priceRows, templateRows, templateLinks, designRows, artworkRows] = await Promise.all([
+    const [productRows, productImageRows, sizeRows, templateSizeRows, priceRows, templateRows, templateLinks, designRows, artworkRows] = await Promise.all([
       db.select().from(products).where(inArray(products.id, productIds)),
+      db.select().from(productImages).where(inArray(productImages.productId, productIds)),
       db.select().from(productSizes).where(inArray(productSizes.id, sizeIds)),
       db.select().from(templateSizes).where(inArray(templateSizes.id, sizeIds)),
       db.select().from(productTemplateSizePrices),
@@ -116,7 +118,8 @@ export async function POST(request: NextRequest) {
       if (customRequested && (!size.height || !size.width)) throw new Error('The custom-size pricing reference has no configured dimensions.')
       const areaRatio = customRequested ? Number(finalHeight) * Number(finalWidth) / (Number(size.height) * Number(size.width)) : 1
       const unitCents = cents(Number(size.unitPrice) * areaRatio)
-      return { product, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      const productImage = productImageRows.find((image) => image.productId === product.id && image.isPrimary) || productImageRows.find((image) => image.productId === product.id)
+      return { product, productImage: productImage?.url || null, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
     const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null
@@ -146,7 +149,7 @@ export async function POST(request: NextRequest) {
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource },
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId },
       })))
       if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })

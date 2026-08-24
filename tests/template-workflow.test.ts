@@ -58,6 +58,26 @@ test('products own sizes and template input links category to product without du
   assert.equal('sizes' in template, false)
 })
 
+test('template validation separates fixed flag shapes from editable artwork', () => {
+  const base = {
+    name: 'Feather flag template',
+    productId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3',
+    categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3',
+    width: 50,
+    height: 200,
+    unit: 'cm',
+    status: 'active',
+    templateKind: 'flag',
+    assets: {},
+    canvasData: { objects: [{ type: 'textbox', role: 'heading' }] },
+  }
+  assert.throws(() => validateTemplateInput(base), /fixed flag shape/i)
+  const template = validateTemplateInput({ ...base, fixedCanvasData: { objects: [{ type: 'group', role: 'fixed-product-layer', selectable: false, evented: false }] } })
+  assert.equal(template.templateKind, 'flag')
+  assert.equal(template.printableArea.width, template.logicalCanvasWidth)
+  assert.equal((template.fixedCanvasData!.objects as Array<Record<string, unknown>>)[0].role, 'fixed-product-layer')
+})
+
 test('order workflow accepts only configured transitions and computes the six-hour deadline', () => {
   assert.equal(assertTransition('pending_design_confirmation', 'design_confirmed'), 'design_confirmed')
   assert.throws(() => assertTransition('pending_design_confirmation', 'completed'), /cannot transition directly/i)

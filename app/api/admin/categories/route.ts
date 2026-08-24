@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const imageAssetId = typeof body.imageAssetId === 'string' ? body.imageAssetId : null
     if (imageAssetId) {
       const [asset] = await db.select().from(storageAssets).where(sql`${storageAssets.id} = ${imageAssetId}::uuid`).limit(1)
-      if (!asset?.contentType.startsWith('image/')) throw new Error('Select a valid category image.')
+      if (!asset || !['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType)) throw new Error('Select a valid PNG, JPG, or WebP category image.')
     }
     const description = typeof body.description === 'string' ? body.description.trim().slice(0, 2000) : ''
     const displayOrder = Math.max(0, Math.floor(Number(body.displayOrder) || 0))

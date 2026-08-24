@@ -33,18 +33,24 @@ export async function POST(request: NextRequest) {
   try {
     const input = validateTemplateInput(await request.json())
     const { products: selectedProducts, primaryProduct, baseSize } = await resolveTemplateProducts(input)
-    if (!input.assets.previewImage || !input.assets.svg) throw new Error('Upload both a preview image and an SVG template source.')
-    const assetRows = await db.select().from(storageAssets).where(inArray(storageAssets.id, [input.assets.previewImage.id, input.assets.svg.id]))
+    if (!input.assets.previewImage || !input.assets.editableSvg) throw new Error('Upload both a preview image and an editable artwork SVG.')
+    if (input.templateKind === 'flag' && !input.assets.fixedSvg) throw new Error('Flag templates require a fixed shape SVG.')
+    const assetIds = [input.assets.previewImage.id, input.assets.editableSvg.id, input.assets.fixedSvg?.id].filter((id): id is string => Boolean(id))
+    const assetRows = await db.select().from(storageAssets).where(inArray(storageAssets.id, assetIds))
     const preview = assetRows.find((asset) => asset.id === input.assets.previewImage!.id)
-    const svg = assetRows.find((asset) => asset.id === input.assets.svg!.id)
+    const svg = assetRows.find((asset) => asset.id === input.assets.editableSvg!.id)
+    const fixedSvg = input.assets.fixedSvg ? assetRows.find((asset) => asset.id === input.assets.fixedSvg!.id) : null
     if (!preview?.contentType.startsWith('image/') || preview.contentType === 'image/svg+xml') throw new Error('Template preview must be a WEBP, PNG, or JPEG image.')
     if (svg?.contentType !== 'image/svg+xml') throw new Error('Editable template source must be an SVG file.')
+    if (fixedSvg && fixedSvg.contentType !== 'image/svg+xml') throw new Error('Fixed product shape must be an SVG file.')
     if (!input.svgChecksum || svg.etag !== input.svgChecksum) throw new Error('The generated data checksum does not match the uploaded sanitized SVG.')
     const [created] = await db.transaction(async (tx) => {
       const rows = await tx.insert(templates).values({
         productId: primaryProduct.id, name: input.name, description: input.description, category: null, status: input.status,
-        canvasData: input.canvasData!, thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
+        canvasData: input.canvasData!, fixedCanvasData: input.fixedCanvasData, templateKind: input.templateKind, printableArea: input.printableArea,
+        thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
+        fixedSvgUrl: fixedSvg ? getStoredAssetUrl(fixedSvg.objectKey) : null, fixedSvgKey: fixedSvg?.objectKey || null, fixedSvgAssetId: fixedSvg?.id || null,
         physicalWidth: baseSize.width, physicalHeight: baseSize.height, measurementUnit: baseSize.unit,
         logicalCanvasWidth: input.logicalCanvasWidth, logicalCanvasHeight: input.logicalCanvasHeight, scaleMetadata: input.scaleMetadata,
         templateVersion: 1, svgChecksum: input.svgChecksum, conversionVersion: input.conversionVersion, conversionStatus: 'ready', conversionError: null, generatedAt: new Date(),

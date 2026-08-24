@@ -27,6 +27,10 @@ export function parseOfferInput(body: Record<string, unknown>) {
   const couponId = typeof body.couponId === 'string' && body.couponId ? body.couponId : null
   if (couponId && !uuid.test(couponId)) throw new Error('Choose a valid linked coupon.')
   const mobileImageAssetId = typeof body.mobileImageAssetId === 'string' && body.mobileImageAssetId ? assetId(body.mobileImageAssetId, 'Mobile offer image') : null
+  const ctaLabel = typeof body.ctaLabel === 'string' ? body.ctaLabel.trim().slice(0, 120) : ''
+  const ctaUrl = typeof body.ctaUrl === 'string' ? body.ctaUrl.trim().slice(0, 2000) : ''
+  if (Boolean(ctaLabel) !== Boolean(ctaUrl)) throw new Error('CTA label and CTA URL must be provided together.')
+  if (ctaUrl && !/^\/(?!\/)[^\s]*$|^https:\/\/[^\s]+$/i.test(ctaUrl)) throw new Error('CTA URL must be a local path or a secure HTTPS URL.')
   return {
     title,
     slug: slug(body.slug || title),
@@ -40,9 +44,9 @@ export function parseOfferInput(body: Record<string, unknown>) {
     imageUrl: null,
     mobileImageUrl: null,
     badgeText: typeof body.badgeText === 'string' ? body.badgeText.trim().slice(0, 100) || null : null,
-    ctaLabel: typeof body.ctaLabel === 'string' ? body.ctaLabel.trim().slice(0, 120) || null : null,
-    ctaUrl: typeof body.ctaUrl === 'string' ? body.ctaUrl.trim().slice(0, 2000) || null : null,
-    showOnHomepage: false,
+    ctaLabel: ctaLabel || null,
+    ctaUrl: ctaUrl || null,
+    showOnHomepage: body.showOnHomepage === true,
     showInOffersPage: body.showInOffersPage !== false,
     showInProfile: body.showInProfile !== false,
     featured: body.featured === true,
@@ -60,7 +64,7 @@ export async function validateOfferReferences(input: ReturnType<typeof parseOffe
     db.select().from(storageAssets).where(inArray(storageAssets.id, assetIds)),
     input.couponId ? db.select({ id: coupons.id }).from(coupons).where(eq(coupons.id, input.couponId)).limit(1) : Promise.resolve([]),
   ])
-  if (assets.length !== assetIds.length || assets.some((asset) => !asset.contentType.startsWith('image/') || asset.status !== 'available')) throw new Error('Offer imagery must be uploaded image assets that are available in storage.')
+  if (assets.length !== assetIds.length || assets.some((asset) => !['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType) || asset.status !== 'available')) throw new Error('Offer imagery must be uploaded PNG, JPG, or WebP assets that are available in storage.')
   if (input.couponId && !couponRows.length) throw new Error('The selected coupon no longer exists.')
 }
 
@@ -91,8 +95,9 @@ export function offerAdminError(error: unknown, fallback: string) {
 export async function GET() {
   try {
     if (!await getAdminSession()) return NextResponse.json({ error: { message: 'Admin access required.' } }, { status: 401 })
-    const [rows, couponRows] = await Promise.all([getOffersWithAssetUrls(), db.select({ id: coupons.id, code: coupons.code }).from(coupons)])
-    return NextResponse.json({ data: { offers: rows, coupons: couponRows } })
+    const [rows, couponRows, imageAssets] = await Promise.all([getOffersWithAssetUrls(), db.select({ id: coupons.id, code: coupons.code }).from(coupons), db.select().from(storageAssets).where(inArray(storageAssets.contentType, ['image/png', 'image/jpeg', 'image/webp'])).orderBy(desc(storageAssets.updatedAt))])
+    const media = imageAssets.filter((asset) => asset.status === 'available' && /^(homepage|products|offers)\//.test(asset.objectKey)).map((asset) => ({ id: asset.id, filename: asset.filename, source: asset.objectKey.startsWith('homepage/hero/') ? 'Hero' : asset.objectKey.startsWith('homepage/promotions/') ? 'Promotion' : asset.objectKey.startsWith('products/') ? 'Product' : 'Offer', url: getStoredAssetUrl(asset.objectKey) }))
+    return NextResponse.json({ data: { offers: rows, coupons: couponRows, media } })
   } catch (error) {
     console.error('Offers load failed', error)
     const result = offerAdminError(error, 'Offers could not be loaded.')

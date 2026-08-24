@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Canvas, FabricImage, FabricObject, Group, Textbox, loadSVGFromString, util,
+  Canvas, FabricImage, FabricObject, Group, Rect, Textbox, loadSVGFromString, util,
 } from 'fabric'
 import { EditorHeader } from './EditorHeader'
 import { EditorSidebar } from './EditorSidebar'
@@ -67,6 +67,27 @@ function applyLock(object: EditorObject, locked: boolean) {
   })
 }
 
+function isFixedLayer(object: EditorObject) {
+  return object.role === 'fixed-product-layer'
+}
+
+function applyFixedLayer(object: EditorObject) {
+  object.set({
+    locked: true,
+    selectable: false,
+    evented: false,
+    subTargetCheck: false,
+    interactive: false,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockRotation: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    hasControls: false,
+    hoverCursor: 'default',
+  })
+}
+
 function unpackSvgRoot(canvas: Canvas) {
   for (const root of [...canvas.getObjects()] as EditorObject[]) {
     if (root.role !== 'svg-root' || root.type !== 'group') continue
@@ -126,6 +147,8 @@ export function CanvasEditor() {
   const sideStatesRef = useRef<Partial<Record<'front' | 'back', Record<string, unknown>>>>({})
   const savedDesignId = useRef<string | null>(null)
   const originalTemplateRef = useRef<Record<string, unknown> | null>(null)
+  const fixedTemplateRef = useRef<Record<string, unknown> | null>(null)
+  const templateKindRef = useRef<'banner' | 'flag'>('banner')
   const baseCanvasRef = useRef({ width: DEFAULT_PRODUCT_CONFIG.logicalCanvasWidth, height: DEFAULT_PRODUCT_CONFIG.logicalCanvasHeight, fitMode: 'contain' as 'contain' | 'cover' | 'stretch' })
   const frontHistory = useCanvasHistory(canvasRef)
   const backHistory = useCanvasHistory(canvasRef)
@@ -139,7 +162,7 @@ export function CanvasEditor() {
   const canRedo = currentSide === 'front' ? frontHistory.canRedo : backHistory.canRedo
 
   const refreshObjects = useCallback(() => {
-    setObjects((canvasRef.current?.getObjects() ?? []) as EditorObject[])
+    setObjects(((canvasRef.current?.getObjects() ?? []) as EditorObject[]).filter((object) => !isFixedLayer(object)))
   }, [])
 
   const fitToScreen = useCallback((config = configRef.current) => {
@@ -192,9 +215,35 @@ export function CanvasEditor() {
     canvas.renderOnAddRemove = false
     try {
       await runWhileRestoring(async () => {
-        await canvas.loadFromJSON(original)
+        const editableObjects = Array.isArray(original.objects) ? original.objects : []
+        const fixedObjects = Array.isArray(fixedTemplateRef.current?.objects) ? fixedTemplateRef.current.objects : []
+        await canvas.loadFromJSON({ ...original, objects: [...fixedObjects, ...editableObjects], clipPath: undefined })
         unpackSvgRoot(canvas)
+        if (!fixedObjects.length && templateKindRef.current === 'banner') {
+          const background = new Rect({
+            left: 0,
+            top: 0,
+            width: baseCanvasRef.current.width,
+            height: baseCanvasRef.current.height,
+            fill: '#ffffff',
+            stroke: '#d4d4d8',
+            strokeWidth: 1,
+            id: crypto.randomUUID(),
+            name: 'Fixed banner product layer',
+            role: 'fixed-product-layer',
+          }) as EditorObject
+          applyFixedLayer(background)
+          canvas.insertAt(0, background)
+        }
         scaleComposition(canvas, baseCanvasRef.current.width, baseCanvasRef.current.height, config.logicalCanvasWidth, config.logicalCanvasHeight, baseCanvasRef.current.fitMode)
+        const fixedLayer = (canvas.getObjects() as EditorObject[]).find(isFixedLayer)
+        for (const object of (canvas.getObjects() as EditorObject[]).filter(isFixedLayer)) applyFixedLayer(object)
+        canvas.clipPath = undefined
+        if (templateKindRef.current === 'flag' && fixedLayer) {
+          const clipPath = await fixedLayer.clone([...CUSTOM_PROPERTIES]) as EditorObject
+          clipPath.set({ absolutePositioned: true, selectable: false, evented: false, stroke: undefined })
+          canvas.clipPath = clipPath
+        }
         canvas.setDimensions({ width: config.logicalCanvasWidth, height: config.logicalCanvasHeight })
       })
     } finally { canvas.renderOnAddRemove = true }
@@ -242,6 +291,8 @@ export function CanvasEditor() {
           setProductConfig(payload.data.productConfig)
           setTemplateId(payload.data.template.id)
           originalTemplateRef.current = payload.data.template.canvasData
+          fixedTemplateRef.current = payload.data.template.fixedCanvasData || null
+          templateKindRef.current = payload.data.template.templateKind === 'flag' ? 'flag' : 'banner'
           baseCanvasRef.current = { width: payload.data.template.baseCanvasWidth, height: payload.data.template.baseCanvasHeight, fitMode: payload.data.fitMode || 'contain' }
           await restoreOriginalAtSize(payload.data.productConfig)
           sideStatesRef.current.front = canvas.toJSON()
@@ -329,6 +380,8 @@ export function CanvasEditor() {
       const loaded = await fetchTemplate(template)
       canvas.discardActiveObject()
       originalTemplateRef.current = loaded.json
+      fixedTemplateRef.current = loaded.fixedCanvasData || null
+      templateKindRef.current = loaded.templateKind
       baseCanvasRef.current = { width: template.width, height: template.height, fitMode: loaded.fitMode }
       const config = loaded.productConfig || configRef.current
       configRef.current = config
@@ -336,7 +389,8 @@ export function CanvasEditor() {
       await restoreOriginalAtSize(config)
       for (const object of canvas.getObjects() as EditorObject[]) {
         if (!object.id) object.set({ id: crypto.randomUUID() })
-        if (object.locked) applyLock(object, true)
+        if (isFixedLayer(object)) applyFixedLayer(object)
+        else if (object.locked) applyLock(object, true)
       }
       setTemplateId(template.id)
       refreshObjects()
@@ -430,7 +484,7 @@ export function CanvasEditor() {
 
   const layerAction = useCallback((object: EditorObject, action: string) => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas || isFixedLayer(object)) return
     if (action === 'forward') canvas.bringObjectForward(object)
     if (action === 'backward') canvas.sendObjectBackwards(object)
     if (action === 'front') canvas.bringObjectToFront(object)
@@ -456,15 +510,11 @@ export function CanvasEditor() {
     }
 
     try {
-      setStatus('Rendering production preview…')
+      setStatus('Rendering design preview…')
       const renderGroupId = savedDesignId.current ?? crypto.randomUUID()
       const renderAndUpload = async (canvasJson: Record<string, unknown>, side: 'front' | 'back') => {
         const rendered = await renderBrowserSide(canvasJson, configRef.current)
-        const [preview, production] = await Promise.all([
-          uploadBrowserRender(rendered.preview, `${side}-preview.png`, renderGroupId),
-          uploadBrowserRender(rendered.production, `${side}-production.jpg`, renderGroupId),
-        ])
-        return { preview, production }
+        return uploadBrowserRender(rendered.preview, `${side}-preview.png`, renderGroupId)
       }
       const frontJson = sides?.front.canvasJson ?? design.canvasJson
       const front = await renderAndUpload(frontJson, 'front')
@@ -528,7 +578,7 @@ export function CanvasEditor() {
     if (!front) return
     currentSideRef.current = 'back'; setCurrentSide('back')
     await runWhileRestoring(() => canvas.loadFromJSON(front))
-    if (mirror) for (const object of canvas.getObjects()) { object.set({ left: configRef.current.logicalCanvasWidth - (object.left ?? 0), flipX: !object.flipX }); object.setCoords() }
+    if (mirror) for (const object of canvas.getObjects() as EditorObject[]) { if (isFixedLayer(object)) continue; object.set({ left: configRef.current.logicalCanvasWidth - (object.left ?? 0), flipX: !object.flipX }); object.setCoords() }
     sideStatesRef.current.back = canvas.toJSON(); refreshObjects(); reset(); canvas.requestRenderAll(); setStatus(mirror ? 'Front mirrored to back by request' : 'Front copied to back by request')
   }, [refreshObjects, reset, runWhileRestoring])
 

@@ -18,7 +18,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     const input = validateHeroInput(await request.json())
     const assetIds = [input.desktopAssetId, input.mobileAssetId].filter((value): value is string => Boolean(value))
     const assets = await db.select().from(storageAssets).where(and(inArray(storageAssets.id, assetIds), eq(storageAssets.status, 'available')))
-    if (assets.length !== new Set(assetIds).size || assets.some((asset) => !asset.contentType.startsWith('image/'))) throw new Error('Every hero image must be an available image asset.')
+    if (assets.length !== new Set(assetIds).size || assets.some((asset) => !['image/png', 'image/jpeg', 'image/webp'].includes(asset.contentType))) throw new Error('Every hero image must be an available PNG, JPG, or WebP asset.')
     const actionType = input.displayOrder !== existing.displayOrder ? 'hero.reordered' : input.featured !== existing.featured ? (input.featured ? 'hero.featured' : 'hero.unfeatured') : input.enabled !== existing.enabled ? (input.enabled ? 'hero.enabled' : 'hero.disabled') : 'hero.updated'
     const [updated] = await db.transaction(async (tx) => {
       const rows = await tx.update(heroSlides).set({ ...input, updatedAt: new Date() }).where(eq(heroSlides.id, id)).returning()

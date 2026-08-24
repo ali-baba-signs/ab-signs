@@ -4,6 +4,7 @@ import { db } from '@/lib/db/client'
 import { designs, orderItems, orders, storageAssets } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { getObjectBody } from '@/lib/storage/r2'
+import { designToSvg } from '@/lib/production/design-svg'
 
 export const runtime = 'nodejs'
 
@@ -20,7 +21,18 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     if (!order || !design) return NextResponse.json({ error: { message: 'The saved production design could not be found.' } }, { status: 404 })
 
     const side = request.nextUrl.searchParams.get('side') === 'back' ? 'back' : 'front'
-    const format = request.nextUrl.searchParams.get('format') === 'png' ? 'png' : 'pdf'
+    const requestedFormat = request.nextUrl.searchParams.get('format') || 'best'
+    if (!['best', 'svg', 'pdf', 'png'].includes(requestedFormat)) return NextResponse.json({ error: { message: 'Choose SVG, PDF, or PNG production format.' } }, { status: 400 })
+    if (requestedFormat === 'best' || requestedFormat === 'svg') {
+      try {
+        const svg = designToSvg(design.canvasData, side)
+        const filename = `${order.orderNumber}-${item.id.slice(0, 8)}-${side}-production.svg`
+        return new NextResponse(svg, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'content-disposition': `attachment; filename="${filename}"`, 'cache-control': 'private, no-store' } })
+      } catch (error) {
+        if (requestedFormat === 'svg') throw error
+      }
+    }
+    const format = requestedFormat === 'png' ? 'png' : 'pdf'
     const renderedAssets = design.canvasData && typeof design.canvasData === 'object' && 'renderedAssets' in design.canvasData
       ? (design.canvasData as Record<string, unknown>).renderedAssets as Record<string, unknown>
       : {}

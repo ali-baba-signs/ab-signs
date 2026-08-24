@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { asc, eq, inArray } from 'drizzle-orm'
+import { asc, eq, inArray, like, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { adminActivityLogs, productCategories, productImages, products, productSizes, templateProducts, templates } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
@@ -7,6 +7,7 @@ import { activityValues } from '@/lib/admin/activity'
 import { validateProductInput } from '@/lib/products/validation'
 import { getProductsWithDetails } from '@/lib/products/queries'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { nextProductSku, productSkuPrefix } from '@/lib/products/sku'
 
 export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
@@ -27,15 +28,16 @@ export async function POST(request: NextRequest) {
   const session = await getAdminSession()
   if (!session) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
   let input: ReturnType<typeof validateProductInput> | undefined
+  let autoSkuPrefix: string | null = null
   try {
     const raw = await request.json() as Record<string, unknown>
     // Keep manually supplied SKUs intact, while making every new product
     // printable/traceable even when an admin leaves the field blank.
     if (typeof raw.sku !== 'string' || !raw.sku.trim()) {
       const categoryId = typeof raw.categoryId === 'string' ? raw.categoryId : ''
-      const [category] = categoryId ? await db.select({ slug: productCategories.slug }).from(productCategories).where(eq(productCategories.id, categoryId)).limit(1) : []
-      const namePart = typeof raw.name === 'string' ? raw.name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 35) : 'PRODUCT'
-      raw.sku = `${(category?.slug || 'PRODUCT').toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 24)}-${namePart || 'ITEM'}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
+      const [category] = categoryId ? await db.select({ name: productCategories.name }).from(productCategories).where(eq(productCategories.id, categoryId)).limit(1) : []
+      autoSkuPrefix = productSkuPrefix(category?.name || 'Product', typeof raw.name === 'string' ? raw.name : 'Item')
+      raw.sku = `${autoSkuPrefix}-0000`
     }
     input = validateProductInput(raw)
     const referencedTemplateIds = [...new Set(input.sizes.flatMap((size) => [size.frontTemplateId, size.backTemplateId].filter((id): id is string => Boolean(id))))]
@@ -44,8 +46,14 @@ export async function POST(request: NextRequest) {
       if (ready.length !== referencedTemplateIds.length) throw new Error('One or more assigned templates no longer exist.')
     }
     const result = await db.transaction(async (tx) => {
+      let resolvedSku = input!.sku
+      if (autoSkuPrefix) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${autoSkuPrefix}))`)
+        const existing = await tx.select({ sku: products.sku }).from(products).where(like(products.sku, `${autoSkuPrefix}-%`))
+        resolvedSku = nextProductSku(autoSkuPrefix, existing.map((row) => row.sku))
+      }
       const [product] = await tx.insert(products).values({
-        sku: input!.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2),
+        sku: resolvedSku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2),
         categoryId: input!.categoryId, templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, featured: input!.featured, active: input!.active,
       }).returning()
       await tx.insert(productImages).values(input!.images.map((image) => ({

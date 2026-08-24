@@ -3,7 +3,7 @@ import type { ProductConfig } from './types'
 
 export interface BrowserRenderAsset {
   key: string
-  contentType: 'image/png' | 'image/jpeg'
+  contentType: 'image/png'
   size: number
   pixelWidth: number
   pixelHeight: number
@@ -11,25 +11,12 @@ export interface BrowserRenderAsset {
 
 export interface BrowserSideRender {
   preview: { blob: Blob; contentType: 'image/png'; pixelWidth: number; pixelHeight: number }
-  production: { blob: Blob; contentType: 'image/jpeg'; pixelWidth: number; pixelHeight: number }
 }
 
-function canvasBlob(canvas: HTMLCanvasElement, contentType: 'image/png' | 'image/jpeg', quality?: number) {
+function canvasBlob(canvas: HTMLCanvasElement, contentType: 'image/png') {
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('The browser could not encode the design preview.')), contentType, quality)
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('The browser could not encode the design preview.')), contentType)
   })
-}
-
-function opaqueCopy(source: HTMLCanvasElement) {
-  const output = document.createElement('canvas')
-  output.width = source.width
-  output.height = source.height
-  const context = output.getContext('2d')
-  if (!context) throw new Error('The browser could not prepare the production preview.')
-  context.fillStyle = '#ffffff'
-  context.fillRect(0, 0, output.width, output.height)
-  context.drawImage(source, 0, 0)
-  return output
 }
 
 /** Renders serialized Fabric state without changing the visible editor canvas. */
@@ -47,15 +34,9 @@ export async function renderBrowserSide(
     const filter = (object: { excludeFromExport?: boolean }) => !object.excludeFromExport
     const maxDimension = Math.max(width, height)
     const previewCanvas = canvas.toCanvasElement(Math.min(2, 3200 / maxDimension), { filter })
-    const productionCanvas = canvas.toCanvasElement(Math.min(5, 6500 / maxDimension), { filter })
-    const productionOpaque = opaqueCopy(productionCanvas)
-    const [previewBlob, productionBlob] = await Promise.all([
-      canvasBlob(previewCanvas, 'image/png'),
-      canvasBlob(productionOpaque, 'image/jpeg', 0.94),
-    ])
+    const previewBlob = await canvasBlob(previewCanvas, 'image/png')
     return {
       preview: { blob: previewBlob, contentType: 'image/png', pixelWidth: previewCanvas.width, pixelHeight: previewCanvas.height },
-      production: { blob: productionBlob, contentType: 'image/jpeg', pixelWidth: productionOpaque.width, pixelHeight: productionOpaque.height },
     }
   } finally {
     canvas.dispose()
@@ -63,7 +44,7 @@ export async function renderBrowserSide(
 }
 
 export async function uploadBrowserRender(
-  asset: BrowserSideRender['preview'] | BrowserSideRender['production'],
+  asset: BrowserSideRender['preview'],
   filename: string,
   designId: string,
 ): Promise<BrowserRenderAsset> {

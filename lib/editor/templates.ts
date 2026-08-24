@@ -28,5 +28,11 @@ export async function fetchTemplate(template: DesignTemplate) {
   if (!response.ok) throw new Error(payload.error?.message || `Unable to load ${template.name}`)
   const json: unknown = payload.data.template.canvasData
   if (!json || typeof json !== 'object' || !Array.isArray((json as { objects?: unknown }).objects)) throw new Error('Invalid Fabric template data')
-  return { json: json as Record<string, unknown>, productConfig: payload.data.productConfig, fitMode: payload.data.fitMode || 'contain' }
+  return {
+    json: json as Record<string, unknown>,
+    fixedCanvasData: payload.data.template.fixedCanvasData as Record<string, unknown> | null,
+    templateKind: payload.data.template.templateKind === 'flag' ? 'flag' as const : 'banner' as const,
+    productConfig: payload.data.productConfig,
+    fitMode: payload.data.fitMode || 'contain',
+  }
 }
