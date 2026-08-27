@@ -14,6 +14,7 @@ export interface ProductConfig {
   heightMm: number
   bleedMm: number
   safeMarginMm: number
+  trimMarks?: boolean
   logicalCanvasWidth: number
   logicalCanvasHeight: number
   measurementUnit?: 'mm' | 'cm' | 'in' | 'ft' | 'm'
@@ -22,6 +23,7 @@ export interface ProductConfig {
   productCategory?: 'banner' | 'flag'
   selectedSizeId?: string
   templateReference?: string
+  productionGuideVersion?: number
 }
 
 export interface DesignTemplate {

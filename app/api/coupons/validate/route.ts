@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { inArray } from 'drizzle-orm'
+import { and, eq, inArray, or } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { productSizes, productTemplateSizePrices, products, templateSizes } from '@/lib/db/schema'
+import { couponCustomers, coupons, productSizes, productTemplateSizePrices, products, templateSizes } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { validateCoupon } from '@/lib/coupons/engine'
 
@@ -36,6 +36,17 @@ export async function POST(request: NextRequest) {
       return { productId: product.id, categoryId: product.categoryId, totalCents: Math.round(Number(unitPrice) * quantity * 100) }
     })
     const session = await getSession()
+    if (!body.code) {
+      if (!session?.user) return NextResponse.json({ data: { coupons: [] } })
+      const assigned = await db.select({ couponId: couponCustomers.couponId }).from(couponCustomers).where(eq(couponCustomers.userId, session.user.id))
+      const assignedIds = assigned.map((row) => row.couponId)
+      const candidates = await db.select({ code: coupons.code }).from(coupons).where(and(eq(coupons.active, true), assignedIds.length ? or(eq(coupons.visibility, 'public'), inArray(coupons.id, assignedIds)) : eq(coupons.visibility, 'public')))
+      const checked = await Promise.all(candidates.map(async ({ code }) => {
+        try { const coupon = await validateCoupon(code, items, session.user.id); return { ...coupon, discountAmount: (coupon.discountCents / 100).toFixed(2) } }
+        catch { return null }
+      }))
+      return NextResponse.json({ data: { coupons: checked.filter(Boolean) } })
+    }
     const coupon = await validateCoupon(body.code, items, session?.user.id)
     return NextResponse.json({ data: { coupon: { ...coupon, discountAmount: (coupon.discountCents / 100).toFixed(2) } } })
   } catch (error) {

@@ -19,12 +19,27 @@ export async function generateFabricJsonFromSvg(
   const parsed = await loadSVGFromString(svg)
   const objects = parsed.objects.filter((object): object is FabricObject => Boolean(object))
   if (!objects.length) throw new Error('Fabric.js could not find any supported objects in this SVG.')
+
   const root = util.groupSVGElements(objects, parsed.options)
   if (!root.width || !root.height) throw new Error('The SVG has no usable dimensions. Add a width, height, or viewBox.')
-  const inset = Math.max(0.1, Math.min(1, options.inset ?? (options.role === 'fixed-product-layer' ? 1 : 0.9)))
-  const scale = Math.min((size.logicalCanvasWidth * inset) / root.width, (size.logicalCanvasHeight * inset) / root.height)
+
   const fixed = options.role === 'fixed-product-layer'
-  root.set({ left: size.logicalCanvasWidth / 2, top: size.logicalCanvasHeight / 2, originX: 'center', originY: 'center', scaleX: scale, scaleY: scale, subTargetCheck: !fixed, interactive: !fixed })
+
+  // Stretch scale factors directly to match the logical canvas boundaries (0 to 100% full bleed)
+  const scaleX = size.logicalCanvasWidth / root.width
+  const scaleY = size.logicalCanvasHeight / root.height
+
+  root.set({
+    left: 0,
+    top: 0,
+    originX: 'left',
+    originY: 'top',
+    scaleX,
+    scaleY,
+    subTargetCheck: !fixed,
+    interactive: !fixed,
+  })
+
   root.set({
     id: crypto.randomUUID(),
     name: fixed ? 'Fixed product shape' : 'Editable template artwork',
@@ -39,23 +54,30 @@ export async function generateFabricJsonFromSvg(
     lockScalingY: fixed,
     hasControls: !fixed,
   })
-  const canvas = new StaticCanvas(undefined, { width: size.logicalCanvasWidth, height: size.logicalCanvasHeight, backgroundColor: '#ffffff' })
+
+  const canvas = new StaticCanvas(undefined, {
+    width: size.logicalCanvasWidth,
+    height: size.logicalCanvasHeight,
+    backgroundColor: '#ffffff',
+  })
+
   canvas.add(root)
   canvas.renderAll()
   const canvasData = validateFabricCanvasData(canvas.toJSON())
   canvas.dispose()
-  const renderedWidth = root.width * scale
-  const renderedHeight = root.height * scale
+
   return {
     canvasData,
     ...size,
     sourceObjectCount: objects.length,
-    scale,
+    scale: scaleX,
+    scaleX,
+    scaleY,
     printableArea: {
-      x: (size.logicalCanvasWidth - renderedWidth) / 2,
-      y: (size.logicalCanvasHeight - renderedHeight) / 2,
-      width: renderedWidth,
-      height: renderedHeight,
+      x: 0,
+      y: 0,
+      width: size.logicalCanvasWidth,
+      height: size.logicalCanvasHeight,
     },
   }
 }

@@ -28,6 +28,7 @@ export type UploadPurpose =
   | 'design-artwork'
   | 'design-draft'
   | 'design-preview'
+  | 'design-production'
   | 'logo'
   | 'template'
   | 'homepage'

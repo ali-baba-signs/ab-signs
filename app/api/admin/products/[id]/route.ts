@@ -39,7 +39,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     await db.transaction(async (tx) => {
       const [product] = await tx.update(products).set({
         sku: existingProduct.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2), categoryId: input!.categoryId,
-        templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, featured: input!.featured, active: input!.active, updatedAt: new Date(),
+        templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, featured: input!.featured, active: input!.active, updatedAt: new Date(),
       }).where(eq(products.id, id)).returning()
       if (!product) throw new Error('Product not found.')
       if (removedImages.length) await tx.delete(productImages).where(inArray(productImages.id, removedImages.map((image) => image.id)))

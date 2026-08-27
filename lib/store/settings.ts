@@ -34,6 +34,7 @@ export interface StoreSettingsValues {
   taxRate: number
   shippingCost: number
   freeShippingThreshold: number
+  bannerShippingBands: Array<{ maxAreaM2: number | null; price: number }>
   turnaroundDays: string
   footerText: string
   termsUrl: string
@@ -56,6 +57,13 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsValues = {
   taxRate: 10,
   shippingCost: 0,
   freeShippingThreshold: 50,
+  bannerShippingBands: [
+    { maxAreaM2: 2, price: 15 },
+    { maxAreaM2: 5, price: 20 },
+    { maxAreaM2: 10, price: 28 },
+    { maxAreaM2: 20, price: 40 },
+    { maxAreaM2: null, price: 55 },
+  ],
   turnaroundDays: '3-5',
   footerText: 'Custom print and signage for Australia.',
   termsUrl: '/terms-of-service',
@@ -126,6 +134,15 @@ export function validateStoreSettings(value: unknown): StoreSettingsValues {
       displayOrder: Number.isFinite(Number(row.displayOrder)) ? Math.round(Number(row.displayOrder)) : index,
     }
   }).filter((link) => link.url) : []
+  const bannerShippingBands = Array.isArray(input.bannerShippingBands) && input.bannerShippingBands.length
+    ? input.bannerShippingBands.slice(0, 10).map((item, index) => {
+        const row = (item || {}) as Record<string, unknown>
+        return {
+          maxAreaM2: row.maxAreaM2 === null || row.maxAreaM2 === '' ? null : numberBetween(row.maxAreaM2, 0.01, 100000, `Banner band ${index + 1} area`),
+          price: numberBetween(row.price, 0, 100000, `Banner band ${index + 1} price`),
+        }
+      })
+    : DEFAULT_STORE_SETTINGS.bannerShippingBands
   return {
     storeName: text('storeName', 255, true),
     storeEmail: email,
@@ -140,6 +157,7 @@ export function validateStoreSettings(value: unknown): StoreSettingsValues {
     taxRate: numberBetween(input.taxRate, 0, 100, 'Tax rate'),
     shippingCost: numberBetween(input.shippingCost, 0, 100000, 'Shipping cost'),
     freeShippingThreshold: numberBetween(input.freeShippingThreshold, 0, 1000000, 'Free shipping threshold'),
+    bannerShippingBands,
     turnaroundDays: text('turnaroundDays', 50, true),
     footerText: text('footerText', 500),
     termsUrl: text('termsUrl', 500) || '/terms-of-service',

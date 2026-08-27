@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { HeroSlide } from '@/data/homepage'
 
@@ -35,14 +35,12 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
   }, [paused, slides.length])
 
   const slide = slides[active]
-  const move = (direction: number) => setActive((value) => (value + direction + slides.length) % slides.length)
-
   return (
     <section
   aria-roledescription="carousel"
   aria-label="Featured products and design services"
   tabIndex={0}
-  className="relative w-full h-[650px] overflow-hidden bg-[#111] sm:h-[700px] lg:h-[760px] focus:outline-none"
+  className="relative h-[clamp(420px,62vw,760px)] w-full overflow-hidden bg-zinc-100 focus:outline-none"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -64,7 +62,6 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
               }}
             />
           </picture>
-          <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/15" />
         </div>
       ))}
       <div className="absolute inset-0 z-0 flex">
@@ -90,12 +87,12 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
   />
 
 </div>
-      <div className={`relative z-20 flex h-full w-full mx-auto max-w-[1440px] px-5 py-10 sm:px-8 sm:py-16 lg:px-12 ${slide.verticalAlignment === 'top' ? 'items-start' : slide.verticalAlignment === 'bottom' ? 'items-end' : 'items-center'}`}>
-        <div className={`max-w-2xl text-white ${slide.alignment === 'right' ? 'lg:ml-auto lg:text-right' : slide.alignment === 'center' ? 'mx-auto text-center' : ''}`}>
+      <div className={`pointer-events-none relative z-20 mx-auto flex h-full w-full max-w-[1440px] px-5 py-10 sm:px-8 sm:py-16 lg:px-12 ${slide.verticalAlignment === 'top' ? 'items-start' : slide.verticalAlignment === 'bottom' ? 'items-end' : 'items-center'}`}>
+        <div className={`max-w-2xl rounded-xl bg-black/45 p-5 text-white backdrop-blur-[2px] sm:p-7 ${slide.alignment === 'right' ? 'lg:ml-auto lg:text-right' : slide.alignment === 'center' ? 'mx-auto text-center' : ''}`}>
           {slide.eyebrow && <p className="mb-4 text-xs font-bold uppercase tracking-[.22em] text-[#ff4b91]">{slide.eyebrow}</p>}
           {slide.title && <h1 className="text-4xl font-black leading-[1.02] sm:text-5xl lg:text-7xl">{slide.title}</h1>}
           {slide.description && <p className={`max-w-xl text-base leading-7 text-white/80 sm:text-lg ${slide.title || slide.eyebrow ? 'mt-5' : ''} ${slide.alignment === 'right' ? 'lg:ml-auto' : slide.alignment === 'center' ? 'mx-auto' : ''}`}>{slide.description}</p>}
-          {slide.buttonLabel && slide.href && <Link href={slide.href} className={`inline-flex min-h-12 items-center gap-2 rounded-md bg-[#ed1b68] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#c91556] focus-visible:outline-2 focus-visible:outline-offset-4 ${slide.title || slide.description || slide.eyebrow ? 'mt-8' : ''}`}>
+          {slide.buttonLabel && slide.href && <Link href={slide.href} className={`pointer-events-auto inline-flex min-h-12 items-center gap-2 rounded-md bg-[#ed1b68] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#c91556] focus-visible:outline-2 focus-visible:outline-offset-4 ${slide.title || slide.description || slide.eyebrow ? 'mt-8' : ''}`}>
             {slide.buttonLabel}<ArrowRight className="h-4 w-4" />
           </Link>}
         </div>

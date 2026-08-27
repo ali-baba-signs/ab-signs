@@ -1,5 +1,6 @@
 const LOCAL_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
-const PRODUCTION_ORIGINS = ['https://alibabasigns.com.au', 'https://www.alibabasigns.com.au']
+const PRODUCTION_ORIGINS = ['https://alibabasigns.com.au', 'https://www.alibabasigns.com.au','https://devtest.alibabasigns.com.au']
+
 
 function normalizeOrigin(value: string | undefined) {
   if (!value || value.includes('your-domain.com')) return undefined

@@ -47,6 +47,8 @@ export function validateUpload(input: UploadRequest) {
         ? DESIGN_TYPES
       : input.purpose === 'design-draft'
         ? new Set(['application/json'])
+        : input.purpose === 'design-production'
+          ? new Set(['application/pdf', 'image/svg+xml'])
         : input.purpose === 'order-document'
           ? new Set(['application/pdf'])
         : IMAGE_TYPES
@@ -97,6 +99,8 @@ export function createUploadKey(input: UploadRequest, identity: string) {
       return [R2_PATHS.designUploads, safeIdentity, safeDesignId || 'drafts', filename].join('/')
     case 'design-preview':
       return [R2_PATHS.designPreviews, safeIdentity, safeDesignId || 'drafts', filename].join('/')
+    case 'design-production':
+      return [R2_PATHS.printFiles, safeIdentity, safeDesignId || 'drafts', filename].join('/')
     case 'template':
       return `${R2_PATHS.editorTemplates}/vinyl-banners/${input.contentType === 'image/svg+xml' ? 'source' : 'previews'}/${filename}`
     case 'homepage':

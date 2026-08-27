@@ -18,6 +18,7 @@ export async function GET() {
       taxRate: settings.taxRate,
       shippingCost: settings.shippingCost,
       freeShippingThreshold: settings.freeShippingThreshold,
+      bannerShippingBands: settings.bannerShippingBands,
       allowGuestCheckout: settings.allowGuestCheckout,
       paymentTestMode: settings.paymentTestMode,
       termsUrl: settings.termsUrl,

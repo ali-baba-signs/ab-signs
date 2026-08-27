@@ -69,3 +69,18 @@ export async function uploadBrowserRender(
     pixelHeight: asset.pixelHeight,
   }
 }
+
+export async function uploadProductionFile(
+  asset: { blob: Blob; contentType: 'application/pdf' | 'image/svg+xml'; pixelWidth: number; pixelHeight: number; metadata: Record<string, unknown> },
+  filename: string,
+  designId: string,
+) {
+  const presignResponse = await fetch('/api/uploads/presign', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename, contentType: asset.contentType, size: asset.blob.size, purpose: 'design-production', designId }) })
+  const presignPayload = await presignResponse.json()
+  if (!presignResponse.ok) throw new Error(presignPayload.error?.message || 'The production file upload could not be prepared.')
+  const uploadResponse = await fetch(presignPayload.data.uploadUrl, { method: 'PUT', headers: { 'content-type': asset.contentType }, body: asset.blob })
+  if (!uploadResponse.ok) throw new Error('The generated production file could not be uploaded.')
+  return { key: presignPayload.data.key as string, contentType: asset.contentType, size: asset.blob.size, pixelWidth: asset.pixelWidth, pixelHeight: asset.pixelHeight, metadata: asset.metadata }
+}
+
+export const uploadProductionPdf = uploadProductionFile

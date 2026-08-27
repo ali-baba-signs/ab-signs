@@ -102,7 +102,7 @@ export interface CreateOrderRequest {
     email: string
     phone: string
     address: string
-    city: string
+    suburb: string
     state: string
     postalCode: string
     country: string

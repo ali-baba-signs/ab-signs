@@ -161,3 +161,9 @@ node --env-file=.env.local scripts/verify-commerce-db.mjs
 ```
 
 `verify-commerce-db.mjs` runs inside a rolled-back transaction. `checkout-smoke.mjs` expects a running production server, creates temporary orders for all three payment outcomes, and deletes its fixtures afterward.
+
+## Checkout and Fulfilment Logic
+
+Product prices and quantities are reloaded from the database when an order is created. Banner delivery uses the combined billable printed area: up to 2 m² is AUD 15, 2.1–5 m² is AUD 20, 5.1–10 m² is AUD 28, 10.1–20 m² is AUD 40, and larger jobs start at AUD 55. The bands are stored in Store Settings; products marked **Free shipping** do not contribute to billable shipping area. Other products use the standard shipping cost and free-shipping threshold.
+
+Vouchers test their minimum against product subtotal only. The product discount is applied after eligibility, while shipping and GST continue to use the original product subtotal. Orders retain authoritative price, shipping, tax, address, artwork, and voucher snapshots. Paid orders enter design confirmation, then printing, quality check, dispatch or pickup, and delivery/completion. The first delivered/completed milestone claims one unique email event and sends the customer a delivery message with per-item review links; retries only occur after a recorded failure or stale processing claim.

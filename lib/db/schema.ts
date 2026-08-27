@@ -131,6 +131,7 @@ export const products = pgTable('products', {
   templateId: uuid('template_id'),
   sizeMode: varchar('size_mode', { length: 30 }).default('preset_sizes').notNull(),
   allowCustomDimensions: boolean('allow_custom_dimensions').default(false).notNull(),
+  freeShipping: boolean('free_shipping').default(false).notNull(),
   materials: json('materials'),
   printTypes: json('print_types'),
   featured: boolean('featured').default(false),

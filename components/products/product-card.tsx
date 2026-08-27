@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Star } from 'lucide-react'
 
 interface ProductCardProps {
   id: string
@@ -10,6 +11,9 @@ interface ProductCardProps {
   basePrice: string
   image?: string
   featured?: boolean
+  averageRating?: number
+  reviewCount?: number
+  soldQuantity?: number
 }
 
 export function ProductCard({
@@ -19,6 +23,9 @@ export function ProductCard({
   basePrice,
   image,
   featured,
+  averageRating = 0,
+  reviewCount = 0,
+  soldQuantity = 0,
 }: ProductCardProps) {
   return (
     <div className="group">
@@ -51,6 +58,11 @@ export function ProductCard({
       <div className="flex items-center justify-between mt-4 grid grid-cols-2 gap-2">
         <span className="text-lg font-bold text-primary ">${basePrice}</span>
         <Link href={`/products/${id}`}><Button size="sm" className="w-full bg-primary hover:bg-opacity-90 text-white">Choose options</Button></Link>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-3 text-xs text-muted-foreground" aria-label="Product popularity">
+        <span className="inline-flex items-center gap-1 font-semibold text-foreground"><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />{reviewCount ? averageRating.toFixed(1) : 'New'}</span>
+        <span>{reviewCount} review{reviewCount === 1 ? '' : 's'}</span>
+        <span>{soldQuantity >= 500 ? `${Math.floor(soldQuantity / 100) * 100}+` : soldQuantity} sold</span>
       </div>
     </div>
   )

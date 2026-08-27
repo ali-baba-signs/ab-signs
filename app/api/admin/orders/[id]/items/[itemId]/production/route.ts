@@ -23,16 +23,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const side = request.nextUrl.searchParams.get('side') === 'back' ? 'back' : 'front'
     const requestedFormat = request.nextUrl.searchParams.get('format') || 'best'
     if (!['best', 'svg', 'pdf', 'png'].includes(requestedFormat)) return NextResponse.json({ error: { message: 'Choose SVG, PDF, or PNG production format.' } }, { status: 400 })
-    if (requestedFormat === 'best' || requestedFormat === 'svg') {
-      try {
-        const svg = designToSvg(design.canvasData, side)
-        const filename = `${order.orderNumber}-${item.id.slice(0, 8)}-${side}-production.svg`
-        return new NextResponse(svg, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'content-disposition': `attachment; filename="${filename}"`, 'cache-control': 'private, no-store' } })
-      } catch (error) {
-        if (requestedFormat === 'svg') throw error
-      }
-    }
-    const format = requestedFormat === 'png' ? 'png' : 'pdf'
+    const format = requestedFormat === 'png' ? 'png' : requestedFormat === 'svg' ? 'svg' : 'pdf'
     const renderedAssets = design.canvasData && typeof design.canvasData === 'object' && 'renderedAssets' in design.canvasData
       ? (design.canvasData as Record<string, unknown>).renderedAssets as Record<string, unknown>
       : {}
@@ -40,14 +31,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const assetId = format === 'png'
       ? side === 'back' ? design.backPreviewAssetId : design.frontPreviewAssetId
       : side === 'front' ? design.productionAssetId : null
-    const objectKey = format === 'pdf' && side === 'back' && typeof renderedSide.productionKey === 'string' ? renderedSide.productionKey : null
+    const objectKey = format === 'svg' && typeof renderedSide.svgProductionKey === 'string'
+      ? renderedSide.svgProductionKey
+      : format === 'pdf' && side === 'back' && typeof renderedSide.productionKey === 'string' ? renderedSide.productionKey : null
     const [asset] = assetId
       ? await db.select().from(storageAssets).where(eq(storageAssets.id, assetId)).limit(1)
       : objectKey ? await db.select().from(storageAssets).where(eq(storageAssets.objectKey, objectKey)).limit(1) : []
-    if (!asset) throw new Error(`${side === 'back' ? 'Back' : 'Front'} ${format === 'pdf' ? 'production file' : 'preview'} is missing from this saved design.`)
+    if (!asset && format === 'svg') {
+      const svg = designToSvg(design.canvasData, side)
+      const filename = `${order.orderNumber}-${item.id.slice(0, 8)}-${side}-production.svg`
+      return new NextResponse(svg, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'content-disposition': `attachment; filename="${filename}"`, 'cache-control': 'private, no-store', 'x-production-source': 'legacy-regeneration' } })
+    }
+    if (!asset) throw new Error(`${side === 'back' ? 'Back' : 'Front'} ${format === 'png' ? 'preview' : 'production file'} is missing from this saved design.`)
 
     const body = await getObjectBody(asset.objectKey)
-    const extension = asset.contentType === 'application/pdf' ? 'pdf' : asset.contentType === 'image/png' ? 'png' : 'jpg'
+    const extension = asset.contentType === 'application/pdf' ? 'pdf' : asset.contentType === 'image/svg+xml' ? 'svg' : asset.contentType === 'image/png' ? 'png' : 'jpg'
     const filename = `${order.orderNumber}-${item.id.slice(0, 8)}-${side}-production.${extension}`
     return new NextResponse(body, {
       headers: {

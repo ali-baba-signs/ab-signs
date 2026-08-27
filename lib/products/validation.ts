@@ -1,6 +1,7 @@
 import { sanitizeRichText, richTextToPlainText } from '@/lib/content/sanitize-html'
 import { parseMeasurement } from '@/lib/measurements'
 import { FLAG_PRINT_PRESETS, FLAG_SIZE_GROUPS, FLAG_TYPES, PRODUCT_SIZE_MODES, SIDE_MODES, type ProductSizeMode } from './size-presets'
+import { FLAG_BLEED_MM, FLAG_SAFETY_MM } from '@/lib/production/production-spec'
 
 export interface ProductImageInput {
   id?: string
@@ -45,6 +46,7 @@ export interface ValidProductInput {
   active: boolean
   sizeMode: ProductSizeMode
   allowCustomDimensions: boolean
+  freeShipping: boolean
   images: ProductImageInput[]
   sizes: Array<Omit<ProductSizeInput, 'width' | 'height' | 'unitPrice' | 'safeMargin' | 'bleed'> & { width: string | null; height: string | null; unitPrice: number; variantType: typeof FLAG_TYPES[number] | null; sizeGroup: typeof FLAG_SIZE_GROUPS[number] | null; sideMode: typeof SIDE_MODES[number]; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean }>
 }
@@ -107,12 +109,12 @@ export function validateProductInput(value: unknown): ValidProductInput {
     const height = optionalDimension(size.height, `${label} height`)
     if (sideMode === 'double' && backTemplateId && !frontTemplateId) throw new Error(`${label} needs a front template when a back template is selected.`)
     const fitMode = ['contain', 'cover', 'stretch'].includes(String(size.fitMode)) ? size.fitMode as 'contain' | 'cover' | 'stretch' : 'contain'
-    const safeMargin = nonNegativeDimension(size.safeMargin ?? 0, `${label} safe margin`)
-    const bleed = nonNegativeDimension(size.bleed ?? 3, `${label} bleed`)
+    const safeMargin = variantType ? String(FLAG_SAFETY_MM) : nonNegativeDimension(size.safeMargin ?? 0, `${label} safe margin`)
+    const bleed = variantType ? String(FLAG_BLEED_MM) : nonNegativeDimension(size.bleed ?? 3, `${label} bleed`)
     return { id: typeof size.id === 'string' && uuid.test(size.id) ? size.id : undefined, label, width, height, unit, unitPrice: money(size.unitPrice, `${label} price`), enabled: Boolean(size.enabled), order, variantType, sizeGroup, sideMode, assembledHeightDescription: typeof size.assembledHeightDescription === 'string' ? size.assembledHeightDescription.trim().slice(0,255) || null : sizeGroup ? FLAG_PRINT_PRESETS[sizeGroup].assembledHeightDescription : null, fitMode, safeMargin, bleed, trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), frontTemplateId, backTemplateId }
   })
   if (!sizes.some((size) => size.enabled)) throw new Error('Enable at least one product size or fixed variant.')
   const enabledDefaults = sizes.filter((size) => size.enabled && size.isDefault)
   if (enabledDefaults.length !== 1) sizes.forEach((size, index) => { size.isDefault = size.enabled && index === sizes.findIndex((candidate) => candidate.enabled) })
-  return { sku, name, description, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, featured: Boolean(input.featured), active: input.active !== false, images, sizes }
+  return { sku, name, description, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, freeShipping: input.freeShipping === true, featured: Boolean(input.featured), active: input.active !== false, images, sizes }
 }

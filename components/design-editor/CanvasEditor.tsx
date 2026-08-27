@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Canvas, FabricImage, FabricObject, Group, Rect, Textbox, loadSVGFromString, util,
+  Canvas, FabricImage, FabricObject, Group, Point, Rect, Textbox, loadSVGFromString, util,
 } from 'fabric'
 import { EditorHeader } from './EditorHeader'
 import { EditorSidebar } from './EditorSidebar'
@@ -14,7 +14,8 @@ import { DEFAULT_PRODUCT_CONFIG, normalizeProductConfig } from '@/lib/editor/edi
 import { useSession } from '@/lib/auth-client'
 import { fetchTemplate } from '@/lib/editor/templates'
 import { loadDesign as loadStoredDesign, saveDesign, serializeDesign } from '@/lib/editor/design-serialization'
-import { renderBrowserSide, uploadBrowserRender } from '@/lib/editor/browser-preview'
+import { renderBrowserSide, uploadBrowserRender, uploadProductionFile } from '@/lib/editor/browser-preview'
+import { downloadProductionFile, renderProductionFiles } from '@/lib/editor/browser-print-pdf'
 import {
   CUSTOM_PROPERTIES,
   type DesignTemplate,
@@ -88,6 +89,31 @@ function applyFixedLayer(object: EditorObject) {
   })
 }
 
+function styleCanvasGuide(object: FabricObject, color: string, dash: number[]) {
+  object.set({ fill: 'rgba(0,0,0,0)', stroke: color, strokeWidth: 1, strokeDashArray: dash, strokeUniform: true, opacity: 1, selectable: false, evented: false, objectCaching: false })
+  if (object instanceof Group) object.forEachObject((child) => styleCanvasGuide(child, color, dash))
+}
+
+async function flagCanvasGuide(source: EditorObject, scaleX: number, scaleY: number, color: string, dash: number[]) {
+  const guide = await source.clone([...CUSTOM_PROPERTIES]) as EditorObject
+  const center = source.getCenterPoint()
+  guide.set({ scaleX: (source.scaleX ?? 1) * scaleX, scaleY: (source.scaleY ?? 1) * scaleY })
+  guide.setPositionByOrigin(new Point(center.x, center.y), 'center', 'center')
+  styleCanvasGuide(guide, color, dash)
+  guide.setCoords()
+  return guide
+}
+
+async function createFlagCanvasGuides(source: EditorObject, config: ProductConfig) {
+  const outerX = (config.widthMm + 40) / config.widthMm, outerY = (config.heightMm + 40) / config.heightMm
+  const safetyX = Math.max(0.05, (config.widthMm - 100) / config.widthMm), safetyY = Math.max(0.05, (config.heightMm - 100) / config.heightMm)
+  return Promise.all([
+    flagCanvasGuide(source, outerX, outerY, '#ed1b68', [8, 6]),
+    flagCanvasGuide(source, 1, 1, '#111111', []),
+    flagCanvasGuide(source, safetyX, safetyY, '#22c55e', [8, 6]),
+  ])
+}
+
 function unpackSvgRoot(canvas: Canvas) {
   for (const root of [...canvas.getObjects()] as EditorObject[]) {
     if (root.role !== 'svg-root' || root.type !== 'group') continue
@@ -103,25 +129,55 @@ function unpackSvgRoot(canvas: Canvas) {
   }
 }
 
-function scaleComposition(canvas: Canvas, baseWidth: number, baseHeight: number, targetWidth: number, targetHeight: number, fitMode: 'contain' | 'cover' | 'stretch' = 'contain') {
-  const scaleX = targetWidth / Math.max(1, baseWidth)
-  const scaleY = targetHeight / Math.max(1, baseHeight)
-  const uniform = fitMode === 'cover' ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY)
-  const objectScaleX = fitMode === 'stretch' ? scaleX : uniform
-  const objectScaleY = fitMode === 'stretch' ? scaleY : uniform
-  const offsetX = (targetWidth - baseWidth * objectScaleX) / 2
-  const offsetY = (targetHeight - baseHeight * objectScaleY) / 2
-  for (const object of canvas.getObjects()) {
-    object.set({
-      left: (object.left ?? 0) * objectScaleX + offsetX,
-      top: (object.top ?? 0) * objectScaleY + offsetY,
-      scaleX: (object.scaleX ?? 1) * objectScaleX,
-      scaleY: (object.scaleY ?? 1) * objectScaleY,
+function scaleComposition(
+  canvas: Canvas,
+  _baseWidth: number,
+  _baseHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+  _fitMode: 'contain' | 'cover' | 'stretch' = 'stretch'
+) {
+  const editableObjects = (canvas.getObjects() as EditorObject[]).filter(
+    (obj) => !isFixedLayer(obj) && obj.role !== 'fixed-product-layer'
+  )
+  if (!editableObjects.length) return
+
+  // 1. Calculate true global bounds of all editable elements
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  for (const obj of editableObjects) {
+    obj.setCoords()
+    const bound = obj.getBoundingRect()
+    minX = Math.min(minX, bound.left)
+    minY = Math.min(minY, bound.top)
+    maxX = Math.max(maxX, bound.left + bound.width)
+    maxY = Math.max(maxY, bound.top + bound.height)
+  }
+
+  const currentWidth = maxX > minX ? maxX - minX : targetWidth
+  const currentHeight = maxY > minY ? maxY - minY : targetHeight
+
+  // 2. Compute stretch multipliers to map content directly to [0, 0, targetWidth, targetHeight]
+  const scaleFactorX = targetWidth / Math.max(1, currentWidth)
+  const scaleFactorY = targetHeight / Math.max(1, currentHeight)
+
+  // 3. Scale and normalize each object directly from top-left (0, 0)
+  for (const obj of editableObjects) {
+    const relativeLeft = (obj.left ?? 0) - minX
+    const relativeTop = (obj.top ?? 0) - minY
+
+    obj.set({
+      left: relativeLeft * scaleFactorX,
+      top: relativeTop * scaleFactorY,
+      scaleX: (obj.scaleX ?? 1) * scaleFactorX,
+      scaleY: (obj.scaleY ?? 1) * scaleFactorY,
     })
-    object.setCoords()
+    obj.setCoords()
   }
 }
-
 export function CanvasEditor() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -142,12 +198,15 @@ export function CanvasEditor() {
   const [guides, setGuides] = useState(true)
   const [zoom, setZoom] = useState(1)
   const [status, setStatus] = useState('Ready')
+  const [processing, setProcessing] = useState<string | null>(null)
+  const busyRef = useRef(false)
   const [currentSide, setCurrentSide] = useState<'front' | 'back'>('front')
   const currentSideRef = useRef<'front' | 'back'>('front')
   const sideStatesRef = useRef<Partial<Record<'front' | 'back', Record<string, unknown>>>>({})
   const savedDesignId = useRef<string | null>(null)
   const originalTemplateRef = useRef<Record<string, unknown> | null>(null)
   const fixedTemplateRef = useRef<Record<string, unknown> | null>(null)
+  const flagGuideRefs = useRef<EditorObject[]>([])
   const templateKindRef = useRef<'banner' | 'flag'>('banner')
   const baseCanvasRef = useRef({ width: DEFAULT_PRODUCT_CONFIG.logicalCanvasWidth, height: DEFAULT_PRODUCT_CONFIG.logicalCanvasHeight, fitMode: 'contain' as 'contain' | 'cover' | 'stretch' })
   const frontHistory = useCanvasHistory(canvasRef)
@@ -197,6 +256,11 @@ export function CanvasEditor() {
     const bleedY = Math.max(4, (config.bleedMm / config.heightMm) * config.logicalCanvasHeight)
     ctx.save()
     ctx.scale(zoomValue, zoomValue)
+    if (config.productCategory === 'flag' && flagGuideRefs.current.length) {
+      for (const guide of flagGuideRefs.current) guide.render(ctx)
+      ctx.restore()
+      return
+    }
     ctx.setLineDash([8 / zoomValue, 6 / zoomValue])
     ctx.lineWidth = 1 / zoomValue
     ctx.strokeStyle = '#ed1b68'
@@ -208,7 +272,7 @@ export function CanvasEditor() {
     ctx.restore()
   }, [])
 
-  const restoreOriginalAtSize = useCallback(async (config: ProductConfig) => {
+ const restoreOriginalAtSize = useCallback(async (config: ProductConfig) => {
     const canvas = canvasRef.current
     const original = originalTemplateRef.current
     if (!canvas || !original) return
@@ -218,13 +282,17 @@ export function CanvasEditor() {
         const editableObjects = Array.isArray(original.objects) ? original.objects : []
         const fixedObjects = Array.isArray(fixedTemplateRef.current?.objects) ? fixedTemplateRef.current.objects : []
         await canvas.loadFromJSON({ ...original, objects: [...fixedObjects, ...editableObjects], clipPath: undefined })
+        
+        // 1. Unpack initial SVG root group into flat canvas objects
         unpackSvgRoot(canvas)
+
+        // 2. Add fixed banner rectangle if banner template has no fixed SVG
         if (!fixedObjects.length && templateKindRef.current === 'banner') {
           const background = new Rect({
             left: 0,
             top: 0,
-            width: baseCanvasRef.current.width,
-            height: baseCanvasRef.current.height,
+            width: config.logicalCanvasWidth,
+            height: config.logicalCanvasHeight,
             fill: '#ffffff',
             stroke: '#d4d4d8',
             strokeWidth: 1,
@@ -235,18 +303,59 @@ export function CanvasEditor() {
           applyFixedLayer(background)
           canvas.insertAt(0, background)
         }
-        scaleComposition(canvas, baseCanvasRef.current.width, baseCanvasRef.current.height, config.logicalCanvasWidth, config.logicalCanvasHeight, baseCanvasRef.current.fitMode)
+
+        // 3. Stretch all editable objects to (0, 0) -> (targetWidth, targetHeight)
+        scaleComposition(
+          canvas,
+          baseCanvasRef.current.width,
+          baseCanvasRef.current.height,
+          config.logicalCanvasWidth,
+          config.logicalCanvasHeight,
+          'stretch'
+        )
+
+        // 4. Stretch the fixed layer to exact target dimensions
         const fixedLayer = (canvas.getObjects() as EditorObject[]).find(isFixedLayer)
-        for (const object of (canvas.getObjects() as EditorObject[]).filter(isFixedLayer)) applyFixedLayer(object)
+        if (fixedLayer) {
+          fixedLayer.set({
+            left: 0,
+            top: 0,
+            originX: 'left',
+            originY: 'top',
+            scaleX: config.logicalCanvasWidth / Math.max(1, fixedLayer.width || config.logicalCanvasWidth),
+            scaleY: config.logicalCanvasHeight / Math.max(1, fixedLayer.height || config.logicalCanvasHeight),
+          })
+          fixedLayer.setCoords()
+          applyFixedLayer(fixedLayer)
+        }
+
+        // 5. Configure flag clipping mask if applicable
         canvas.clipPath = undefined
         if (templateKindRef.current === 'flag' && fixedLayer) {
-          const clipPath = await fixedLayer.clone([...CUSTOM_PROPERTIES]) as EditorObject
-          clipPath.set({ absolutePositioned: true, selectable: false, evented: false, stroke: undefined })
+          const clipPath = (await fixedLayer.clone([...CUSTOM_PROPERTIES])) as EditorObject
+          clipPath.set({
+            left: 0,
+            top: 0,
+            originX: 'left',
+            originY: 'top',
+            scaleX: fixedLayer.scaleX,
+            scaleY: fixedLayer.scaleY,
+            absolutePositioned: true,
+            selectable: false,
+            evented: false,
+            stroke: undefined,
+          })
           canvas.clipPath = clipPath
+          flagGuideRefs.current = await createFlagCanvasGuides(fixedLayer, config)
+        } else {
+          flagGuideRefs.current = []
         }
+
         canvas.setDimensions({ width: config.logicalCanvasWidth, height: config.logicalCanvasHeight })
       })
-    } finally { canvas.renderOnAddRemove = true }
+    } finally { 
+      canvas.renderOnAddRemove = true 
+    }
     canvas.requestRenderAll()
   }, [runWhileRestoring])
 
@@ -300,8 +409,11 @@ export function CanvasEditor() {
         } else if (saved) {
           configRef.current = saved.productConfig
           setProductConfig(saved.productConfig)
+          templateKindRef.current = saved.productConfig.productCategory === 'flag' ? 'flag' : 'banner'
           setTemplateId(saved.templateId)
           await runWhileRestoring(() => canvas.loadFromJSON(saved.canvasJson))
+          const restoredFixedLayer = (canvas.getObjects() as EditorObject[]).find(isFixedLayer)
+          flagGuideRefs.current = templateKindRef.current === 'flag' && restoredFixedLayer ? await createFlagCanvasGuides(restoredFixedLayer, saved.productConfig) : []
           setStatus(`Restored ${new Date(saved.updatedAt).toLocaleString()}`)
         }
       } catch (error) {
@@ -406,51 +518,29 @@ export function CanvasEditor() {
     if (!ALLOWED_UPLOADS.has(file.type)) return setStatus('Unsupported image type')
     if (file.size > MAX_UPLOAD_BYTES) return setStatus('Image is larger than 10 MB')
     const canvas = canvasRef.current
-    if (!canvas) return
-    let assetKey: string | undefined
-    if (session?.user && file.type !== 'image/svg+xml') {
-      const presignResponse = await fetch('/api/uploads/presign', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type,
-          size: file.size,
-          purpose: 'design-artwork',
-        }),
-      })
-      const presignPayload = await presignResponse.json()
-      if (presignResponse.ok) {
-        const uploadResponse = await fetch(presignPayload.data.uploadUrl, {
-          method: 'PUT',
-          headers: { 'content-type': file.type },
-          body: file,
-        })
-        if (uploadResponse.ok) assetKey = presignPayload.data.key
+    if (!canvas || busyRef.current) return
+    busyRef.current = true; setProcessing('Uploading your artwork…')
+    try {
+      let assetKey: string | undefined
+      if (session?.user && file.type !== 'image/svg+xml') {
+        const presignResponse = await fetch('/api/uploads/presign', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, purpose: 'design-artwork' }) })
+        const presignPayload = await presignResponse.json()
+        if (!presignResponse.ok) throw new Error(presignPayload.error?.message || 'The artwork upload could not be prepared.')
+        const uploadResponse = await fetch(presignPayload.data.uploadUrl, { method: 'PUT', headers: { 'content-type': file.type }, body: file })
+        if (!uploadResponse.ok) throw new Error('The artwork upload failed. Please retry.')
+        assetKey = presignPayload.data.key
       }
-    }
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(new Error('Unable to read image'))
-      reader.readAsDataURL(file)
-    })
-    let object: EditorObject
-    if (file.type === 'image/svg+xml') {
-      const text = await file.text()
-      if (/<script|javascript:|https?:\/\//i.test(text)) return setStatus('Unsafe SVG was rejected')
-      const parsed = await loadSVGFromString(text)
-      object = util.groupSVGElements(parsed.objects.filter(Boolean) as FabricObject[], parsed.options) as EditorObject
-    } else {
-      object = await FabricImage.fromURL(dataUrl) as EditorObject
-    }
-    const maxWidth = configRef.current.logicalCanvasWidth * 0.45
-    if ((object.width ?? 1) > maxWidth) object.scaleToWidth(maxWidth)
-    object.set({ left: 100, top: 100, id: crypto.randomUUID(), name: file.name, role: 'uploaded-image', assetKey })
-    canvas.add(object)
-    canvas.setActiveObject(object)
-    canvas.requestRenderAll()
-  }, [session?.user])
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Unable to read image')); reader.readAsDataURL(file) })
+      let object: EditorObject
+      if (file.type === 'image/svg+xml') { const text = await file.text(); if (/<script|javascript:|https?:\/\//i.test(text)) throw new Error('Unsafe SVG was rejected.'); const parsed = await loadSVGFromString(text); object = util.groupSVGElements(parsed.objects.filter(Boolean) as FabricObject[], parsed.options) as EditorObject }
+      else object = await FabricImage.fromURL(dataUrl) as EditorObject
+      const maxWidth = configRef.current.logicalCanvasWidth * 0.45
+      if ((object.width ?? 1) > maxWidth) object.scaleToWidth(maxWidth)
+      object.set({ left: 100, top: 100, id: crypto.randomUUID(), name: file.name, role: 'uploaded-image', assetKey })
+      canvas.add(object); canvas.setActiveObject(object); canvas.requestRenderAll(); setStatus(`${file.name} added`)
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'Artwork upload failed.') }
+    finally { busyRef.current = false; setProcessing(null) }
+  }, [session])
 
   const addGraphic = useCallback(async (path: string, name: string) => {
     const response = await fetch(path)
@@ -499,22 +589,34 @@ export function CanvasEditor() {
 
   const save = useCallback(async () => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas || busyRef.current) return null
+    busyRef.current = true
+    setProcessing('Preparing your design…')
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
     const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
     const design = serializeDesign(canvas, configRef.current, templateId, sides)
     saveDesign(design)
     if (!session?.user) {
       setStatus('Saved temporarily on this device. Sign in to save a private draft.')
+      busyRef.current = false
+      setProcessing(null)
       return `local:${templateId || 'blank'}:${Date.now()}`
     }
 
     try {
       setStatus('Rendering design preview…')
+      setProcessing('Rendering your artwork…')
       const renderGroupId = savedDesignId.current ?? crypto.randomUUID()
       const renderAndUpload = async (canvasJson: Record<string, unknown>, side: 'front' | 'back') => {
         const rendered = await renderBrowserSide(canvasJson, configRef.current)
-        return uploadBrowserRender(rendered.preview, `${side}-preview.png`, renderGroupId)
+        const production = await renderProductionFiles(canvasJson, configRef.current, `${side} production artwork`)
+        setProcessing(`Uploading ${side} artwork…`)
+        const [previewAsset, productionPdf, productionSvg] = await Promise.all([
+          uploadBrowserRender(rendered.preview, `${side}-preview.png`, renderGroupId),
+          uploadProductionFile(production.pdf, `${side}-production.pdf`, renderGroupId),
+          uploadProductionFile(production.svg, `${side}-production.svg`, renderGroupId),
+        ])
+        return { preview: previewAsset, production: { pdf: productionPdf, svg: productionSvg } }
       }
       const frontJson = sides?.front.canvasJson ?? design.canvasJson
       const front = await renderAndUpload(frontJson, 'front')
@@ -525,6 +627,7 @@ export function CanvasEditor() {
         : undefined
 
       setStatus('Saving private draft…')
+      setProcessing('Saving your artwork…')
       const databaseResponse = await fetch('/api/designs/draft', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -532,7 +635,8 @@ export function CanvasEditor() {
           id: savedDesignId.current ?? undefined,
           name: 'Untitled design',
           design,
-          previews: { front, ...(back ? { back } : {}) },
+          previews: { front: front.preview, ...(back ? { back: back.preview } : {}) },
+          production: { front: front.production, ...(back ? { back: back.production } : {}) },
           templateId,
           productId: requestedProductId,
           variantId: requestedSizeId,
@@ -552,7 +656,7 @@ export function CanvasEditor() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Private design could not be saved.')
       return null
-    }
+    } finally { busyRef.current = false; setProcessing(null) }
   }, [requestedProductId, requestedSizeId, session?.user, templateId])
 
   const switchSide = useCallback(async (next: 'front' | 'back') => {
@@ -599,32 +703,22 @@ export function CanvasEditor() {
     }
   }, [requestedProductId, requestedSizeId, router, save, templateId])
 
-  const exportPng = useCallback(async (download: boolean) => {
+  const exportOutput = useCallback(async (format: 'preview' | 'pdf' | 'svg') => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const oldZoom = canvas.getZoom()
-    const oldWidth = canvas.getWidth()
-    const oldHeight = canvas.getHeight()
-    guidesEnabledRef.current = false
-    canvas.discardActiveObject()
-    canvas.setZoom(1)
-    canvas.setDimensions({ width: configRef.current.logicalCanvasWidth, height: configRef.current.logicalCanvasHeight })
-    canvas.requestRenderAll()
-    const originalData = canvas.toDataURL({ format: 'png', multiplier: 2 })
-    canvas.setDimensions({ width: oldWidth, height: oldHeight })
-    canvas.setZoom(oldZoom)
-    guidesEnabledRef.current = guides
-    canvas.requestRenderAll()
-    const data = download ? originalData : await addWatermark(originalData)
-    if (download) {
-      const link = document.createElement('a')
-      link.download = `alibaba-signs-${Date.now()}.png`
-      link.href = data
-      link.click()
-    } else {
-      const preview = window.open('', '_blank', 'noopener,noreferrer')
-      if (preview) preview.document.write(`<title>Design Preview</title><img alt="Design preview" style="max-width:100%;height:auto" src="${data}">`)
-    }
+    if (!canvas || busyRef.current) return
+    busyRef.current = true
+    setProcessing(format === 'preview' ? 'Rendering your preview…' : `Preparing your print-ready ${format.toUpperCase()}…`)
+    try {
+      const oldZoom = canvas.getZoom(), oldWidth = canvas.getWidth(), oldHeight = canvas.getHeight()
+      guidesEnabledRef.current = false
+      canvas.discardActiveObject(); canvas.setZoom(1); canvas.setDimensions({ width: configRef.current.logicalCanvasWidth, height: configRef.current.logicalCanvasHeight }); canvas.requestRenderAll()
+      const canvasJson = canvas.toJSON() as Record<string, unknown>
+      const originalData = format === 'preview' ? canvas.toDataURL({ format: 'png', multiplier: 2 }) : ''
+      canvas.setDimensions({ width: oldWidth, height: oldHeight }); canvas.setZoom(oldZoom); guidesEnabledRef.current = guides; canvas.requestRenderAll()
+      if (format === 'preview') { const data = await addWatermark(originalData); const preview = window.open('', '_blank', 'noopener,noreferrer'); if (preview) preview.document.write(`<title>Design Preview</title><img alt="Design preview" style="max-width:100%;height:auto" src="${data}">`) }
+      else { const production = await renderProductionFiles(canvasJson, configRef.current); downloadProductionFile(production[format], `alibaba-signs-${Date.now()}.${format}`) }
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'The design export failed.') }
+    finally { busyRef.current = false; setProcessing(null) }
   }, [guides])
 
   useEffect(() => {
@@ -661,7 +755,7 @@ export function CanvasEditor() {
 
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-[620px] flex-col overflow-hidden bg-white text-zinc-900">
-      <EditorHeader canUndo={canUndo} canRedo={canRedo} status={status} onUndo={() => void undo()} onRedo={() => void redo()} onSave={() => void save()} onPreview={() => void exportPng(false)} onDownload={() => void exportPng(true)} onContinue={() => void continueFromEditor()} />
+      <EditorHeader canUndo={canUndo} canRedo={canRedo} status={status} disabled={Boolean(processing)} onUndo={() => void undo()} onRedo={() => void redo()} onSave={() => void save()} onPreview={() => void exportOutput('preview')} onDownloadPdf={() => void exportOutput('pdf')} onDownloadSvg={() => void exportOutput('svg')} onContinue={() => void continueFromEditor()} />
       <div className="flex min-h-0 flex-1">
         <EditorSidebar active={active} onChange={setActive} />
         <EditorPanels
@@ -684,6 +778,7 @@ export function CanvasEditor() {
         />
         <div className="relative flex min-w-0 flex-1"><CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />{productConfig.sideMode === 'double' && <div className="absolute right-3 top-3 z-20 flex flex-wrap gap-1 rounded-md border bg-white p-1 shadow"><button type="button" onClick={() => void switchSide('front')} className={`rounded px-3 py-1.5 text-xs font-bold ${currentSide === 'front' ? 'bg-primary text-primary-foreground' : ''}`}>Front</button><button type="button" onClick={() => void switchSide('back')} className={`rounded px-3 py-1.5 text-xs font-bold ${currentSide === 'back' ? 'bg-primary text-primary-foreground' : ''}`}>Back</button><button type="button" onClick={() => void copyFrontToBack(false)} className="rounded border px-2 py-1.5 text-xs">Copy front</button><button type="button" onClick={() => void copyFrontToBack(true)} className="rounded border px-2 py-1.5 text-xs">Mirror front</button></div>}</div>
       </div>
+      {processing && <div className="fixed inset-0 z-[100] grid place-items-center bg-white/55 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-live="polite"><div className="flex items-center gap-3 rounded-xl border bg-white/95 px-5 py-4 shadow-xl"><span className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-200 border-t-[#ed1b68]"/><p className="font-semibold">{processing}</p></div></div>}
     </div>
   )
 }

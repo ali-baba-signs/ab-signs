@@ -4,6 +4,7 @@ import { db } from '@/lib/db/client'
 import { productCategories, products, productSizes, templateProducts, templates } from '@/lib/db/schema'
 import { createTemplateCanvasSize, type MeasurementUnit } from '@/lib/templates/size-conversion'
 import { compatibleSizesForTemplate } from '@/lib/templates/compatibility'
+import { FLAG_BLEED_MM, FLAG_SAFETY_MM } from '@/lib/production/production-spec'
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ data: {
       template: { id: template.id, name: template.name, version: template.templateVersion, templateKind: template.templateKind, printableArea: template.printableArea, maskReference: template.fixedSvgKey, ...(editorData ? { canvasData: template.canvasData, fixedCanvasData: template.fixedCanvasData, baseCanvasWidth: template.logicalCanvasWidth, baseCanvasHeight: template.logicalCanvasHeight } : { previewUrl: template.previewImageUrl, description: template.description, category: category?.name || 'Products', subcategory: product.name }) },
       productId, productSize, availableSizes, fitMode: productSize.fitMode,
-      productConfig: { widthMm: config.widthMm, heightMm: config.heightMm, bleedMm: Number(productSize.bleed), safeMarginMm: Number(productSize.safeMargin), logicalCanvasWidth: config.logicalCanvasWidth, logicalCanvasHeight: config.logicalCanvasHeight, measurementUnit: productSize.unit, sideMode: productSize.sideMode, productId, productCategory: template.templateKind, selectedSizeId: productSize.id, templateReference: template.id, trimMarks: productSize.trimMarks },
+      productConfig: { widthMm: config.widthMm, heightMm: config.heightMm, bleedMm: template.templateKind === 'flag' ? FLAG_BLEED_MM : Number(productSize.bleed), safeMarginMm: template.templateKind === 'flag' ? FLAG_SAFETY_MM : Number(productSize.safeMargin), logicalCanvasWidth: config.logicalCanvasWidth, logicalCanvasHeight: config.logicalCanvasHeight, measurementUnit: productSize.unit, sideMode: productSize.sideMode, productId, productCategory: template.templateKind, selectedSizeId: productSize.id, templateReference: template.id, trimMarks: productSize.trimMarks, productionGuideVersion: 2 },
     } }, { headers: { 'cache-control': editorData ? 'private, max-age=60, stale-while-revalidate=300' : 'no-store' } })
   } catch (error) {
     console.error('Editable template load failed', error)

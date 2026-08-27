@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       }
       const [product] = await tx.insert(products).values({
         sku: resolvedSku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2),
-        categoryId: input!.categoryId, templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, featured: input!.featured, active: input!.active,
+        categoryId: input!.categoryId, templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, featured: input!.featured, active: input!.active,
       }).returning()
       await tx.insert(productImages).values(input!.images.map((image) => ({
         productId: product.id, url: image.key ? getStoredAssetUrl(image.key) : image.url!, storageKey: image.key, assetId: image.assetId, alt: image.alt, isPrimary: image.isPrimary, order: image.order,

@@ -5,7 +5,7 @@ import { db } from '@/lib/db/client'
 import { designs, designVersions, productSizes, products, templateProducts, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { registerStorageAsset, deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
-import { getObjectMetadata, uploadObject } from '@/lib/storage/r2'
+import { getObjectBody, getObjectMetadata, uploadObject } from '@/lib/storage/r2'
 import { createUploadKey } from '@/lib/storage/upload-validation'
 import { R2_PATHS } from '@/lib/storage/r2-paths'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
@@ -20,6 +20,9 @@ type UploadedRender = {
   pixelWidth: number
   pixelHeight: number
 }
+
+type ProductionContentType = 'application/pdf' | 'image/svg+xml'
+type UploadedProduction = { key: string; contentType: ProductionContentType; size: number; pixelWidth: number; pixelHeight: number; metadata?: Record<string, unknown> }
 
 function uploadedRender(value: unknown): UploadedRender {
   const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -58,6 +61,24 @@ async function acceptPreview(render: UploadedRender, ownerId: string) {
   })
 }
 
+function uploadedProduction(value: unknown, expectedType: ProductionContentType): UploadedProduction {
+  const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  const result = { key: typeof row.key === 'string' ? row.key : '', contentType: row.contentType, size: Number(row.size), pixelWidth: Number(row.pixelWidth), pixelHeight: Number(row.pixelHeight), metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata as Record<string, unknown> : undefined }
+  if (!result.key || result.contentType !== expectedType || !Number.isInteger(result.size) || result.size <= 100 || result.size > 100 * 1024 * 1024) throw new Error(`The production ${expectedType === 'application/pdf' ? 'PDF' : 'SVG'} is missing or invalid.`)
+  return result as UploadedProduction
+}
+
+async function acceptProduction(render: UploadedProduction, ownerId: string) {
+  const safeOwner = ownerId.replace(/[^a-zA-Z0-9_-]/g, '')
+  if (!render.key.startsWith(`${R2_PATHS.printFiles}/${safeOwner}/`)) throw new Error('The production PDF does not belong to this account.')
+  const metadata = await getObjectMetadata(render.key)
+  if (metadata.ContentType !== render.contentType || Number(metadata.ContentLength) !== render.size) throw new Error('The production file changed during upload.')
+  const body = await getObjectBody(render.key)
+  const isValid = render.contentType === 'application/pdf' ? body.subarray(0, 5).equals(Buffer.from('%PDF-')) : /^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!DOCTYPE[\s\S]*?>\s*)?<svg\b/i.test(body.subarray(0, 2048).toString('utf8').trim())
+  if (body.length !== render.size || !isValid) throw new Error(`The production file is not a real ${render.contentType === 'application/pdf' ? 'PDF' : 'SVG'}.`)
+  return registerStorageAsset({ key: render.key, contentType: render.contentType, size: render.size, uploadedAt: metadata.LastModified, etag: metadata.ETag?.replace(/^"|"$/g, '') || null })
+}
+
 export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session?.user) return NextResponse.json({ error: { message: 'Sign in to save a private design.' } }, { status: 401 })
@@ -69,7 +90,11 @@ export async function POST(request: NextRequest) {
     const design = input.design
     if (!design || typeof design !== 'object') throw new Error('Design data is missing.')
     const previewInput = input.previews && typeof input.previews === 'object' ? input.previews as Record<string, unknown> : {}
+    const productionInput = input.production && typeof input.production === 'object' ? input.production as Record<string, unknown> : {}
     const frontInput = uploadedRender(previewInput.front)
+    const frontProductionFiles = productionInput.front && typeof productionInput.front === 'object' ? productionInput.front as Record<string, unknown> : {}
+    const frontProductionInput = uploadedProduction(frontProductionFiles.pdf ?? productionInput.front, 'application/pdf')
+    const frontSvgInput = uploadedProduction(frontProductionFiles.svg, 'image/svg+xml')
     const variantId = typeof input.variantId === 'string' && uuid.test(input.variantId) ? input.variantId : typeof input.sizeId === 'string' && uuid.test(input.sizeId) ? input.sizeId : null
     if (!productId || !templateId || !variantId) throw new Error('Choose a valid product, template, and production variant before saving the design.')
 
@@ -97,9 +122,16 @@ export async function POST(request: NextRequest) {
     const heightMm = Number(size.height) * factor
     const sideMode = size.sideMode
     const backInput = sideMode === 'double' ? uploadedRender(previewInput.back) : null
-    const [front, back] = await Promise.all([
+    const backProductionFiles = productionInput.back && typeof productionInput.back === 'object' ? productionInput.back as Record<string, unknown> : {}
+    const backProductionInput = sideMode === 'double' ? uploadedProduction(backProductionFiles.pdf ?? productionInput.back, 'application/pdf') : null
+    const backSvgInput = sideMode === 'double' ? uploadedProduction(backProductionFiles.svg, 'image/svg+xml') : null
+    const [front, back, frontProduction, backProduction, frontSvg, backSvg] = await Promise.all([
       acceptPreview(frontInput, session.user.id),
       backInput ? acceptPreview(backInput, session.user.id) : Promise.resolve(null),
+      acceptProduction(frontProductionInput, session.user.id),
+      backProductionInput ? acceptProduction(backProductionInput, session.user.id) : Promise.resolve(null),
+      acceptProduction(frontSvgInput, session.user.id),
+      backSvgInput ? acceptProduction(backSvgInput, session.user.id) : Promise.resolve(null),
     ])
 
     const key = createUploadKey({ filename: 'design-draft.json', contentType: 'application/json', size: body.length, purpose: 'design-draft', designId: id || undefined }, session.user.id)
@@ -122,8 +154,8 @@ export async function POST(request: NextRequest) {
       templateReference: templateId,
       previewUrl: `/api/designs/${id || 'pending'}/preview`,
       renderedAssets: {
-        front: { previewKey: front.objectKey },
-        ...(back ? { back: { previewKey: back.objectKey } } : {}),
+        front: { previewKey: front.objectKey, productionKey: frontProduction.objectKey, pdfProductionKey: frontProduction.objectKey, svgProductionKey: frontSvg.objectKey, metadata: frontProductionInput.metadata || {} },
+        ...(back ? { back: { previewKey: back.objectKey, productionKey: backProduction?.objectKey, pdfProductionKey: backProduction?.objectKey, svgProductionKey: backSvg?.objectKey, metadata: backProductionInput?.metadata || {} } } : {}),
       },
     }
     const oldKey = existing && existing.assetId ? (existing.canvasData as Record<string, unknown>)?.assetKey : null
@@ -133,10 +165,10 @@ export async function POST(request: NextRequest) {
         const [latest] = await tx.select({ version: designVersions.version }).from(designVersions).where(eq(designVersions.designId, existing.id)).orderBy(desc(designVersions.version)).limit(1)
         const finalCanvasData = { ...canvasData, designId: existing.id, previewUrl: `/api/designs/${existing.id}/preview` }
         await tx.insert(designVersions).values({ designId: existing.id, version: (latest?.version || 0) + 1, canvasData: finalCanvasData })
-        const [row] = await tx.update(designs).set({ canvasData: finalCanvasData, assetId: asset.id, previewAssetId: front.id, frontPreviewAssetId: front.id, backPreviewAssetId: back?.id || null, productionAssetId: null, thumbnail: front.objectKey, templateId, productId, updatedAt: new Date() }).where(eq(designs.id, existing.id)).returning()
+        const [row] = await tx.update(designs).set({ canvasData: finalCanvasData, assetId: asset.id, previewAssetId: front.id, frontPreviewAssetId: front.id, backPreviewAssetId: back?.id || null, productionAssetId: frontProduction.id, thumbnail: front.objectKey, templateId, productId, updatedAt: new Date() }).where(eq(designs.id, existing.id)).returning()
         return row
       }
-      const [row] = await tx.insert(designs).values({ userId: session.user.id, name: typeof input.name === 'string' ? input.name.trim().slice(0, 255) || 'Untitled design' : 'Untitled design', canvasData, assetId: asset.id, previewAssetId: front.id, frontPreviewAssetId: front.id, backPreviewAssetId: back?.id || null, productionAssetId: null, thumbnail: front.objectKey, templateId, productId, isPublic: false }).returning()
+      const [row] = await tx.insert(designs).values({ userId: session.user.id, name: typeof input.name === 'string' ? input.name.trim().slice(0, 255) || 'Untitled design' : 'Untitled design', canvasData, assetId: asset.id, previewAssetId: front.id, frontPreviewAssetId: front.id, backPreviewAssetId: back?.id || null, productionAssetId: frontProduction.id, thumbnail: front.objectKey, templateId, productId, isPublic: false }).returning()
       const finalCanvasData = { ...canvasData, designId: row.id, previewUrl: `/api/designs/${row.id}/preview` }
       await tx.update(designs).set({ canvasData: finalCanvasData }).where(eq(designs.id, row.id))
       await tx.insert(designVersions).values({ designId: row.id, version: 1, canvasData: finalCanvasData })

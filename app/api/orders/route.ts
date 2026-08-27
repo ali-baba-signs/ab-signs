@@ -11,15 +11,18 @@ import { currentPolicyAcceptance } from '@/lib/policies/registry'
 import { validateCoupon } from '@/lib/coupons/engine'
 import { couponReservationExpiry } from '@/lib/coupons/reservations'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
+import { validateAustralianLocation } from '@/lib/address/australia'
+import { calculateShipping } from '@/lib/shipping/calculator'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
-interface Address { firstName?: string; lastName?: string; address?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
+interface Address { firstName?: string; lastName?: string; address?: string; suburb?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
 
 function cleanAddress(value: unknown) {
   const input = value as Address
-  const required = ['firstName', 'lastName', 'address', 'city', 'postalCode', 'country'] as const
+  const required = ['firstName', 'lastName', 'address'] as const
   for (const field of required) if (typeof input?.[field] !== 'string' || input[field]!.trim().length < 1) throw new Error(`Shipping ${field} is required.`)
-  return Object.fromEntries(Object.entries(input).map(([key, item]) => [key, typeof item === 'string' ? item.trim().slice(0, 500) : '']))
+  const location = validateAustralianLocation(input)
+  return { ...Object.fromEntries(Object.entries(input).map(([key, item]) => [key, typeof item === 'string' ? item.trim().slice(0, 500) : ''])), suburb: location.suburb, city: location.suburb, state: location.state, postalCode: location.postalCode, country: location.country }
 }
 
 function cents(value: number) { return Math.round(value * 100) }
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
     if (productIds.length !== new Set(items.map((item) => item.productId)).size || !sizeIds.length) throw new Error('Every cart item needs a valid product and size.')
     const designIds = [...new Set(items.map((item) => item.designId).filter((id): id is string => Boolean(id)))]
     const artworkIds = [...new Set(items.map((item) => item.artworkId).filter((id): id is string => Boolean(id)))]
-    const [productRows, productImageRows, sizeRows, templateSizeRows, priceRows, templateRows, templateLinks, designRows, artworkRows] = await Promise.all([
+    const [productRows, productImageRows, sizeRows, templateSizeRows, priceRows, templateRows, templateLinks, designRows, artworkRows, categoryRows] = await Promise.all([
       db.select().from(products).where(inArray(products.id, productIds)),
       db.select().from(productImages).where(inArray(productImages.productId, productIds)),
       db.select().from(productSizes).where(inArray(productSizes.id, sizeIds)),
@@ -90,6 +93,7 @@ export async function POST(request: NextRequest) {
       db.select().from(templateProducts),
       designIds.length ? db.select().from(designs).where(inArray(designs.id, designIds)) : Promise.resolve([]),
       artworkIds.length ? db.select().from(customerArtworks).where(inArray(customerArtworks.id, artworkIds)) : Promise.resolve([]),
+      db.select().from(productCategories),
     ])
     const calculatedItems = items.map((item) => {
       const product = productRows.find((row) => row.id === item.productId && row.active)
@@ -119,14 +123,18 @@ export async function POST(request: NextRequest) {
       const areaRatio = customRequested ? Number(finalHeight) * Number(finalWidth) / (Number(size.height) * Number(size.width)) : 1
       const unitCents = cents(Number(size.unitPrice) * areaRatio)
       const productImage = productImageRows.find((image) => image.productId === product.id && image.isPrimary) || productImageRows.find((image) => image.productId === product.id)
-      return { product, productImage: productImage?.url || null, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      const category = categoryRows.find((row) => row.id === product.categoryId)
+      return { product, category, productImage: productImage?.url || null, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
     const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null
     const discountCents = coupon?.discountCents || 0
     const discountedSubtotalCents = Math.max(0, subtotalCents - discountCents)
-    const shippingCents = deliveryType === 'pickup' || discountedSubtotalCents >= cents(settings.freeShippingThreshold) ? 0 : cents(settings.shippingCost)
-    const taxCents = Math.round(discountedSubtotalCents * settings.taxRate / 100)
+    const shipping = calculateShipping({ deliveryType, productSubtotal: subtotalCents / 100, standardShippingCost: settings.shippingCost, freeShippingThreshold: settings.freeShippingThreshold, bannerBands: settings.bannerShippingBands, lines: calculatedItems.map((item) => ({ quantity: item.quantity, width: Number(item.size.width), height: Number(item.size.height), unit: item.size.unit, freeShipping: item.product.freeShipping, isBanner: ['custom_banners','mesh_banners','vinyl_banners'].includes(item.category?.category || '') })) })
+    const shippingCents = cents(shipping.amount)
+    // GST is calculated from the undiscounted product subtotal. A voucher only
+    // reduces product price; it never reduces the tax or shipping calculation.
+    const taxCents = Math.round(subtotalCents * settings.taxRate / 100)
     const totalCents = discountedSubtotalCents + shippingCents + taxCents
     const orderNumber = `ABS-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
     const reservationExpiresAt = coupon ? couponReservationExpiry() : null
@@ -149,13 +157,13 @@ export async function POST(request: NextRequest) {
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId },
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, shippingCategory: item.category?.category || null },
       })))
       if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
       return rows
     })
-    return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), discount: amount(discountCents), couponCode: coupon?.code || null, tax: amount(taxCents), shipping: amount(shippingCents), total: amount(totalCents), currency: settings.currency }, paymentExpiresAt: reservationExpiresAt?.toISOString() || null } }, { status: 201 })
+    return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), discount: amount(discountCents), couponCode: coupon?.code || null, tax: amount(taxCents), shipping: amount(shippingCents), shippingAreaM2: shipping.bannerAreaM2, total: amount(totalCents), currency: settings.currency }, paymentExpiresAt: reservationExpiresAt?.toISOString() || null } }, { status: 201 })
   } catch (error) {
     console.error('Order create failed', error)
     const message = error instanceof Error && /cart|valid|available|Quantity|Shipping|customer|payment|idempotency|product|size|template|accept|delivery|pickup/i.test(error.message) ? error.message : 'The order could not be created.'

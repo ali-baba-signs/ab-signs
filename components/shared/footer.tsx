@@ -14,7 +14,7 @@ const groups: FooterGroup[] = [
     links: [
       ['Design Online', '/design'],
       ['Browse Templates', '/design'],
-      ['Upload Artwork', '/design']
+      ['Upload Artwork', '/upload-artwork']
     ] 
   },
   { 

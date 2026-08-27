@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { coupons, offers, storageAssets } from '@/lib/db/schema'
+import { coupons, heroSlides, homepagePromotions, offers, productImages, products, storageAssets } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 
@@ -95,8 +95,9 @@ export function offerAdminError(error: unknown, fallback: string) {
 export async function GET() {
   try {
     if (!await getAdminSession()) return NextResponse.json({ error: { message: 'Admin access required.' } }, { status: 401 })
-    const [rows, couponRows, imageAssets] = await Promise.all([getOffersWithAssetUrls(), db.select({ id: coupons.id, code: coupons.code }).from(coupons), db.select().from(storageAssets).where(inArray(storageAssets.contentType, ['image/png', 'image/jpeg', 'image/webp'])).orderBy(desc(storageAssets.updatedAt))])
-    const media = imageAssets.filter((asset) => asset.status === 'available' && /^(homepage|products|offers)\//.test(asset.objectKey)).map((asset) => ({ id: asset.id, filename: asset.filename, source: asset.objectKey.startsWith('homepage/hero/') ? 'Hero' : asset.objectKey.startsWith('homepage/promotions/') ? 'Promotion' : asset.objectKey.startsWith('products/') ? 'Product' : 'Offer', url: getStoredAssetUrl(asset.objectKey) }))
+    const [rows, couponRows, imageAssets, activeHeroes, activePromotions, activeProductImages] = await Promise.all([getOffersWithAssetUrls(), db.select({ id: coupons.id, code: coupons.code }).from(coupons), db.select().from(storageAssets).where(inArray(storageAssets.contentType, ['image/png', 'image/jpeg', 'image/webp'])).orderBy(desc(storageAssets.updatedAt)), db.select({ desktop: heroSlides.desktopAssetId, mobile: heroSlides.mobileAssetId }).from(heroSlides).where(eq(heroSlides.enabled, true)), db.select({ assetId: homepagePromotions.imageAssetId }).from(homepagePromotions).where(eq(homepagePromotions.enabled, true)), db.select({ assetId: productImages.assetId }).from(productImages).innerJoin(products, eq(productImages.productId, products.id)).where(eq(products.active, true))])
+    const heroIds=new Set(activeHeroes.flatMap((row)=>[row.desktop,row.mobile].filter((id):id is string=>Boolean(id)))),promotionIds=new Set(activePromotions.flatMap((row)=>row.assetId?[row.assetId]:[])),productIds=new Set(activeProductImages.flatMap((row)=>row.assetId?[row.assetId]:[]))
+    const media = imageAssets.filter((asset) => asset.status === 'available' && (heroIds.has(asset.id)||promotionIds.has(asset.id)||productIds.has(asset.id))).map((asset) => ({ id: asset.id, filename: asset.filename, source: heroIds.has(asset.id) ? 'Hero' : promotionIds.has(asset.id) ? 'Promotion' : 'Product', url: getStoredAssetUrl(asset.objectKey) }))
     return NextResponse.json({ data: { offers: rows, coupons: couponRows, media } })
   } catch (error) {
     console.error('Offers load failed', error)
