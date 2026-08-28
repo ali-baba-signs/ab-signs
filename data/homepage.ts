@@ -1,4 +1,5 @@
 import { getPublicAssetUrl } from '@/lib/storage/r2-public-url'
+import type { HeroStyleConfig } from '@/lib/home/hero-style'
 
 export interface HeroSlide {
   id: string
@@ -13,6 +14,7 @@ export interface HeroSlide {
   buttonLabel: string
   alignment: 'left' | 'center' | 'right'
   verticalAlignment: 'top' | 'middle' | 'bottom'
+  styleConfig?: HeroStyleConfig
   featured: boolean
   enabled: boolean
   priority: number
@@ -94,12 +96,6 @@ export const heroSlides: HeroSlide[] = [
     enabled: true,
     priority: 2,
   },
-]
-
-export const catalogHighlights = [
-  { id: '1', name: 'Custom Vinyl Banner', description: 'Customisable vinyl banner for indoor or outdoor messaging.', image: '/vnyl banner.png', href: '/products/1' },
-  { id: '2', name: 'Mesh Banner', description: 'A practical banner option for fences and breezy environments.', image: '/mesh banner.png', href: '/products/2' },
-  { id: '3', name: 'Premium Feather Flag', description: 'A high-visibility portable flag display for your brand.', image: '/feather flag.png', href: '/products/3' },
 ]
 
 export const benefits = [

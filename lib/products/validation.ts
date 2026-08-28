@@ -1,7 +1,7 @@
 import { sanitizeRichText, richTextToPlainText } from '@/lib/content/sanitize-html'
 import { parseMeasurement } from '@/lib/measurements'
 import { FLAG_PRINT_PRESETS, FLAG_SIZE_GROUPS, FLAG_TYPES, PRODUCT_SIZE_MODES, SIDE_MODES, type ProductSizeMode } from './size-presets'
-import { FLAG_BLEED_MM, FLAG_SAFETY_MM } from '@/lib/production/production-spec'
+import { designConfigurationsForSize, primaryLegacyConfiguration, type SizeDesignConfiguration } from './design-configurations'
 
 export interface ProductImageInput {
   id?: string
@@ -33,12 +33,14 @@ export interface ProductSizeInput {
   isDefault?: boolean
   frontTemplateId?: string | null
   backTemplateId?: string | null
+  designConfigurations?: SizeDesignConfiguration[]
 }
 
 export interface ValidProductInput {
   sku: string
   name: string
   description: string
+  designMode: 'single_side' | 'double_side'
   basePrice: number
   categoryId: string
   templateId: string | null
@@ -48,7 +50,7 @@ export interface ValidProductInput {
   allowCustomDimensions: boolean
   freeShipping: boolean
   images: ProductImageInput[]
-  sizes: Array<Omit<ProductSizeInput, 'width' | 'height' | 'unitPrice' | 'safeMargin' | 'bleed'> & { width: string | null; height: string | null; unitPrice: number; variantType: typeof FLAG_TYPES[number] | null; sizeGroup: typeof FLAG_SIZE_GROUPS[number] | null; sideMode: typeof SIDE_MODES[number]; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean }>
+  sizes: Array<Omit<ProductSizeInput, 'width' | 'height' | 'unitPrice' | 'safeMargin' | 'bleed' | 'designConfigurations'> & { width: string | null; height: string | null; unitPrice: number; variantType: typeof FLAG_TYPES[number] | null; sizeGroup: typeof FLAG_SIZE_GROUPS[number] | null; sideMode: typeof SIDE_MODES[number]; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean; designConfigurations: SizeDesignConfiguration[] }>
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -81,7 +83,6 @@ export function validateProductInput(value: unknown): ValidProductInput {
   if (!uuid.test(categoryId)) throw new Error('Select a valid product category.')
   const description = sanitizeRichText(input.description)
   if (richTextToPlainText(description).length < 10) throw new Error('Description must contain at least 10 characters.')
-
   const images = Array.isArray(input.images) ? input.images.slice(0, 12).map((raw, order) => {
     const image = raw as ProductImageInput
     if (!image.id && (!image.key || image.url?.startsWith('blob:'))) throw new Error(`Image ${order + 1} has not finished uploading.`)
@@ -101,20 +102,39 @@ export function validateProductInput(value: unknown): ValidProductInput {
     if (!unit) throw new Error(`Size ${order + 1} has an invalid measurement unit.`)
     const variantType = FLAG_TYPES.includes(size.variantType as typeof FLAG_TYPES[number]) ? size.variantType as typeof FLAG_TYPES[number] : null
     const sizeGroup = FLAG_SIZE_GROUPS.includes(size.sizeGroup as typeof FLAG_SIZE_GROUPS[number]) ? size.sizeGroup as typeof FLAG_SIZE_GROUPS[number] : null
-    const sideMode = SIDE_MODES.includes(size.sideMode as typeof SIDE_MODES[number]) ? size.sideMode as typeof SIDE_MODES[number] : 'single'
-    const frontTemplateId = typeof size.frontTemplateId === 'string' && uuid.test(size.frontTemplateId) ? size.frontTemplateId : null
-    const backTemplateId = typeof size.backTemplateId === 'string' && uuid.test(size.backTemplateId) ? size.backTemplateId : null
-    if (sizeMode === 'fixed_variants' && (!variantType || !sizeGroup || !size.width || !size.height)) throw new Error(`${label} must define flag type, size group, side mode, and real print dimensions.`)
+    const designConfigurations = designConfigurationsForSize(size).map((configuration) => {
+      const singleTemplateId = typeof configuration.singleTemplateId === 'string' && uuid.test(configuration.singleTemplateId) ? configuration.singleTemplateId : null
+      const frontTemplateId = typeof configuration.frontTemplateId === 'string' && uuid.test(configuration.frontTemplateId) ? configuration.frontTemplateId : null
+      const backTemplateId = typeof configuration.backTemplateId === 'string' && uuid.test(configuration.backTemplateId) ? configuration.backTemplateId : null
+      if (configuration.designType === 'double_side' && backTemplateId && !frontTemplateId) throw new Error(`${label} needs a front template when a back template is selected.`)
+      return configuration.designType === 'single_side'
+        ? { designType: 'single_side' as const, enabled: configuration.enabled, singleTemplateId }
+        : { designType: 'double_side' as const, enabled: configuration.enabled, frontTemplateId, backTemplateId }
+    })
+    if (size.enabled !== false && !designConfigurations.some((configuration) => configuration.enabled)) throw new Error(`${label} needs at least one available design option.`)
+    if (Array.isArray(size.designConfigurations)) {
+      for (const configuration of designConfigurations.filter((item) => item.enabled)) {
+        if (configuration.designType === 'single_side' && !configuration.singleTemplateId) throw new Error(`${label} requires a single template for its Single Side option.`)
+        if (configuration.designType === 'double_side' && (!configuration.frontTemplateId || !configuration.backTemplateId)) throw new Error(`${label} requires both front and back templates for its Double Side option.`)
+      }
+    }
+    const legacy = primaryLegacyConfiguration(designConfigurations)
+    const sideMode = legacy.sideMode
+    const frontTemplateId = legacy.frontTemplateId
+    const backTemplateId = legacy.backTemplateId
+    if (sizeMode === 'fixed_variants' && (!variantType || !sizeGroup || !size.width || !size.height)) throw new Error(`${label} must define flag type, size group, and real print dimensions.`)
     const width = optionalDimension(size.width, `${label} width`)
     const height = optionalDimension(size.height, `${label} height`)
-    if (sideMode === 'double' && backTemplateId && !frontTemplateId) throw new Error(`${label} needs a front template when a back template is selected.`)
     const fitMode = ['contain', 'cover', 'stretch'].includes(String(size.fitMode)) ? size.fitMode as 'contain' | 'cover' | 'stretch' : 'contain'
-    const safeMargin = variantType ? String(FLAG_SAFETY_MM) : nonNegativeDimension(size.safeMargin ?? 0, `${label} safe margin`)
-    const bleed = variantType ? String(FLAG_BLEED_MM) : nonNegativeDimension(size.bleed ?? 3, `${label} bleed`)
-    return { id: typeof size.id === 'string' && uuid.test(size.id) ? size.id : undefined, label, width, height, unit, unitPrice: money(size.unitPrice, `${label} price`), enabled: Boolean(size.enabled), order, variantType, sizeGroup, sideMode, assembledHeightDescription: typeof size.assembledHeightDescription === 'string' ? size.assembledHeightDescription.trim().slice(0,255) || null : sizeGroup ? FLAG_PRINT_PRESETS[sizeGroup].assembledHeightDescription : null, fitMode, safeMargin, bleed, trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), frontTemplateId, backTemplateId }
+    const safeMargin = nonNegativeDimension(size.safeMargin ?? 0, `${label} safe margin`)
+    const bleed = nonNegativeDimension(size.bleed ?? 3, `${label} bleed`)
+    return { id: typeof size.id === 'string' && uuid.test(size.id) ? size.id : undefined, label, width, height, unit, unitPrice: money(size.unitPrice, `${label} price`), enabled: Boolean(size.enabled), order, variantType, sizeGroup, sideMode, assembledHeightDescription: typeof size.assembledHeightDescription === 'string' ? size.assembledHeightDescription.trim().slice(0,255) || null : sizeGroup ? FLAG_PRINT_PRESETS[sizeGroup].assembledHeightDescription : null, fitMode, safeMargin, bleed, trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), frontTemplateId, backTemplateId, designConfigurations }
   })
   if (!sizes.some((size) => size.enabled)) throw new Error('Enable at least one product size or fixed variant.')
+  // Compatibility summary only. Per-size designConfigurations are the source
+  // of truth and may expose single, double, or both options.
+  const designMode = sizes.some((size) => size.designConfigurations.some((configuration) => configuration.enabled && configuration.designType === 'double_side')) ? 'double_side' : 'single_side'
   const enabledDefaults = sizes.filter((size) => size.enabled && size.isDefault)
   if (enabledDefaults.length !== 1) sizes.forEach((size, index) => { size.isDefault = size.enabled && index === sizes.findIndex((candidate) => candidate.enabled) })
-  return { sku, name, description, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, freeShipping: input.freeShipping === true, featured: Boolean(input.featured), active: input.active !== false, images, sizes }
+  return { sku, name, description, designMode, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, freeShipping: input.freeShipping === true, featured: Boolean(input.featured), active: input.active !== false, images, sizes }
 }

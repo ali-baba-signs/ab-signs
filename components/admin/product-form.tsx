@@ -11,18 +11,19 @@ import { RichTextEditor } from '@/components/admin/rich-text-editor'
 import { ImageCropUpload } from '@/components/admin/image-crop-upload'
 import { adminPath } from '@/lib/auth/admin-path'
 import { removeAdminUpload, uploadAdminFile } from '@/lib/storage/upload-client'
-import { BANNER_SIZE_PRESETS, FLAG_PRINT_PRESETS, FLAG_SIZE_GROUPS, FLAG_TYPES, PRODUCT_SIZE_MODES, SIDE_MODES, type ProductSizeMode } from '@/lib/products/size-presets'
+import { BANNER_SIZE_PRESETS, FLAG_PRINT_PRESETS, FLAG_SIZE_GROUPS, FLAG_TYPES, PRODUCT_SIZE_MODES, type ProductSizeMode } from '@/lib/products/size-presets'
+import { designConfigurationsForSize, type DesignType, type SizeDesignConfiguration } from '@/lib/products/design-configurations'
 import { FLAG_BLEED_MM, FLAG_SAFETY_MM } from '@/lib/production/production-spec'
 
 interface Category { id: string; name: string }
 type ImageStatus = 'pending' | 'uploading' | 'uploaded' | 'failed'
 interface ImageRow { clientId: string; id?: string; assetId?: string; key?: string; url: string; alt: string; isPrimary: boolean; status: ImageStatus; progress?: number; file?: File; fingerprint?: string; error?: string }
 interface ApiImage { id: string; assetId?: string; storageKey?: string; key?: string; url: string; alt: string; isPrimary: boolean }
-interface SizeRow { id?: string; label: string; width: string; height: string; unit: string; unitPrice: string; enabled: boolean; variantType: string; sizeGroup: string; sideMode: 'single' | 'double'; assembledHeightDescription: string; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean; frontTemplateId: string; backTemplateId: string }
-interface TemplateOption { id: string; name: string; status: string; conversionStatus: string }
+interface SizeRow { id?: string; label: string; width: string; height: string; unit: string; unitPrice: string; enabled: boolean; variantType: string; sizeGroup: string; assembledHeightDescription: string; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean; designConfigurations: SizeDesignConfiguration[] }
+interface TemplateOption { id: string; name: string; status: string; conversionStatus: string; templateSide: 'single' | 'front' | 'back' }
 interface ProductData { id: string; sku: string; name: string; description: string; basePrice: string; categoryId: string; sizeMode: ProductSizeMode; allowCustomDimensions: boolean; freeShipping: boolean; featured: boolean; active: boolean; images: ApiImage[]; sizes: Array<SizeRow & { id: string }> }
 
-const blankSize = (): SizeRow => ({ label: '500 × 1000 mm', height: '500', width: '1000', unit: 'mm', unitPrice: '0', enabled: true, variantType: '', sizeGroup: '', sideMode: 'single', assembledHeightDescription: '', fitMode: 'contain', safeMargin: '0', bleed: '3', trimMarks: true, isDefault: true, frontTemplateId: '', backTemplateId: '' })
+const blankSize = (): SizeRow => ({ label: '500 × 1000 mm', height: '500', width: '1000', unit: 'mm', unitPrice: '0', enabled: true, variantType: '', sizeGroup: '', assembledHeightDescription: '', fitMode: 'contain', safeMargin: '0', bleed: '3', trimMarks: true, isDefault: true, designConfigurations: [{ designType: 'single_side', enabled: true, singleTemplateId: null }] })
 
 export function ProductForm({ productId }: { productId?: string }) {
   const router = useRouter()
@@ -52,7 +53,7 @@ export function ProductForm({ productId }: { productId?: string }) {
           if (!product) throw new Error('Product not found.')
           setForm({ sku: product.sku, name: product.name, description: product.description || '', basePrice: product.basePrice, categoryId: product.categoryId, sizeMode: product.sizeMode === 'fixed_variants' ? 'fixed_variants' : product.sizeMode === 'custom_dimensions' ? 'custom_dimensions' : 'preset_sizes', allowCustomDimensions: Boolean(product.allowCustomDimensions), freeShipping: Boolean(product.freeShipping), featured: Boolean(product.featured), active: product.active !== false })
           setImages(product.images.map((image) => ({ clientId: `existing:${image.id}`, id: image.id, assetId: image.assetId, key: image.storageKey || image.key, url: image.url, alt: image.alt || product.name, isPrimary: Boolean(image.isPrimary), status: 'uploaded' })))
-          setSizes(product.sizes.map((size) => ({ id: size.id, label: size.label, width: String(size.width || ''), height: String(size.height || ''), unit: size.unit, unitPrice: String(size.unitPrice), enabled: Boolean(size.enabled), variantType: size.variantType || '', sizeGroup: size.sizeGroup || '', sideMode: (size.sideMode === 'double' ? 'double' : 'single'), assembledHeightDescription: size.assembledHeightDescription || '', fitMode: size.fitMode || 'contain', safeMargin: String(size.safeMargin || '0'), bleed: String(size.bleed || '3'), trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), frontTemplateId: size.frontTemplateId || '', backTemplateId: size.backTemplateId || '' })))
+          setSizes(product.sizes.map((size) => ({ id: size.id, label: size.label, width: String(size.width || ''), height: String(size.height || ''), unit: size.unit, unitPrice: String(size.unitPrice), enabled: Boolean(size.enabled), variantType: size.variantType || '', sizeGroup: size.sizeGroup || '', assembledHeightDescription: size.assembledHeightDescription || '', fitMode: size.fitMode || 'contain', safeMargin: String(size.safeMargin || '0'), bleed: String(size.bleed || '3'), trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), designConfigurations: designConfigurationsForSize(size) })))
         } else if (payload.data.categories[0]) setForm((current) => ({ ...current, categoryId: payload.data.categories[0].id }))
       } catch (cause) { setError(cause instanceof Error ? cause.message : 'The form could not be loaded.') }
       finally { setLoading(false) }
@@ -87,19 +88,24 @@ export function ProductForm({ productId }: { productId?: string }) {
   function updateSize(index: number, values: Partial<SizeRow>) {
     setSizes((current) => current.map((size, position) => {
       if (position !== index) return values.isDefault ? { ...size, isDefault: false } : size
-      const updated = { ...size, ...values }
-      // Auto-clear backTemplateId if sideMode is toggled back to single
-      if (values.sideMode === 'single') {
-        updated.backTemplateId = ''
-      }
-      return updated
+      return { ...size, ...values }
     }))
+  }
+
+  function updateDesignConfiguration(index: number, designType: DesignType, values: Partial<SizeDesignConfiguration>) {
+    const current = sizes[index]
+    if (!current) return
+    const existing = current.designConfigurations.find((configuration) => configuration.designType === designType)
+    const next = existing
+      ? current.designConfigurations.map((configuration) => configuration.designType === designType ? { ...configuration, ...values } : configuration)
+      : [...current.designConfigurations, { designType, enabled: true, ...values } as SizeDesignConfiguration]
+    updateSize(index, { designConfigurations: next })
   }
 
   function addBannerPreset(height: number, width: number) { if (sizes.some((size) => size.height === String(height) && size.width === String(width) && size.unit === 'mm')) return; setSizes((current) => [...current, { ...blankSize(), height: String(height), width: String(width), label: `${height} × ${width} mm`, unitPrice: form.basePrice || '0', isDefault: current.length === 0 }]) }
   function addFlagSizes() {
     setForm((current) => ({ ...current, sizeMode: 'fixed_variants', allowCustomDimensions: false }))
-    setSizes((Object.entries(FLAG_PRINT_PRESETS) as Array<[keyof typeof FLAG_PRINT_PRESETS, typeof FLAG_PRINT_PRESETS[keyof typeof FLAG_PRINT_PRESETS]]>).map(([sizeGroup, preset], index) => ({ ...blankSize(), label: preset.label, height: String(preset.height), width: String(preset.width), unit: 'cm', variantType: 'feather', sizeGroup, sideMode: 'single', assembledHeightDescription: preset.assembledHeightDescription, fitMode: 'contain', safeMargin: String(FLAG_SAFETY_MM), bleed: String(FLAG_BLEED_MM), trimMarks: true, frontTemplateId: '', backTemplateId: '', unitPrice: form.basePrice || '0', isDefault: index === 0 })))
+    setSizes((Object.entries(FLAG_PRINT_PRESETS) as Array<[keyof typeof FLAG_PRINT_PRESETS, typeof FLAG_PRINT_PRESETS[keyof typeof FLAG_PRINT_PRESETS]]>).map(([sizeGroup, preset], index) => ({ ...blankSize(), label: preset.label, height: String(preset.height), width: String(preset.width), unit: 'cm', variantType: 'feather', sizeGroup, assembledHeightDescription: preset.assembledHeightDescription, fitMode: 'contain', safeMargin: String(FLAG_SAFETY_MM), bleed: String(FLAG_BLEED_MM), trimMarks: true, unitPrice: form.basePrice || '0', isDefault: index === 0 })))
   }
 
   async function createCategory() {
@@ -159,6 +165,7 @@ export function ProductForm({ productId }: { productId?: string }) {
             onChange={(event) => setForm({ ...form, sku: event.target.value })}
             className="mt-1"
           />
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">Leave blank to generate a unique SKU after the product passes validation.</span>
         </label>
         <div className="text-xs font-semibold">
           <label>
@@ -348,17 +355,6 @@ export function ProductForm({ productId }: { productId?: string }) {
             )}
 
             <label className="text-xs font-gray-900">
-              Print sides
-              <select 
-                className="mt-1 h-10 w-full rounded border bg-background px-2 text-xs font-medium" 
-                value={size.sideMode || 'single'} 
-                onChange={(event) => updateSize(index, { sideMode: event.target.value as 'single' | 'double' })}
-              >
-                {SIDE_MODES.map((value) => <option key={value} value={value}>{value === 'double' ? 'Double-sided' : 'Single-sided'}</option>)}
-              </select>
-            </label>
-
-            <label className="text-xs font-gray-900">
               Height
               <Input
                 type="number"
@@ -449,21 +445,19 @@ export function ProductForm({ productId }: { productId?: string }) {
               </label>
             )}
 
-            <label className="text-xs font-gray-900">
-              Front template
-              <select className="mt-1 h-10 w-full rounded border bg-background px-2 text-xs" value={size.frontTemplateId} onChange={(event) => updateSize(index, { frontTemplateId: event.target.value })}>
-                <option value="">No assigned template</option>
-                {templates.filter((template) => template.status === 'active' && template.conversionStatus === 'ready').map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-              </select>
-            </label>
-
-            <label className="text-xs font-gray-900">
-              Back template
-              <select className="mt-1 h-10 w-full rounded border bg-background px-2 text-xs disabled:opacity-50" value={size.backTemplateId} disabled={size.sideMode !== 'double'} onChange={(event) => updateSize(index, { backTemplateId: event.target.value })}>
-                <option value="">Use front / none</option>
-                {templates.filter((template) => template.status === 'active' && template.conversionStatus === 'ready').map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-              </select>
-            </label>
+            <fieldset className="rounded-lg border p-3 sm:col-span-2 md:col-span-3">
+              <legend className="px-1 text-xs font-bold">Design configurations for this size</legend>
+              {(['single_side', 'double_side'] as const).map((designType) => {
+                const configuration = size.designConfigurations.find((item) => item.designType === designType)
+                const enabled = Boolean(configuration?.enabled)
+                return <div key={designType} className="mt-3 rounded-md bg-secondary/50 p-3">
+                  <label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked={enabled} onChange={(event) => updateDesignConfiguration(index, designType, { enabled: event.target.checked })} />{designType === 'single_side' ? 'Single Side' : 'Double Side'}</label>
+                  {enabled && designType === 'single_side' && <label className="mt-3 block text-xs font-medium">Single template<select className="mt-1 h-10 w-full rounded border bg-background px-2 text-xs" value={configuration?.singleTemplateId || ''} onChange={(event) => updateDesignConfiguration(index, designType, { singleTemplateId: event.target.value || null })}><option value="">No assigned template</option>{templates.filter((template) => template.status === 'active' && template.conversionStatus === 'ready' && template.templateSide === 'single').map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>}
+                  {enabled && designType === 'double_side' && <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-medium">Front template<select className="mt-1 h-10 w-full rounded border bg-background px-2 text-xs" value={configuration?.frontTemplateId || ''} onChange={(event) => updateDesignConfiguration(index, designType, { frontTemplateId: event.target.value || null })}><option value="">No assigned template</option>{templates.filter((template) => template.status === 'active' && template.conversionStatus === 'ready' && template.templateSide === 'front').map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label><label className="text-xs font-medium">Back template<select className="mt-1 h-10 w-full rounded border bg-background px-2 text-xs" value={configuration?.backTemplateId || ''} onChange={(event) => updateDesignConfiguration(index, designType, { backTemplateId: event.target.value || null })}><option value="">No assigned template</option>{templates.filter((template) => template.status === 'active' && template.conversionStatus === 'ready' && template.templateSide === 'back').map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label></div>}
+                </div>
+              })}
+              <p className="mt-3 text-xs text-muted-foreground">Enable Single Side, Double Side, or both. Customers only see these option names; template assets remain internal.</p>
+            </fieldset>
 
             <div className="flex h-10 items-center gap-4 py-2 sm:col-span-2 md:col-span-3">
               <label className="flex items-center gap-1.5 text-xs font-medium">

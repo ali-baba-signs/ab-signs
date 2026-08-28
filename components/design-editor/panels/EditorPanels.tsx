@@ -65,8 +65,8 @@ export function EditorPanels(props: Props) {
         <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
           <label>Width (mm)<Input type="number" value={props.productConfig.widthMm} onChange={(e) => props.onProductChange({ ...props.productConfig, widthMm: Number(e.target.value) })} /></label>
           <label>Height (mm)<Input type="number" value={props.productConfig.heightMm} onChange={(e) => props.onProductChange({ ...props.productConfig, heightMm: Number(e.target.value) })} /></label>
-          <label>Bleed (mm)<Input type="number" value={props.productConfig.bleedMm} onChange={(e) => props.onProductChange({ ...props.productConfig, bleedMm: Number(e.target.value) })} /></label>
-          <label>Safe area<Input type="number" value={props.productConfig.safeMarginMm} onChange={(e) => props.onProductChange({ ...props.productConfig, safeMarginMm: Number(e.target.value) })} /></label>
+          <div className="rounded border bg-zinc-50 p-2 text-xs"><span className="font-semibold">Bleed</span><span className="block text-zinc-600">{props.productConfig.bleedMm} mm · set by admin</span></div>
+          <div className="rounded border bg-zinc-50 p-2 text-xs"><span className="font-semibold">Safe area</span><span className="block text-zinc-600">{props.productConfig.safeMarginMm} mm · set by admin</span></div>
         </div>
         </>}
       </>}

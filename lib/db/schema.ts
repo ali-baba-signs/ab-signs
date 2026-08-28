@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, integer, boolean, decimal, varchar, json, pgEnum, uuid, index, uniqueIndex } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
+import type { HeroStyleConfig } from '@/lib/home/hero-style'
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'customer', 'designer'])
@@ -129,6 +130,7 @@ export const products = pgTable('products', {
   // Referential integrity is created by the migration. Keeping this column
   // reference-free here avoids a circular declaration with `templates`.
   templateId: uuid('template_id'),
+  designMode: varchar('design_mode', { length: 20 }).default('single_side').notNull(),
   sizeMode: varchar('size_mode', { length: 30 }).default('preset_sizes').notNull(),
   allowCustomDimensions: boolean('allow_custom_dimensions').default(false).notNull(),
   freeShipping: boolean('free_shipping').default(false).notNull(),
@@ -188,6 +190,13 @@ export const productSizes = pgTable('product_sizes', {
   isDefault: boolean('is_default').default(false).notNull(),
   frontTemplateId: uuid('front_template_id'),
   backTemplateId: uuid('back_template_id'),
+  designConfigurations: json('design_configurations').$type<Array<{
+    designType: 'single_side' | 'double_side'
+    enabled: boolean
+    singleTemplateId?: string | null
+    frontTemplateId?: string | null
+    backTemplateId?: string | null
+  }>>().default([]).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('product_sizes_product_idx').on(table.productId)])
@@ -213,6 +222,7 @@ export const templates = pgTable('templates', {
   fixedSvgKey: text('fixed_svg_key'),
   fixedSvgAssetId: uuid('fixed_svg_asset_id').references(() => storageAssets.id, { onDelete: 'restrict' }),
   templateKind: varchar('template_kind', { length: 20 }).default('banner').notNull(),
+  templateSide: varchar('template_side', { length: 10 }).default('single').notNull(),
   fixedCanvasData: json('fixed_canvas_data'),
   printableArea: json('printable_area'),
   physicalWidth: decimal('physical_width', { precision: 12, scale: 3 }),
@@ -560,6 +570,7 @@ export const heroSlides = pgTable('hero_slides', {
   altText: varchar('alt_text', { length: 255 }),
   horizontalAlignment: varchar('horizontal_alignment', { length: 10 }).default('left').notNull(),
   verticalAlignment: varchar('vertical_alignment', { length: 10 }).default('middle').notNull(),
+  styleConfig: json('style_config').$type<HeroStyleConfig>().notNull(),
   featured: boolean('featured').default(true).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
   displayOrder: integer('display_order').default(0).notNull(),

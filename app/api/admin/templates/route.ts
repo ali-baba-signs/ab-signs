@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const [created] = await db.transaction(async (tx) => {
       const rows = await tx.insert(templates).values({
         productId: primaryProduct.id, name: input.name, description: input.description, category: null, status: input.status,
-        canvasData: input.canvasData!, fixedCanvasData: input.fixedCanvasData, templateKind: input.templateKind, printableArea: input.printableArea,
+        canvasData: input.canvasData!, fixedCanvasData: input.fixedCanvasData, templateKind: input.templateKind, templateSide: input.templateSide, printableArea: input.printableArea,
         thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
         fixedSvgUrl: fixedSvg ? getStoredAssetUrl(fixedSvg.objectKey) : null, fixedSvgKey: fixedSvg?.objectKey || null, fixedSvgAssetId: fixedSvg?.id || null,
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
         templateVersion: 1, svgChecksum: input.svgChecksum, conversionVersion: input.conversionVersion, conversionStatus: 'ready', conversionError: null, generatedAt: new Date(),
       }).returning()
       await tx.insert(templateProducts).values(selectedProducts.map((product) => ({ templateId: rows[0].id, productId: product.id })))
-      await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: 'template.created', entityType: 'template', entityId: rows[0].id, entityName: rows[0].name, description: `Created SVG editable template ${rows[0].name} for ${selectedProducts.length} product(s).`, metadata: { productIds: input.productIds, categoryId: input.categoryId } }))
+      await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: 'template.created', entityType: 'template', entityId: rows[0].id, entityName: rows[0].name, description: `Created ${input.templateSide} SVG editable template ${rows[0].name} for ${selectedProducts.length} product(s).`, metadata: { productIds: input.productIds, categoryId: input.categoryId, templateSide: input.templateSide } }))
       return rows
     })
     return NextResponse.json({ data: { template: created } }, { status: 201 })

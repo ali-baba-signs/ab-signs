@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { asc, eq, inArray } from 'drizzle-orm'
+import { asc, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { adminActivityLogs, designs, orderItems, productCategories, products, productSizes, storageAssets, templateProducts, templates } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
@@ -9,6 +9,7 @@ import { resolveTemplateProducts } from '@/lib/templates/product-selection'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { safeErrorMessage } from '@/lib/api/safe-error'
+import { designConfigurationsForSize } from '@/lib/products/design-configurations'
 
 function currentAssets(template: typeof templates.$inferSelect) {
   return {
@@ -39,6 +40,22 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!existing) return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Template not found.' } }, { status: 404 })
     const input = validateTemplateInput(await request.json(), false)
     const { products: selectedProducts, primaryProduct, baseSize } = await resolveTemplateProducts(input)
+    const configurationReference = sql<boolean>`exists (select 1 from jsonb_array_elements(coalesce(${productSizes.designConfigurations}::jsonb, '[]'::jsonb)) configuration where configuration->>'singleTemplateId' = ${id} or configuration->>'frontTemplateId' = ${id} or configuration->>'backTemplateId' = ${id})`
+    const assignedSizes = await db.select({
+      productId: productSizes.productId,
+      label: productSizes.label,
+      sideMode: productSizes.sideMode,
+      frontTemplateId: productSizes.frontTemplateId,
+      backTemplateId: productSizes.backTemplateId,
+      designConfigurations: productSizes.designConfigurations,
+    }).from(productSizes).where(or(eq(productSizes.frontTemplateId, id), eq(productSizes.backTemplateId, id), configurationReference))
+    for (const size of assignedSizes) {
+      if (!input.productIds.includes(size.productId)) throw new Error(`${size.label} still uses this template. Keep its product selected or update the product size first.`)
+      for (const configuration of designConfigurationsForSize(size)) {
+        const expected = configuration.singleTemplateId === id ? 'single' : configuration.frontTemplateId === id ? 'front' : configuration.backTemplateId === id ? 'back' : null
+        if (expected && input.templateSide !== expected) throw new Error(`${size.label} uses this as its ${expected} template. Update the size design configuration before changing the template side.`)
+      }
+    }
     const old = currentAssets(existing)
     const merged = {
       previewImage: input.assets.previewImage === undefined ? old.previewImage : input.assets.previewImage,
@@ -64,7 +81,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       const rows = await tx.update(templates).set({
         productId: primaryProduct.id, name: input.name, description: input.description, category: null, status: input.status, canvasData,
         fixedCanvasData: requiresGeneration ? input.fixedCanvasData : existing.fixedCanvasData,
-        templateKind: input.templateKind, printableArea: input.printableArea,
+        templateKind: input.templateKind, templateSide: input.templateSide, printableArea: input.printableArea,
         thumbnail: getStoredAssetUrl(preview.objectKey), previewImageUrl: getStoredAssetUrl(preview.objectKey), previewImageKey: preview.objectKey, previewAssetId: preview.id,
         svgUrl: getStoredAssetUrl(svg.objectKey), svgKey: svg.objectKey, svgAssetId: svg.id,
         fixedSvgUrl: fixedSvg ? getStoredAssetUrl(fixedSvg.objectKey) : null, fixedSvgKey: fixedSvg?.objectKey || null, fixedSvgAssetId: fixedSvg?.id || null,
@@ -93,11 +110,14 @@ export async function DELETE(_: NextRequest, context: { params: Promise<{ id: st
   const { id } = await context.params
   const [existing] = await db.select().from(templates).where(eq(templates.id, id)).limit(1)
   if (!existing) return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Template not found.' } }, { status: 404 })
-  const [associated, designReference, orderReference] = await Promise.all([
+  const configurationReference = sql<boolean>`exists (select 1 from jsonb_array_elements(coalesce(${productSizes.designConfigurations}::jsonb, '[]'::jsonb)) configuration where configuration->>'singleTemplateId' = ${id} or configuration->>'frontTemplateId' = ${id} or configuration->>'backTemplateId' = ${id})`
+  const [associated, sizeReference, designReference, orderReference] = await Promise.all([
     db.select({ id: products.id }).from(products).where(eq(products.templateId, id)).limit(1),
+    db.select({ id: productSizes.id }).from(productSizes).where(or(eq(productSizes.frontTemplateId, id), eq(productSizes.backTemplateId, id), configurationReference)).limit(1),
     db.select({ id: designs.id }).from(designs).where(eq(designs.templateId, id)).limit(1),
     db.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.templateId, id)).limit(1),
   ])
+  if (sizeReference.length) return NextResponse.json({ error: { code: 'TEMPLATE_IN_USE', message: 'This template is assigned to a product size. Update that size before deleting the template.' } }, { status: 409 })
   if (designReference.length || orderReference.length) {
     const [archived] = await db.transaction(async (tx) => {
       const rows = await tx.update(templates).set({ status: 'inactive', updatedAt: new Date() }).where(eq(templates.id, id)).returning()

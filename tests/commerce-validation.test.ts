@@ -3,6 +3,7 @@ import test from 'node:test'
 import { sanitizeRichText } from '../lib/content/sanitize-html'
 import { validateProductInput } from '../lib/products/validation'
 import { authoritativeTotalCents, stripeEventPaymentStatus } from '../lib/payments/integrity'
+import { removePurchasedCartLines } from '../lib/cart/checkout-removal'
 
 test('rich text sanitization removes scripts, event handlers, and unsafe links', () => {
   const result = sanitizeRichText('<p onclick="steal()">Hello <strong>world</strong><script>alert(1)</script><a href="javascript:bad()">bad</a></p>')
@@ -10,6 +11,16 @@ test('rich text sanitization removes scripts, event handlers, and unsafe links',
   assert.equal(result.includes('onclick'), false)
   assert.equal(result.includes('javascript:'), false)
   assert.match(result, /<strong>world<\/strong>/)
+})
+
+test('product description bullet lists survive validation and storage sanitization', () => {
+  const product = validateProductInput({
+    sku: 'BULLET-1', name: 'Bullet product', description: '<p>Production details:</p><ul><li>Outdoor rated</li><li>Full colour print</li><li>Finished edges</li></ul>', basePrice: 25,
+    categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3',
+    images: [{ key: 'products/bullet.png', isPrimary: true }],
+    sizes: [{ label: '600 × 900', width: 600, height: 900, unit: 'mm', unitPrice: 25, enabled: true }],
+  })
+  assert.match(product.description, /<ul><li>Outdoor rated<\/li><li>Full colour print<\/li><li>Finished edges<\/li><\/ul>/)
 })
 
 test('product validation requires a persisted image and an enabled size', () => {
@@ -38,4 +49,20 @@ test('authoritative payment totals reject drift and map Stripe outcomes explicit
   assert.equal(stripeEventPaymentStatus('payment_intent.succeeded'), 'paid')
   assert.equal(stripeEventPaymentStatus('payment_intent.payment_failed'), 'payment_failed')
   assert.equal(stripeEventPaymentStatus('payment_intent.processing'), 'processing')
+})
+
+test('verified checkout removes only purchased cart quantities', () => {
+  const remaining = removePurchasedCartLines([
+    { lineId: 'purchased', quantity: 2, name: 'Purchased product' },
+    { lineId: 'partially-purchased', quantity: 5, name: 'Additional quantity' },
+    { lineId: 'new-item', quantity: 1, name: 'Added after checkout' },
+  ], [
+    { lineId: 'purchased', quantity: 2 },
+    { lineId: 'partially-purchased', quantity: 3 },
+  ])
+
+  assert.deepEqual(remaining, [
+    { lineId: 'partially-purchased', quantity: 2, name: 'Additional quantity' },
+    { lineId: 'new-item', quantity: 1, name: 'Added after checkout' },
+  ])
 })

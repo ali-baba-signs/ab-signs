@@ -5,11 +5,12 @@ import Link from 'next/link'
 import { ShieldCheck, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCart } from '@/lib/cart-context'
+import type { PurchasedCartLine } from '@/lib/cart/checkout-removal'
 
-type StoredPayment = { orderId: string; orderNumber: string; checkoutToken: string }
+type StoredPayment = { orderId: string; orderNumber: string; checkoutToken: string; cartLines?: PurchasedCartLine[] }
 
 export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
-  const { clearCart } = useCart()
+  const { clearCart, removePurchasedItems } = useCart()
   const [status, setStatus] = useState<'checking' | 'paid' | 'failed' | 'pending'>('checking')
   const [message, setMessage] = useState('Stripe is confirming your payment securely.')
   const [error, setError] = useState<string>('')
@@ -48,7 +49,8 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
           throw new Error(payload.error?.message || 'Payment status could not be checked.')
 
         if (payload.data.paymentStatus === 'paid') {
-          clearCart()
+          if (Array.isArray(parsedPayment.cartLines)) removePurchasedItems(parsedPayment.cartLines)
+          else clearCart()
           sessionStorage.removeItem('abs-payment')
           setStatus('paid')
           setMessage('Your payment is verified and your order is confirmed.')
@@ -84,7 +86,7 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
       stopped = true
       if (timer) clearTimeout(timer)
     }
-  }, [clearCart, retry])
+  }, [clearCart, removePurchasedItems, retry])
 
   const handleRetry = () => {
     setLoading(true)

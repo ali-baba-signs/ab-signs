@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight, BadgeCheck, Boxes, PenTool, Truck, Upload, WandSparkles } from 'lucide-react'
-import { benefits, catalogHighlights } from '@/data/homepage'
+import { benefits } from '@/data/homepage'
 
 const benefitIcons = [BadgeCheck, Boxes, PenTool, Truck]
 
@@ -43,13 +43,14 @@ export function CategoryGrid({ categories }: { categories: Array<{ id: string; n
   </section>
 }
 
-export function ProductHighlights() {
+export function ProductHighlights({ products }: { products: Array<{ id: string; name: string; description: string; image: string; basePrice: string; soldQuantity: number }> }) {
+  if (!products.length) return null
   return <section className="bg-zinc-50 py-16 lg:py-24"><div className="mx-auto max-w-[1440px] px-4 sm:px-8">
     <Heading eyebrow="Existing catalogue" title="Popular print formats" link="/products" />
     <div className="grid gap-5 md:grid-cols-3">
-      {catalogHighlights.map((product) => <article key={product.id} className="group rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-        <Link href={product.href}><div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-zinc-100"><Image src={product.image} alt={product.name} fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover transition duration-500 group-hover:scale-105" /></div></Link>
-        <div className="p-3"><h3 className="text-xl font-black"><Link href={product.href}>{product.name}</Link></h3><p className="mt-2 text-sm leading-6 text-zinc-500">{product.description}</p><div className="mt-5 flex gap-2"><Link href={product.href} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-md bg-[#111] px-4 text-sm font-bold text-white hover:bg-[#ed1b68]">View product</Link><Link href={`/design?productId=${product.id}`} className="inline-flex min-h-11 items-center justify-center rounded-md border border-zinc-300 px-4 text-sm font-bold hover:border-[#ed1b68] hover:text-[#ed1b68]">Customise</Link></div></div>
+      {products.map((product) => <article key={product.id} className="group rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+        <Link href={`/products/${product.id}`}><div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-zinc-100"><Image src={product.image} alt={product.name} fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover transition duration-500 group-hover:scale-105" /></div></Link>
+        <div className="p-3"><h3 className="text-xl font-black"><Link href={`/products/${product.id}`}>{product.name}</Link></h3><p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-500">{product.description}</p><p className="mt-3 text-xs font-bold uppercase tracking-wide text-zinc-600">From ${Number(product.basePrice).toFixed(2)} · {product.soldQuantity.toLocaleString()} sold</p><div className="mt-5 flex gap-2"><Link href={`/products/${product.id}`} className="inline-flex min-h-11 flex-1 items-center justify-center rounded-md bg-[#111] px-4 text-sm font-bold text-white hover:bg-[#ed1b68]">View product</Link><Link href={`/design?productId=${product.id}`} className="inline-flex min-h-11 items-center justify-center rounded-md border border-zinc-300 px-4 text-sm font-bold hover:border-[#ed1b68] hover:text-[#ed1b68]">Customise</Link></div></div>
       </article>)}
     </div>
   </div></section>

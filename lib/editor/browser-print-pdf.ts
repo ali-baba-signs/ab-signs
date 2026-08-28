@@ -78,17 +78,14 @@ async function createProductionCanvas(canvasJson: Record<string, unknown>, confi
   const strokeWidth = Math.max(0.5, pixelsPerMm * 0.25), dash = [Math.max(2, pixelsPerMm * 4), Math.max(1, pixelsPerMm * 2)]
   if (spec.productKind === 'flag' && fixedLayer) {
     const outerX = (spec.trimWidthMm + spec.bleedMm * 2) / spec.trimWidthMm, outerY = (spec.trimHeightMm + spec.bleedMm * 2) / spec.trimHeightMm
-    const safetyX = Math.max(0.05, (spec.trimWidthMm - spec.safetyMm * 2) / spec.trimWidthMm), safetyY = Math.max(0.05, (spec.trimHeightMm - spec.safetyMm * 2) / spec.trimHeightMm)
     canvas.add(
       await contourGuide(fixedLayer, outerX, outerY, '#ec008c', strokeWidth, dash, 'bleed-contour'),
       await contourGuide(fixedLayer, 1, 1, '#111111', strokeWidth, [], 'cut-contour'),
-      await contourGuide(fixedLayer, safetyX, safetyY, '#00a651', strokeWidth, dash, 'safety-contour'),
     )
   } else {
     canvas.add(
       guideRect(spec.markMarginMm * scaleX, spec.markMarginMm * scaleY, (spec.trimWidthMm + spec.bleedMm * 2) * scaleX, (spec.trimHeightMm + spec.bleedMm * 2) * scaleY, '#ec008c', strokeWidth, dash, 'bleed-boundary'),
       guideRect(trimLeft, trimTop, width, height, '#111111', strokeWidth, [], 'cut-line'),
-      guideRect(trimLeft + spec.safetyMm * scaleX, trimTop + spec.safetyMm * scaleY, Math.max(1, width - spec.safetyMm * 2 * scaleX), Math.max(1, height - spec.safetyMm * 2 * scaleY), '#00a651', strokeWidth, dash, 'safety-margin'),
     )
   }
   if (spec.cropMarks) canvas.add(...cropLines(trimLeft, trimTop, trimLeft + width, trimTop + height, scaleX, scaleY, strokeWidth))
@@ -99,7 +96,7 @@ async function createProductionCanvas(canvasJson: Record<string, unknown>, confi
 function injectSvgMetadata(svg: string, metadata: Record<string, unknown>, title: string) {
   const escapedTitle = title.replace(/[&<>"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[character]!)
   const encoded = JSON.stringify(metadata).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-  return svg.replace(/(<svg\b[^>]*>)/, `$1<title>${escapedTitle}</title><desc>Print-ready artwork with bleed, cut contour, safety contour, crop marks, and exact physical dimensions.</desc><metadata id="alibaba-signs-production">${encoded}</metadata>`)
+  return svg.replace(/(<svg\b[^>]*>)/, `$1<title>${escapedTitle}</title><desc>Print-ready artwork with bleed, cut contour, crop marks, and exact physical dimensions. Safety guides are editor-only.</desc><metadata id="alibaba-signs-production">${encoded}</metadata>`)
 }
 
 export async function renderProductionFiles(canvasJson: Record<string, unknown>, config: ProductConfig, title = 'Ali Baba Signs production artwork'): Promise<ProductionFiles> {

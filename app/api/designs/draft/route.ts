@@ -2,13 +2,14 @@ import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { designs, designVersions, productSizes, products, templateProducts, templates } from '@/lib/db/schema'
+import { designs, designVersions, productSizes, products, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { registerStorageAsset, deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { getObjectBody, getObjectMetadata, uploadObject } from '@/lib/storage/r2'
 import { createUploadKey } from '@/lib/storage/upload-validation'
 import { R2_PATHS } from '@/lib/storage/r2-paths'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
+import { designConfigurationForSize, type DesignType } from '@/lib/products/design-configurations'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const unitToMm: Record<string, number> = { mm: 1, cm: 10, in: 25.4, ft: 304.8, m: 1000 }
@@ -98,19 +99,32 @@ export async function POST(request: NextRequest) {
     const variantId = typeof input.variantId === 'string' && uuid.test(input.variantId) ? input.variantId : typeof input.sizeId === 'string' && uuid.test(input.sizeId) ? input.sizeId : null
     if (!productId || !templateId || !variantId) throw new Error('Choose a valid product, template, and production variant before saving the design.')
 
-    const [[product], [template], [productSize], [templateLink]] = await Promise.all([
+    const [[product], [template], [productSize]] = await Promise.all([
       db.select().from(products).where(eq(products.id, productId)).limit(1),
       db.select().from(templates).where(eq(templates.id, templateId)).limit(1),
       db.select().from(productSizes).where(and(eq(productSizes.id, variantId), eq(productSizes.productId, productId))).limit(1),
-      db.select().from(templateProducts).where(and(eq(templateProducts.templateId, templateId), eq(templateProducts.productId, productId))).limit(1),
     ])
     if (!product?.active) throw new Error('The selected product is unavailable.')
     if (!template || template.status !== 'active' || template.conversionStatus !== 'ready') throw new Error('The selected template is unavailable. Please choose another template.')
-    if (!templateLink) throw new Error('This template is not compatible with the selected product. Please choose another template.')
     if (!productSize?.enabled) throw new Error('The selected size is unavailable. Please choose another size.')
     if (!isTemplateCompatibleWithSize(templateId, productSize)) throw new Error('This template is not available for the selected size. Please choose another size.')
     const size = productSize
     if (!(Number(size.width) > 0 && Number(size.height) > 0)) throw new Error('The selected size has no printable dimensions. Please choose another size.')
+    const designRecord = design as Record<string, unknown>
+    const designType: DesignType = designRecord.designType === 'double_side' || designRecord.designMode === 'double_side' ? 'double_side' : 'single_side'
+    const designConfiguration = designConfigurationForSize(productSize, designType)
+    if (!designConfiguration) throw new Error('The selected design option is unavailable for this product size.')
+    if (!isTemplateCompatibleWithSize(templateId, productSize, designType)) throw new Error('This template is not available for the selected size and design option.')
+    const frontDesign = designRecord.front && typeof designRecord.front === 'object' ? designRecord.front as Record<string, unknown> : null
+    const backDesign = designRecord.back && typeof designRecord.back === 'object' ? designRecord.back as Record<string, unknown> : null
+    if (designType === 'double_side') {
+      if (template.templateSide !== 'front' || designConfiguration.frontTemplateId !== template.id) throw new Error('The saved front template does not match this size’s double-sided configuration.')
+      if (!designConfiguration.backTemplateId || backDesign?.templateId !== designConfiguration.backTemplateId || !backDesign.canvasJson) throw new Error('The saved design is missing its configured back template canvas.')
+      const [backTemplate] = await db.select().from(templates).where(eq(templates.id, designConfiguration.backTemplateId)).limit(1)
+      if (!backTemplate || backTemplate.templateSide !== 'back' || backTemplate.status !== 'active' || backTemplate.conversionStatus !== 'ready') throw new Error('The configured back template is unavailable.')
+    } else if (template.templateSide !== 'single' || (designConfiguration.singleTemplateId || product.templateId) !== template.id || (frontDesign?.templateId && frontDesign.templateId !== template.id)) {
+      throw new Error('The saved design does not use the configured single-side template.')
+    }
 
     const body = Buffer.from(JSON.stringify({ ...(design as Record<string, unknown>), variantId }))
     if (body.length > 10 * 1024 * 1024) throw new Error('The design is too large to save in the browser editor.')
@@ -120,7 +134,7 @@ export async function POST(request: NextRequest) {
     const factor = unitToMm[String(size.unit)] || 1
     const widthMm = Number(size.width) * factor
     const heightMm = Number(size.height) * factor
-    const sideMode = size.sideMode
+    const sideMode = designType === 'double_side' ? 'double' : 'single'
     const backInput = sideMode === 'double' ? uploadedRender(previewInput.back) : null
     const backProductionFiles = productionInput.back && typeof productionInput.back === 'object' ? productionInput.back as Record<string, unknown> : {}
     const backProductionInput = sideMode === 'double' ? uploadedProduction(backProductionFiles.pdf ?? productionInput.back, 'application/pdf') : null
@@ -139,6 +153,10 @@ export async function POST(request: NextRequest) {
     const asset = await registerStorageAsset({ key, contentType: 'application/json', size: body.length, etag: createHash('sha256').update(body).digest('hex') })
     const canvasData = {
       ...(design as Record<string, unknown>),
+      designType,
+      designMode: designType,
+      front: { ...(frontDesign || { templateId }), previewImage: front.objectKey },
+      ...(back && backDesign ? { back: { ...backDesign, previewImage: back.objectKey } } : {}),
       assetKey: key,
       assetId: asset.id,
       variantId,

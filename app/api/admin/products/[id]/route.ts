@@ -8,6 +8,8 @@ import { validateProductInput } from '@/lib/products/validation'
 import { getProductsWithDetails } from '@/lib/products/queries'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { validateTemplateSideAssignments } from '@/lib/products/template-assignments'
+import { productWriteErrorMessage } from '@/lib/products/write-errors'
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
@@ -26,10 +28,11 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!existingProduct) throw new Error('Product not found.')
     const raw = await request.json() as Record<string, unknown>
     input = validateProductInput({ ...raw, sku: existingProduct.sku })
-    const referencedTemplateIds = [...new Set(input.sizes.flatMap((size) => [size.frontTemplateId, size.backTemplateId].filter((templateId): templateId is string => Boolean(templateId))))]
+    const referencedTemplateIds = [...new Set(input.sizes.flatMap((size) => size.designConfigurations.flatMap((configuration) => [configuration.singleTemplateId, configuration.frontTemplateId, configuration.backTemplateId].filter((templateId): templateId is string => Boolean(templateId)))))]
     if (referencedTemplateIds.length) {
-      const ready = await db.select({ id: templates.id }).from(templates).where(inArray(templates.id, referencedTemplateIds))
-      if (ready.length !== referencedTemplateIds.length) throw new Error('One or more assigned templates no longer exist.')
+      const ready = await db.select({ id: templates.id, templateSide: templates.templateSide, status: templates.status, conversionStatus: templates.conversionStatus }).from(templates).where(inArray(templates.id, referencedTemplateIds))
+      if (ready.length !== referencedTemplateIds.length || ready.some((template) => template.status !== 'active' || template.conversionStatus !== 'ready')) throw new Error('One or more assigned templates are unavailable or not ready.')
+      validateTemplateSideAssignments(input.sizes, ready)
     }
     const oldImages = await db.select().from(productImages).where(eq(productImages.productId, id))
     const existingIds = new Set(oldImages.map((image) => image.id))
@@ -39,7 +42,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     await db.transaction(async (tx) => {
       const [product] = await tx.update(products).set({
         sku: existingProduct.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2), categoryId: input!.categoryId,
-        templateId: input!.templateId, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, featured: input!.featured, active: input!.active, updatedAt: new Date(),
+        templateId: input!.templateId, designMode: input!.designMode, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, featured: input!.featured, active: input!.active, updatedAt: new Date(),
       }).where(eq(products.id, id)).returning()
       if (!product) throw new Error('Product not found.')
       if (removedImages.length) await tx.delete(productImages).where(inArray(productImages.id, removedImages.map((image) => image.id)))
@@ -51,10 +54,10 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       const retained = new Set<string>()
       for (const size of input!.sizes) {
         if (size.id && existingSizes.some((row) => row.id === size.id)) {
-          await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, fitMode:size.fitMode, safeMargin:size.safeMargin, bleed:size.bleed, trimMarks:size.trimMarks, isDefault:size.isDefault, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
+          await tx.update(productSizes).set({ label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, fitMode:size.fitMode, safeMargin:size.safeMargin, bleed:size.bleed, trimMarks:size.trimMarks, isDefault:size.isDefault, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId, designConfigurations:size.designConfigurations, updatedAt: new Date() }).where(eq(productSizes.id, size.id))
           retained.add(size.id)
         } else {
-          const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, fitMode:size.fitMode, safeMargin:size.safeMargin, bleed:size.bleed, trimMarks:size.trimMarks, isDefault:size.isDefault, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId }).returning({ id: productSizes.id })
+          const [created] = await tx.insert(productSizes).values({ productId: id, label: size.label, width: size.width, height: size.height, unit: size.unit, unitPrice: size.unitPrice.toFixed(2), enabled: size.enabled, order: size.order, variantType: size.variantType, sizeGroup: size.sizeGroup, sideMode: size.sideMode, assembledHeightDescription:size.assembledHeightDescription, fitMode:size.fitMode, safeMargin:size.safeMargin, bleed:size.bleed, trimMarks:size.trimMarks, isDefault:size.isDefault, frontTemplateId:size.frontTemplateId, backTemplateId:size.backTemplateId, designConfigurations:size.designConfigurations }).returning({ id: productSizes.id })
           retained.add(created.id)
         }
       }
@@ -69,7 +72,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     return NextResponse.json({ data: { product: (await getProductsWithDetails(id, true))[0] } })
   } catch (error) {
     console.error('Product update failed', error)
-    const message = error instanceof Error && /not found|belong|required|must|valid|select|add|enable|SKU/i.test(error.message) ? error.message : 'The product could not be updated. Confirm the SKU is unique and try again.'
+    const message = productWriteErrorMessage(error, 'updated')
     return NextResponse.json({ error: { code: 'PRODUCT_UPDATE_FAILED', message } }, { status: 400 })
   }
 }

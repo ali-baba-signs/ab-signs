@@ -32,7 +32,7 @@ export function buildPrintReadyPdf(jpeg: Uint8Array, options: PrintPdfOptions) {
     ascii(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /UserUnit ${userUnit} /Resources << /XObject << /Artwork 4 0 R >> >> /Contents 5 0 R >>`),
     (() => { const head=ascii(`<< /Type /XObject /Subtype /Image /Width ${options.jpegWidth} /Height ${options.jpegHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`),tail=ascii('\nendstream'),out=new Uint8Array(head.length+jpeg.length+tail.length);out.set(head);out.set(jpeg,head.length);out.set(tail,head.length+jpeg.length);return out })(),
     ascii(`<< /Length ${ascii(content).length} >>\nstream\n${content}endstream`),
-    ascii(`<< /Title (${escapePdf(options.title || 'Ali Baba Signs print-ready artwork')}) /Creator (Ali Baba Signs Design Editor) /Subject (Trim ${options.widthMm} x ${options.heightMm} mm; bleed ${bleed} mm; safety ${Math.max(0, options.safetyMm || 0)} mm; ${options.productKind || 'rectangle'} contour; crop marks ${options.trimMarks ? 'yes' : 'no'}) >>`),
+    ascii(`<< /Title (${escapePdf(options.title || 'Ali Baba Signs print-ready artwork')}) /Creator (Ali Baba Signs Design Editor) /Subject (Trim ${options.widthMm} x ${options.heightMm} mm; bleed ${bleed} mm; ${options.productKind || 'rectangle'} contour; crop marks ${options.trimMarks ? 'yes' : 'no'}; safety guides editor-only) >>`),
   ]
   const chunks: Uint8Array[]=[ascii('%PDF-1.6\n%\xE2\xE3\xCF\xD3\n')],offsets=[0];let length=chunks[0].length
   objects.forEach((object,index)=>{offsets.push(length);const head=ascii(`${index+1} 0 obj\n`),tail=ascii('\nendobj\n');chunks.push(head,object,tail);length+=head.length+object.length+tail.length})

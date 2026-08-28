@@ -1,3 +1,5 @@
+import { normalizeHeroStyle, type HeroStyleConfig } from '@/lib/home/hero-style'
+
 export interface HeroInput {
   desktopAssetId: string
   mobileAssetId: string | null
@@ -9,6 +11,7 @@ export interface HeroInput {
   altText: string
   horizontalAlignment: 'left' | 'center' | 'right'
   verticalAlignment: 'top' | 'middle' | 'bottom'
+  styleConfig: HeroStyleConfig
   featured: boolean
   enabled: boolean
   displayOrder: number
@@ -46,5 +49,5 @@ export function validateHeroInput(value: unknown): HeroInput {
   if (!Number.isInteger(displayOrder) || displayOrder < 0 || displayOrder > 10000) throw new Error('Hero display order must be a whole number between 0 and 10000.')
   const horizontalAlignment = horizontal.has(String(input.horizontalAlignment)) ? input.horizontalAlignment as HeroInput['horizontalAlignment'] : 'left'
   const verticalAlignment = vertical.has(String(input.verticalAlignment)) ? input.verticalAlignment as HeroInput['verticalAlignment'] : 'middle'
-  return { desktopAssetId, mobileAssetId, title: optionalText(input.title, 255), description: optionalText(input.description, 2000), eyebrow: optionalText(input.eyebrow, 255), buttonLabel, buttonUrl, altText, horizontalAlignment, verticalAlignment, featured: input.featured !== false, enabled: input.enabled !== false, displayOrder }
+  return { desktopAssetId, mobileAssetId, title: optionalText(input.title, 255), description: optionalText(input.description, 2000), eyebrow: optionalText(input.eyebrow, 255), buttonLabel, buttonUrl, altText, horizontalAlignment, verticalAlignment, styleConfig: normalizeHeroStyle(input.styleConfig), featured: input.featured !== false, enabled: input.enabled !== false, displayOrder }
 }

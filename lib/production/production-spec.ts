@@ -21,8 +21,10 @@ export function productionSpec(config: ProductConfig): ProductionSpec {
   const productKind = config.productCategory === 'flag' ? 'flag' : 'rectangle'
   const trimWidthMm = Math.max(0.1, Number(config.widthMm))
   const trimHeightMm = Math.max(0.1, Number(config.heightMm))
-  const bleedMm = productKind === 'flag' ? FLAG_BLEED_MM : Math.max(0, Number(config.bleedMm) || 0)
-  const safetyMm = productKind === 'flag' ? FLAG_SAFETY_MM : Math.max(0, Number(config.safeMarginMm) || 0)
+  const configuredBleed = Number(config.bleedMm)
+  const configuredSafety = Number(config.safeMarginMm)
+  const bleedMm = Number.isFinite(configuredBleed) ? Math.max(0, configuredBleed) : productKind === 'flag' ? FLAG_BLEED_MM : 0
+  const safetyMm = Number.isFinite(configuredSafety) ? Math.max(0, configuredSafety) : productKind === 'flag' ? FLAG_SAFETY_MM : 0
   const cropMarks = config.trimMarks !== false
   const markMarginMm = cropMarks ? Math.max(8, bleedMm + 5) : 0
   return {

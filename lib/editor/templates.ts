@@ -22,6 +22,8 @@ export async function fetchTemplate(template: DesignTemplate) {
   const params = new URLSearchParams()
   if (template.productId) params.set('productId', template.productId)
   if (template.sizeId) params.set('sizeId', template.sizeId)
+  const designType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('designType') : null
+  if (designType) params.set('designType', designType)
   params.set('editor', '1')
   const response = await fetch(`/api/templates/${template.id}?${params}`, { cache: 'no-store' })
   const payload = await response.json()
@@ -34,5 +36,14 @@ export async function fetchTemplate(template: DesignTemplate) {
     templateKind: payload.data.template.templateKind === 'flag' ? 'flag' as const : 'banner' as const,
     productConfig: payload.data.productConfig,
     fitMode: payload.data.fitMode || 'contain',
+    backTemplate: payload.data.backTemplate ? {
+      id: String(payload.data.backTemplate.id),
+      name: String(payload.data.backTemplate.name),
+      json: payload.data.backTemplate.canvasData as Record<string, unknown>,
+      fixedCanvasData: payload.data.backTemplate.fixedCanvasData as Record<string, unknown> | null,
+      templateKind: payload.data.backTemplate.templateKind === 'flag' ? 'flag' as const : 'banner' as const,
+      baseCanvasWidth: Number(payload.data.backTemplate.baseCanvasWidth),
+      baseCanvasHeight: Number(payload.data.backTemplate.baseCanvasHeight),
+    } : null,
   }
 }

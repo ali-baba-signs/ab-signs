@@ -67,7 +67,7 @@ export function RichTextEditor({ value, onChange, error }: { value: string; onCh
       <button type="button" title="Insert link" aria-label="Insert link" onMouseDown={(event) => event.preventDefault()} onClick={createLink} className={`${toolButton} bg-card`}><Link2 className="h-4 w-4" /></button>
       <button type="button" title="Clear formatting" aria-label="Clear formatting" onMouseDown={(event) => event.preventDefault()} onClick={() => run('removeFormat')} className={`${toolButton} bg-card`}><RemoveFormatting className="h-4 w-4" /></button>
     </div>
-    <div ref={ref} contentEditable role="textbox" aria-multiline="true" aria-label="Product description" onInput={(event) => onChange(event.currentTarget.innerHTML)} onKeyUp={updateActive} onMouseUp={updateActive} className={`min-h-40 rounded-b-md border bg-background p-3 focus:outline-none focus:ring-2 focus:ring-primary ${error ? 'border-red-500' : ''}`} suppressContentEditableWarning />
+    <div ref={ref} contentEditable role="textbox" aria-multiline="true" aria-label="Product description" onInput={(event) => onChange(event.currentTarget.innerHTML)} onKeyUp={updateActive} onMouseUp={updateActive} className={`min-h-40 rounded-b-md border bg-background p-3 focus:outline-none focus:ring-2 focus:ring-primary [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6 [&_li]:my-1 ${error ? 'border-red-500' : ''}`} suppressContentEditableWarning />
     {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
   </div>
 }

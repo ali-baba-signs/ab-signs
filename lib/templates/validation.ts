@@ -11,6 +11,7 @@ export interface TemplateInput {
   categoryId: string
   status: 'draft' | 'active' | 'inactive'
   templateKind: 'banner' | 'flag'
+  templateSide: 'single' | 'front' | 'back'
   assets: Partial<Record<TemplateAssetName, TemplateAssetInput | null>>
   width: string
   height: string
@@ -38,6 +39,7 @@ export function validateTemplateInput(value: unknown, requireGeneratedData = tru
   const categoryId = typeof input.categoryId === 'string' ? input.categoryId : ''
   const status = typeof input.status === 'string' && statuses.has(input.status) ? input.status as TemplateInput['status'] : 'draft'
   const templateKind = input.templateKind === 'flag' ? 'flag' : 'banner'
+  const templateSide = input.templateSide === 'front' || input.templateSide === 'back' ? input.templateSide : 'single'
   if (name.length < 2) throw new Error('Template name must contain at least two characters.')
   if (!uuid.test(categoryId)) throw new Error('Select a valid product category.')
   if (!productIds.length) throw new Error('Select at least one compatible product for this template.')
@@ -73,5 +75,5 @@ export function validateTemplateInput(value: unknown, requireGeneratedData = tru
   const scaleMetadata = input.scaleMetadata && typeof input.scaleMetadata === 'object' ? input.scaleMetadata as Record<string, unknown> : null
   const svgChecksum = typeof input.svgChecksum === 'string' && /^[a-f0-9]{64}$/i.test(input.svgChecksum) ? input.svgChecksum.toLowerCase() : ''
   const conversionVersion = Math.max(1, Math.min(1000, Math.floor(Number(input.conversionVersion) || 1)))
-  return { name, description, productIds, categoryId, status, templateKind, assets, width, height, unit, logicalCanvasWidth: canvasSize.logicalCanvasWidth, logicalCanvasHeight: canvasSize.logicalCanvasHeight, canvasData, fixedCanvasData, printableArea, scaleMetadata, svgChecksum, conversionVersion, regenerate: input.regenerate === true }
+  return { name, description, productIds, categoryId, status, templateKind, templateSide, assets, width, height, unit, logicalCanvasWidth: canvasSize.logicalCanvasWidth, logicalCanvasHeight: canvasSize.logicalCanvasHeight, canvasData, fixedCanvasData, printableArea, scaleMetadata, svgChecksum, conversionVersion, regenerate: input.regenerate === true }
 }

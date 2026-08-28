@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCart } from '@/lib/cart-context'
 import { ArtworkUploadCard, type ArtworkSelection } from '@/components/products/artwork-upload-card'
+import { designSelectionsForProductionSize, productionSizeIdentity, uniqueProductionSizes, type DesignType, type SizeDesignConfiguration } from '@/lib/products/design-configurations'
 
-interface Size { id: string; label: string; width: string | null; height: string | null; unit: string; unitPrice: string; sideMode?: string; variantType?: string | null; sizeGroup?: string | null; assembledHeightDescription?:string|null; frontTemplateId?:string|null; backTemplateId?:string|null }
-interface CompatibleTemplate { id: string; name: string; status: string; conversionStatus: string; previewImageUrl?: string | null; compatibleSizeIds: string[] }
+interface Size { id: string; label: string; width: string | null; height: string | null; unit: string; unitPrice: string; sideMode?: string; variantType?: string | null; sizeGroup?: string | null; assembledHeightDescription?:string|null; frontTemplateId?:string|null; backTemplateId?:string|null; designConfigurations?: SizeDesignConfiguration[] }
+interface CompatibleTemplate { id: string; name: string; status: string; conversionStatus: string; templateSide: 'single' | 'front'; previewImageUrl?: string | null; compatibleSizeIds: string[] }
 interface Product { id: string; name: string; description: string; basePrice: string; templateId: string | null; sizeMode: string; allowCustomDimensions: boolean; freeShipping?:boolean; category?: { name: string; category?:string }; template: CompatibleTemplate | null; templates: CompatibleTemplate[]; images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean }>; sizes: Size[] }
 interface ReviewData { reviews: Array<{ id:string; displayName:string; overall:number; productQuality:number; printQuality:number; colourFinishQuality:number; timeliness:number; service:number; feedback:string|null; verifiedPurchase:boolean; createdAt:string }>; summary:{overallRating:number;count:number;distribution:Record<string,number>} }
 
@@ -41,6 +42,7 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const [product, setProduct] = useState<Product | null>(null)
   const [sizeId, setSizeId] = useState('')
   const [templateId, setTemplateId] = useState('')
+  const [designType, setDesignType] = useState<DesignType>('single_side')
   const [quantity, setQuantity] = useState(1)
   const [customSize,setCustomSize]=useState(false)
   const [customHeight,setCustomHeight]=useState('')
@@ -51,16 +53,19 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const [adding, setAdding] = useState(false)
   const [artwork, setArtwork] = useState<ArtworkSelection | null>(null)
   const [reviews,setReviews]=useState<ReviewData|null>(null)
-  useEffect(() => { void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); const nextProduct = payload.data.product as Product; const firstTemplate = nextProduct.templates?.[0] || null; const allowedSizes = firstTemplate ? nextProduct.sizes.filter((size) => firstTemplate.compatibleSizeIds.includes(size.id)) : nextProduct.sizes; setProduct(nextProduct); setTemplateId(firstTemplate?.id || ''); setSizeId(allowedSizes.some((size) => size.id === requestedSizeId) ? requestedSizeId! : allowedSizes[0]?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId])
+  useEffect(() => { void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); const nextProduct = payload.data.product as Product; const firstSize = nextProduct.sizes.find((size) => size.id === requestedSizeId) || nextProduct.sizes[0]; const firstSelection = firstSize ? designSelectionsForProductionSize(firstSize,nextProduct.sizes)[0] : null; const firstConfiguration = firstSelection?.configuration; const firstTemplateId = firstConfiguration?.designType === 'double_side' ? firstConfiguration.frontTemplateId : firstConfiguration?.singleTemplateId; setProduct(nextProduct); setDesignType(firstConfiguration?.designType || 'single_side'); setTemplateId(firstTemplateId || ''); setSizeId(firstSelection?.size.id || firstSize?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId])
   const selectedTemplate = useMemo(() => product?.templates.find((template) => template.id === templateId) || null, [product, templateId])
-  const availableSizes = useMemo(() => {
-    if (!product) return []
-    return selectedTemplate ? product.sizes.filter((size) => selectedTemplate.compatibleSizeIds.includes(size.id)) : product.sizes
-  }, [product, selectedTemplate])
-  const selectedSize = useMemo(() => availableSizes.find((size) => size.id === sizeId), [availableSizes, sizeId])
-  function selectTemplate(nextTemplateId: string) { if (!product) return; const next = product.templates.find((template) => template.id === nextTemplateId) || null; const nextSizes = next ? product.sizes.filter((size) => next.compatibleSizeIds.includes(size.id)) : product.sizes; setTemplateId(nextTemplateId); setSizeId((current) => nextSizes.some((size) => size.id === current) ? current : nextSizes[0]?.id || '') }
-  function selectVariant(field:'variantType'|'sizeGroup'|'sideMode', value:string){if(!product)return;const target={variantType:selectedSize?.variantType,sizeGroup:selectedSize?.sizeGroup,sideMode:selectedSize?.sideMode,[field]:value};const exact=availableSizes.find((size)=>size.variantType===target.variantType&&size.sizeGroup===target.sizeGroup&&size.sideMode===target.sideMode);const fallback=availableSizes.find((size)=>size[field]===value);setSizeId((exact||fallback||availableSizes[0])?.id || '')}
-  function add() { if (!product || !selectedSize) return setError('Select an available size.'); if(customSize&&(!(Number(customHeight)>0)||!(Number(customWidth)>0)))return setError('Enter valid custom Height and Width.'); setAdding(true); const designId = customizationRef && /^[0-9a-f-]{36}$/i.test(customizationRef) ? customizationRef : null; const designSource = artwork ? 'customer_upload' : customizationRef ? 'online_editor' : 'design_assistance'; const compatibleTemplateId=selectedTemplate?.id||null; const customerPreview=designId?`/api/designs/${designId}/preview`:artwork?.previewUrl; addItem({ productId: product.id, productName: product.name, sizeId: selectedSize.id, sizeLabel: customSize?`${customHeight} × ${customWidth} ${selectedSize.unit}`:selectedSize.label, templateId:compatibleTemplateId, templateName: selectedTemplate?.name || null, designId, customizationRef, artworkId: artwork?.id || null, designSource, quantity, price: unitPrice, image: customerPreview||(product.images.find((image) => image.isPrimary) || product.images[0])?.url, specifications: { ...(customizationRef ? { customizationRef } : {}), ...(customSize?{customHeight,customWidth}:{}), designSource, frontTemplateId:compatibleTemplateId||'', backTemplateId:'', sideMode:selectedSize.sideMode||'single', width:customSize?customWidth:String(selectedSize.width||''), height:customSize?customHeight:String(selectedSize.height||''), unit:selectedSize.unit, freeShipping:String(Boolean(product.freeShipping)), shippingCategory:product.category?.category||'', previewContentType:artwork?.contentType||'image/png' } }); router.push('/cart') }
+  const allSizes = useMemo(() => product?.sizes || [], [product])
+  const availableSizes = useMemo(() => uniqueProductionSizes(allSizes), [allSizes])
+  const selectedSize = useMemo(() => allSizes.find((size) => size.id === sizeId), [allSizes, sizeId])
+  const selectedDisplaySize = useMemo(() => selectedSize ? availableSizes.find((size) => productionSizeIdentity(size) === productionSizeIdentity(selectedSize)) || selectedSize : null, [availableSizes, selectedSize])
+  const designSelections = useMemo(() => selectedSize ? designSelectionsForProductionSize(selectedSize, allSizes) : [], [allSizes, selectedSize])
+  const selectedConfiguration = useMemo(() => designSelections.find((selection) => selection.configuration.designType === designType)?.configuration || null, [designSelections, designType])
+  function applyDesignConfiguration(size: Size, preferred?: DesignType) { const selections = designSelectionsForProductionSize(size, allSizes); const next = selections.find((selection) => selection.configuration.designType === preferred) || selections[0]; setSizeId(next?.size.id || size.id); setDesignType(next?.configuration.designType || 'single_side'); setTemplateId((next?.configuration.designType === 'double_side' ? next.configuration.frontTemplateId : next?.configuration.singleTemplateId) || '') }
+  function selectSize(nextSizeId: string) { if (!product) return; const nextSize = allSizes.find((size) => size.id === nextSizeId); if (nextSize) applyDesignConfiguration(nextSize, designType) }
+  function selectDesignType(nextDesignType: DesignType) { if (!selectedSize) return; applyDesignConfiguration(selectedSize, nextDesignType) }
+  function selectVariant(field:'variantType'|'sizeGroup', value:string){if(!product)return;const target={variantType:selectedSize?.variantType,sizeGroup:selectedSize?.sizeGroup,[field]:value};const exact=availableSizes.find((size)=>size.variantType===target.variantType&&size.sizeGroup===target.sizeGroup);const fallback=availableSizes.find((size)=>size[field]===value);const nextSize=exact||fallback||availableSizes[0];if(nextSize)applyDesignConfiguration(nextSize,designType)}
+  function add() { if (!product || !selectedSize) return setError('Select an available size.'); if (!selectedConfiguration) return setError('Select an available design option.'); if(customSize&&(!(Number(customHeight)>0)||!(Number(customWidth)>0)))return setError('Enter valid custom Height and Width.'); setAdding(true); const designId = customizationRef && /^[0-9a-f-]{36}$/i.test(customizationRef) ? customizationRef : null; const designSource = artwork ? 'customer_upload' : customizationRef ? 'online_editor' : 'design_assistance'; const compatibleTemplateId=(selectedConfiguration.designType==='double_side'?selectedConfiguration.frontTemplateId:selectedConfiguration.singleTemplateId)||null; const customerPreview=designId?`/api/designs/${designId}/preview`:artwork?.previewUrl; addItem({ productId: product.id, productName: product.name, sizeId: selectedSize.id, sizeLabel: customSize?`${customHeight} × ${customWidth} ${selectedSize.unit}`:selectedSize.label, templateId:compatibleTemplateId, templateName: null, designId, customizationRef, artworkId: artwork?.id || null, designSource, quantity, price: unitPrice, image: customerPreview||(product.images.find((image) => image.isPrimary) || product.images[0])?.url, specifications: { ...(customizationRef ? { customizationRef } : {}), ...(customSize?{customHeight,customWidth}:{}), designSource, designType, designMode:designType, frontTemplateId:compatibleTemplateId||'', backTemplateId:selectedConfiguration.designType==='double_side'?selectedConfiguration.backTemplateId||'':'', sideMode:designType==='double_side'?'double':'single', width:customSize?customWidth:String(selectedSize.width||''), height:customSize?customHeight:String(selectedSize.height||''), unit:selectedSize.unit, freeShipping:String(Boolean(product.freeShipping)), shippingCategory:product.category?.category||'', previewContentType:artwork?.contentType||'image/png' } }); router.push('/cart') }
   if (loading) return <div className="grid min-h-[70vh] place-items-center">Loading product…</div>
   if (!product) return <div className="grid min-h-[70vh] place-items-center text-center"><div><h1 className="text-2xl font-bold">Product unavailable</h1><p className="mt-2 text-muted-foreground">{error}</p><Link href="/products"><Button className="mt-5"><ArrowLeft /> Back to products</Button></Link></div></div>
   const image = product.images[imageIndex] || product.images[0]
@@ -114,7 +119,7 @@ return (
           <div className="rounded-xl border p-5 bg-card">
             <h2 className="text-lg font-bold mb-3">Product Details</h2>
             <div
-              className="prose max-w-none text-foreground max-h-[350px] overflow-y-auto pr-2"
+              className="max-h-[350px] max-w-none overflow-y-auto pr-2 text-foreground [&_a]:text-primary [&_a]:underline [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-bold [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-3 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6"
               dangerouslySetInnerHTML={{ __html: product.description }}
             />
           </div>
@@ -136,20 +141,20 @@ return (
             {product.sizeMode==='fixed_variants'?<div className="grid gap-4 sm:grid-cols-3">
               <label className="text-sm font-semibold">Flag style<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.variantType||''} onChange={(e)=>selectVariant('variantType',e.target.value)}>{[...new Set(availableSizes.map((size)=>size.variantType).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value}</option>)}</select></label>
               <label className="text-sm font-semibold">Size<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.sizeGroup||''} onChange={(e)=>selectVariant('sizeGroup',e.target.value)}>{[...new Set(availableSizes.map((size)=>size.sizeGroup).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value === 'extra_large' ? 'XL' : `${value!.charAt(0).toUpperCase()}${value!.slice(1)}`}</option>)}</select></label>
-              <label className="text-sm font-semibold">Printing<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={selectedSize?.sideMode||''} onChange={(e)=>selectVariant('sideMode',e.target.value)}>{[...new Set(availableSizes.map((size)=>size.sideMode).filter(Boolean))].map((value)=><option key={value!} value={value!}>{value}-sided</option>)}</select></label>
+              <label className="text-sm font-semibold">Design option<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={designType} onChange={(e)=>selectDesignType(e.target.value as DesignType)}>{designSelections.map(({configuration})=><option key={configuration.designType} value={configuration.designType}>{configuration.designType === 'double_side' ? 'Double Sided' : 'Single Sided'}</option>)}</select></label>
               <div className="rounded-lg bg-secondary p-3 text-sm sm:col-span-3"><b>{selectedSize?.label}</b> · {selectedSize?.height} × {selectedSize?.width} {selectedSize?.unit} · ${Number(selectedSize?.unitPrice||0).toFixed(2)}{selectedSize?.assembledHeightDescription&&<span className="mt-1 block text-muted-foreground">{selectedSize.assembledHeightDescription}</span>}</div>
             </div>:<div>
               <Label htmlFor="size">Standard size</Label>
               <select
                 id="size"
-                value={sizeId}
-                onChange={(e) => setSizeId(e.target.value)}
+                value={selectedDisplaySize?.id||''}
+                 onChange={(e) => selectSize(e.target.value)}
                 className="mt-2 h-11 w-full rounded-md border bg-background px-3"
                 required
               >
                 {availableSizes.map((size) => (
                   <option key={size.id} value={size.id}>
-                  {size.label} {size.sideMode ? `· ${size.sideMode}-sided` : ''} - ${Number(size.unitPrice).toFixed(2)}
+                  {size.label}
                   </option>
                 ))}
               </select>
@@ -159,19 +164,19 @@ return (
                 </p>
               )}
             </div>}
+            {product.sizeMode!=='fixed_variants'&&selectedSize&&<label className="block text-sm font-semibold">Design option<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={designType} onChange={(event)=>selectDesignType(event.target.value as DesignType)}>{designSelections.map(({configuration})=><option key={configuration.designType} value={configuration.designType}>{configuration.designType==='double_side'?'Double Sided':'Single Sided'}</option>)}</select></label>}
             {product.allowCustomDimensions && product.templates.length === 0 && <div className="rounded-lg border p-3"><label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={customSize} onChange={(event)=>setCustomSize(event.target.checked)}/> Custom Size</label>{customSize&&<div className="mt-3 grid grid-cols-2 gap-3"><label className="text-sm">Height<Input type="number" min="0.001" step="0.001" value={customHeight} onChange={(event)=>setCustomHeight(event.target.value)}/></label><label className="text-sm">Width<Input type="number" min="0.001" step="0.001" value={customWidth} onChange={(event)=>setCustomWidth(event.target.value)}/></label><p className="col-span-2 text-xs text-muted-foreground">{selectedSize?.unit} · price scales by print area from the selected production preset.</p></div>}</div>}
 
             {/* Template Editor Link */}
-            {product.templates.length > 0 && selectedSize && (
+            {selectedSize && selectedTemplate && (
               <div className="rounded-lg bg-secondary p-4">
-                <p className="font-semibold">Editable design included</p>
-                <p className="text-sm text-muted-foreground">Only templates compatible with {product.name} are shown.</p>
-                {product.templates.length > 1 && <select aria-label="Compatible template" className="mt-3 h-10 w-full rounded-md border bg-background px-3" value={templateId} onChange={(event) => selectTemplate(event.target.value)}>{product.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>}
+                <p className="font-semibold">Design online</p>
+                 <p className="text-sm text-muted-foreground">The correct production template is loaded automatically for this size and design option.</p>
                 <Link
-                  href={`/design?templateId=${selectedTemplate?.id}&productId=${product.id}&sizeId=${selectedSize.id}`}
+                  href={`/design?templateId=${selectedTemplate.id}&productId=${product.id}&sizeId=${selectedSize.id}&designType=${designType}`}
                   className="mt-3 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
                 >
-                  Edit {selectedTemplate?.name || 'template'}
+                  Start designing
                 </Link>
               </div>
             )}
@@ -199,7 +204,7 @@ return (
             productName={product.name}
             sizeId={selectedSize?.id || ''}
             sizeLabel={selectedSize?.label || ''}
-            variantLabel={[selectedSize?.variantType,selectedSize?.sizeGroup,selectedSize?.sideMode&&`${selectedSize.sideMode}-sided`].filter(Boolean).join(' · ')}
+            variantLabel={[selectedSize?.variantType,selectedSize?.sizeGroup,designType==='double_side'?'double-sided':'single-sided'].filter(Boolean).join(' · ')}
             quantity={quantity}
             value={artwork}
             onChange={setArtwork}

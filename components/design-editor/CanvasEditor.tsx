@@ -105,8 +105,8 @@ async function flagCanvasGuide(source: EditorObject, scaleX: number, scaleY: num
 }
 
 async function createFlagCanvasGuides(source: EditorObject, config: ProductConfig) {
-  const outerX = (config.widthMm + 40) / config.widthMm, outerY = (config.heightMm + 40) / config.heightMm
-  const safetyX = Math.max(0.05, (config.widthMm - 100) / config.widthMm), safetyY = Math.max(0.05, (config.heightMm - 100) / config.heightMm)
+  const outerX = (config.widthMm + config.bleedMm * 2) / config.widthMm, outerY = (config.heightMm + config.bleedMm * 2) / config.heightMm
+  const safetyX = Math.max(0.05, (config.widthMm - config.safeMarginMm * 2) / config.widthMm), safetyY = Math.max(0.05, (config.heightMm - config.safeMarginMm * 2) / config.heightMm)
   return Promise.all([
     flagCanvasGuide(source, outerX, outerY, '#ed1b68', [8, 6]),
     flagCanvasGuide(source, 1, 1, '#111111', []),
@@ -178,12 +178,25 @@ function scaleComposition(
     obj.setCoords()
   }
 }
+
+type SideTemplateSource = {
+  id: string
+  name: string
+  canvasData: Record<string, unknown>
+  fixedCanvasData: Record<string, unknown> | null
+  templateKind: 'banner' | 'flag'
+  baseCanvasWidth: number
+  baseCanvasHeight: number
+  fitMode: 'contain' | 'cover' | 'stretch'
+}
+
 export function CanvasEditor() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const requestedTemplateId = searchParams.get('templateId')
   const requestedProductId = searchParams.get('productId')
   const requestedSizeId = searchParams.get('sizeId')
+  const requestedDesignType = searchParams.get('designType')
   const { data: session } = useSession()
   const elementRef = useRef<HTMLCanvasElement>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
@@ -209,6 +222,8 @@ export function CanvasEditor() {
   const flagGuideRefs = useRef<EditorObject[]>([])
   const templateKindRef = useRef<'banner' | 'flag'>('banner')
   const baseCanvasRef = useRef({ width: DEFAULT_PRODUCT_CONFIG.logicalCanvasWidth, height: DEFAULT_PRODUCT_CONFIG.logicalCanvasHeight, fitMode: 'contain' as 'contain' | 'cover' | 'stretch' })
+  const sideTemplateSourcesRef = useRef<Partial<Record<'front' | 'back', SideTemplateSource>>>({})
+  const sideTemplateIdsRef = useRef<{ front: string | null; back?: string | null }>({ front: null })
   const frontHistory = useCanvasHistory(canvasRef)
   const backHistory = useCanvasHistory(canvasRef)
   const snapshot = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.snapshot : backHistory.snapshot)(), [backHistory.snapshot, frontHistory.snapshot])
@@ -272,8 +287,18 @@ export function CanvasEditor() {
     ctx.restore()
   }, [])
 
- const restoreOriginalAtSize = useCallback(async (config: ProductConfig) => {
+  const activateTemplateSide = useCallback((side: 'front' | 'back') => {
+    const source = sideTemplateSourcesRef.current[side]
+    if (!source) return
+    originalTemplateRef.current = source.canvasData
+    fixedTemplateRef.current = source.fixedCanvasData
+    templateKindRef.current = source.templateKind
+    baseCanvasRef.current = { width: source.baseCanvasWidth, height: source.baseCanvasHeight, fitMode: source.fitMode }
+  }, [])
+
+ const restoreOriginalAtSize = useCallback(async (config: ProductConfig, side = currentSideRef.current) => {
     const canvas = canvasRef.current
+    activateTemplateSide(side)
     const original = originalTemplateRef.current
     if (!canvas || !original) return
     canvas.renderOnAddRemove = false
@@ -357,7 +382,7 @@ export function CanvasEditor() {
       canvas.renderOnAddRemove = true 
     }
     canvas.requestRenderAll()
-  }, [runWhileRestoring])
+  }, [activateTemplateSide, runWhileRestoring])
 
   useEffect(() => {
     if (!elementRef.current) return
@@ -393,25 +418,39 @@ export function CanvasEditor() {
           const params = new URLSearchParams()
           if (requestedProductId) params.set('productId', requestedProductId)
           if (requestedSizeId) params.set('sizeId', requestedSizeId)
+          if (requestedDesignType) params.set('designType', requestedDesignType)
           const response = await fetch(`/api/templates/${requestedTemplateId}/editor-data?${params}`, { cache: 'no-store' })
           const payload = await response.json()
           if (!response.ok) throw new Error(payload.error?.message || 'The selected template could not be loaded.')
           configRef.current = payload.data.productConfig
           setProductConfig(payload.data.productConfig)
           setTemplateId(payload.data.template.id)
-          originalTemplateRef.current = payload.data.template.canvasData
-          fixedTemplateRef.current = payload.data.template.fixedCanvasData || null
-          templateKindRef.current = payload.data.template.templateKind === 'flag' ? 'flag' : 'banner'
-          baseCanvasRef.current = { width: payload.data.template.baseCanvasWidth, height: payload.data.template.baseCanvasHeight, fitMode: payload.data.fitMode || 'contain' }
-          await restoreOriginalAtSize(payload.data.productConfig)
+          sideTemplateSourcesRef.current = {
+            front: { id: payload.data.template.id, name: payload.data.template.name, canvasData: payload.data.template.canvasData, fixedCanvasData: payload.data.template.fixedCanvasData || null, templateKind: payload.data.template.templateKind === 'flag' ? 'flag' : 'banner', baseCanvasWidth: payload.data.template.baseCanvasWidth, baseCanvasHeight: payload.data.template.baseCanvasHeight, fitMode: payload.data.fitMode || 'contain' },
+            ...(payload.data.backTemplate ? { back: { id: payload.data.backTemplate.id, name: payload.data.backTemplate.name, canvasData: payload.data.backTemplate.canvasData, fixedCanvasData: payload.data.backTemplate.fixedCanvasData || null, templateKind: payload.data.backTemplate.templateKind === 'flag' ? 'flag' : 'banner', baseCanvasWidth: payload.data.backTemplate.baseCanvasWidth, baseCanvasHeight: payload.data.backTemplate.baseCanvasHeight, fitMode: payload.data.fitMode || 'contain' } } : {}),
+          }
+          sideTemplateIdsRef.current = { front: payload.data.template.id, ...(payload.data.backTemplate ? { back: payload.data.backTemplate.id } : {}) }
+          sideStatesRef.current = {}
+          currentSideRef.current = 'front'; setCurrentSide('front')
+          await restoreOriginalAtSize(payload.data.productConfig, 'front')
           sideStatesRef.current.front = canvas.toJSON()
-          setStatus(`${payload.data.template.name} loaded for ${payload.data.productSize?.label || 'its fixed size'}`)
+          if (payload.data.productConfig.sideMode === 'double' && payload.data.backTemplate) {
+            await restoreOriginalAtSize(payload.data.productConfig, 'back')
+            sideStatesRef.current.back = canvas.toJSON()
+            await runWhileRestoring(() => canvas.loadFromJSON(sideStatesRef.current.front!))
+            activateTemplateSide('front')
+            const frontFixedLayer = (canvas.getObjects() as EditorObject[]).find(isFixedLayer)
+            flagGuideRefs.current = templateKindRef.current === 'flag' && frontFixedLayer ? await createFlagCanvasGuides(frontFixedLayer, payload.data.productConfig) : []
+          }
+          setStatus(`${payload.data.template.name}${payload.data.backTemplate ? ` + ${payload.data.backTemplate.name}` : ''} loaded for ${payload.data.productSize?.label || 'its fixed size'}`)
         } else if (saved) {
           configRef.current = saved.productConfig
           setProductConfig(saved.productConfig)
           templateKindRef.current = saved.productConfig.productCategory === 'flag' ? 'flag' : 'banner'
           setTemplateId(saved.templateId)
-          await runWhileRestoring(() => canvas.loadFromJSON(saved.canvasJson))
+          sideTemplateIdsRef.current = { front: saved.front?.templateId ?? saved.templateId, ...(saved.back ? { back: saved.back.templateId } : {}) }
+          sideStatesRef.current = saved.sides ? { front: saved.sides.front.canvasJson, ...(saved.sides.back ? { back: saved.sides.back.canvasJson } : {}) } : saved.front ? { front: saved.front.canvasJson, ...(saved.back ? { back: saved.back.canvasJson } : {}) } : { front: saved.canvasJson }
+          await runWhileRestoring(() => canvas.loadFromJSON(sideStatesRef.current.front || saved.canvasJson))
           const restoredFixedLayer = (canvas.getObjects() as EditorObject[]).find(isFixedLayer)
           flagGuideRefs.current = templateKindRef.current === 'flag' && restoredFixedLayer ? await createFlagCanvasGuides(restoredFixedLayer, saved.productConfig) : []
           setStatus(`Restored ${new Date(saved.updatedAt).toLocaleString()}`)
@@ -432,7 +471,7 @@ export function CanvasEditor() {
       canvas.dispose()
       canvasRef.current = null
     }
-  }, [drawGuides, fitToScreen, refreshObjects, requestedProductId, requestedSizeId, requestedTemplateId, reset, restoreOriginalAtSize, runWhileRestoring, scheduleSnapshot, snapshot])
+  }, [activateTemplateSide, drawGuides, fitToScreen, refreshObjects, requestedDesignType, requestedProductId, requestedSizeId, requestedTemplateId, reset, restoreOriginalAtSize, runWhileRestoring, scheduleSnapshot, snapshot])
 
   const addText = useCallback((kind: 'heading' | 'subheading' | 'body') => {
     const canvas = canvasRef.current
@@ -482,7 +521,7 @@ export function CanvasEditor() {
   const loadTemplate = useCallback(async (template: DesignTemplate) => {
     if (canUndo && !window.confirm('Replace your current artwork with this template?')) return
     if (template.productId && template.sizeId && (requestedTemplateId !== template.id || requestedProductId !== template.productId || requestedSizeId !== template.sizeId)) {
-      router.push(`/design?templateId=${encodeURIComponent(template.id)}&productId=${encodeURIComponent(template.productId)}&sizeId=${encodeURIComponent(template.sizeId)}`)
+      router.push(`/design?templateId=${encodeURIComponent(template.id)}&productId=${encodeURIComponent(template.productId)}&sizeId=${encodeURIComponent(template.sizeId)}${requestedDesignType ? `&designType=${encodeURIComponent(requestedDesignType)}` : ''}`)
       return
     }
     const canvas = canvasRef.current
@@ -491,10 +530,12 @@ export function CanvasEditor() {
     try {
       const loaded = await fetchTemplate(template)
       canvas.discardActiveObject()
-      originalTemplateRef.current = loaded.json
-      fixedTemplateRef.current = loaded.fixedCanvasData || null
-      templateKindRef.current = loaded.templateKind
-      baseCanvasRef.current = { width: template.width, height: template.height, fitMode: loaded.fitMode }
+      sideTemplateSourcesRef.current = {
+        front: { id: template.id, name: template.name, canvasData: loaded.json, fixedCanvasData: loaded.fixedCanvasData || null, templateKind: loaded.templateKind, baseCanvasWidth: template.width, baseCanvasHeight: template.height, fitMode: loaded.fitMode },
+        ...(loaded.backTemplate ? { back: { id: loaded.backTemplate.id, name: loaded.backTemplate.name, canvasData: loaded.backTemplate.json, fixedCanvasData: loaded.backTemplate.fixedCanvasData, templateKind: loaded.backTemplate.templateKind, baseCanvasWidth: loaded.backTemplate.baseCanvasWidth, baseCanvasHeight: loaded.backTemplate.baseCanvasHeight, fitMode: loaded.fitMode } } : {}),
+      }
+      sideTemplateIdsRef.current = { front: template.id, ...(loaded.backTemplate ? { back: loaded.backTemplate.id } : {}) }
+      activateTemplateSide('front')
       const config = loaded.productConfig || configRef.current
       configRef.current = config
       setProductConfig(config)
@@ -512,7 +553,7 @@ export function CanvasEditor() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Template failed to load')
     }
-  }, [canUndo, refreshObjects, requestedProductId, requestedSizeId, requestedTemplateId, reset, restoreOriginalAtSize, router])
+  }, [activateTemplateSide, canUndo, refreshObjects, requestedDesignType, requestedProductId, requestedSizeId, requestedTemplateId, reset, restoreOriginalAtSize, router])
 
   const upload = useCallback(async (file: File) => {
     if (!ALLOWED_UPLOADS.has(file.type)) return setStatus('Unsupported image type')
@@ -594,7 +635,7 @@ export function CanvasEditor() {
     setProcessing('Preparing your design…')
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
     const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
-    const design = serializeDesign(canvas, configRef.current, templateId, sides)
+    const design = serializeDesign(canvas, configRef.current, templateId, sides, sideTemplateIdsRef.current)
     saveDesign(design)
     if (!session?.user) {
       setStatus('Saved temporarily on this device. Sign in to save a private draft.')
@@ -618,13 +659,11 @@ export function CanvasEditor() {
         ])
         return { preview: previewAsset, production: { pdf: productionPdf, svg: productionSvg } }
       }
-      const frontJson = sides?.front.canvasJson ?? design.canvasJson
+      const frontJson = design.sides?.front.canvasJson ?? design.canvasJson
       const front = await renderAndUpload(frontJson, 'front')
-      // Match the previous server renderer: an untouched back side starts from
-      // the front state until the customer explicitly edits it.
-      const back = configRef.current.sideMode === 'double'
-        ? await renderAndUpload(sides?.back?.canvasJson ?? frontJson, 'back')
-        : undefined
+      const backJson = design.sides?.back?.canvasJson ?? design.back?.canvasJson
+      if (configRef.current.sideMode === 'double' && !backJson) throw new Error('The back-side canvas is missing. Open the Back tab before saving this design.')
+      const back = backJson ? await renderAndUpload(backJson, 'back') : undefined
 
       setStatus('Saving private draft…')
       setProcessing('Saving your artwork…')
@@ -665,26 +704,19 @@ export function CanvasEditor() {
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
     currentSideRef.current = next
     setCurrentSide(next)
+    activateTemplateSide(next)
     const saved = sideStatesRef.current[next]
-    if (saved) await runWhileRestoring(() => canvas.loadFromJSON(saved))
+    if (saved) {
+      await runWhileRestoring(() => canvas.loadFromJSON(saved))
+      const fixedLayer = (canvas.getObjects() as EditorObject[]).find(isFixedLayer)
+      flagGuideRefs.current = templateKindRef.current === 'flag' && fixedLayer ? await createFlagCanvasGuides(fixedLayer, configRef.current) : []
+    }
     else {
       await restoreOriginalAtSize(configRef.current)
       sideStatesRef.current[next] = canvas.toJSON()
     }
-    refreshObjects(); if (!saved) reset(); canvas.requestRenderAll(); setStatus(`${next === 'front' ? 'Front' : 'Back'} side selected`)
-  }, [refreshObjects, reset, restoreOriginalAtSize, runWhileRestoring])
-
-  const copyFrontToBack = useCallback(async (mirror: boolean) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
-    const front = sideStatesRef.current.front
-    if (!front) return
-    currentSideRef.current = 'back'; setCurrentSide('back')
-    await runWhileRestoring(() => canvas.loadFromJSON(front))
-    if (mirror) for (const object of canvas.getObjects() as EditorObject[]) { if (isFixedLayer(object)) continue; object.set({ left: configRef.current.logicalCanvasWidth - (object.left ?? 0), flipX: !object.flipX }); object.setCoords() }
-    sideStatesRef.current.back = canvas.toJSON(); refreshObjects(); reset(); canvas.requestRenderAll(); setStatus(mirror ? 'Front mirrored to back by request' : 'Front copied to back by request')
-  }, [refreshObjects, reset, runWhileRestoring])
+    refreshObjects(); if (!saved) reset(); canvas.requestRenderAll(); setStatus(`Designing the ${next} side${sideTemplateSourcesRef.current[next]?.name ? ` · ${sideTemplateSourcesRef.current[next]!.name}` : ''}`)
+  }, [activateTemplateSide, refreshObjects, reset, restoreOriginalAtSize, runWhileRestoring])
 
   const continueFromEditor = useCallback(async () => {
     sideStatesRef.current[currentSideRef.current] = canvasRef.current?.toJSON()
@@ -694,6 +726,7 @@ export function CanvasEditor() {
       const params = new URLSearchParams()
       if (!customizationRef || customizationRef.startsWith('local:')) { setStatus('Sign in and save your draft before generating a production preview.'); return }
       if (requestedSizeId) params.set('sizeId', requestedSizeId)
+      if (requestedDesignType) params.set('designType', requestedDesignType)
       if (templateId) params.set('templateId', templateId)
       params.set('designId', customizationRef)
       params.set('productId', requestedProductId)
@@ -701,7 +734,7 @@ export function CanvasEditor() {
     } else {
       router.push('/products')
     }
-  }, [requestedProductId, requestedSizeId, router, save, templateId])
+  }, [requestedDesignType, requestedProductId, requestedSizeId, router, save, templateId])
 
   const exportOutput = useCallback(async (format: 'preview' | 'pdf' | 'svg') => {
     const canvas = canvasRef.current
@@ -776,7 +809,7 @@ export function CanvasEditor() {
           onDuplicate={() => void duplicateSelected()}
           onDelete={deleteSelected}
         />
-        <div className="relative flex min-w-0 flex-1"><CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />{productConfig.sideMode === 'double' && <div className="absolute right-3 top-3 z-20 flex flex-wrap gap-1 rounded-md border bg-white p-1 shadow"><button type="button" onClick={() => void switchSide('front')} className={`rounded px-3 py-1.5 text-xs font-bold ${currentSide === 'front' ? 'bg-primary text-primary-foreground' : ''}`}>Front</button><button type="button" onClick={() => void switchSide('back')} className={`rounded px-3 py-1.5 text-xs font-bold ${currentSide === 'back' ? 'bg-primary text-primary-foreground' : ''}`}>Back</button><button type="button" onClick={() => void copyFrontToBack(false)} className="rounded border px-2 py-1.5 text-xs">Copy front</button><button type="button" onClick={() => void copyFrontToBack(true)} className="rounded border px-2 py-1.5 text-xs">Mirror front</button></div>}</div>
+        <div className="relative flex min-w-0 flex-1"><CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />{productConfig.sideMode === 'double' && <div className="absolute right-3 top-3 z-20 rounded-md border bg-white p-1 shadow"><p className="px-2 pb-1 text-[11px] font-semibold text-zinc-500">Design side</p><div className="flex gap-1"><button type="button" onClick={() => void switchSide('front')} aria-pressed={currentSide === 'front'} className={`rounded px-4 py-2 text-xs font-bold ${currentSide === 'front' ? 'bg-primary text-primary-foreground' : 'hover:bg-zinc-100'}`}>Front</button><button type="button" onClick={() => void switchSide('back')} aria-pressed={currentSide === 'back'} className={`rounded px-4 py-2 text-xs font-bold ${currentSide === 'back' ? 'bg-primary text-primary-foreground' : 'hover:bg-zinc-100'}`}>Back</button></div></div>}</div>
       </div>
       {processing && <div className="fixed inset-0 z-[100] grid place-items-center bg-white/55 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-live="polite"><div className="flex items-center gap-3 rounded-xl border bg-white/95 px-5 py-4 shadow-xl"><span className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-200 border-t-[#ed1b68]"/><p className="font-semibold">{processing}</p></div></div>}
     </div>

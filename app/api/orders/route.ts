@@ -13,6 +13,7 @@ import { couponReservationExpiry } from '@/lib/coupons/reservations'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
 import { validateAustralianLocation } from '@/lib/address/australia'
 import { calculateShipping } from '@/lib/shipping/calculator'
+import { designConfigurationForSize, type DesignType } from '@/lib/products/design-configurations'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; suburb?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -104,14 +105,25 @@ export async function POST(request: NextRequest) {
       const quantity = Number(item.quantity)
       if (!product || !size || (templateSize && !price)) throw new Error('A product or selected size is no longer available.')
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('Quantity must be between 1 and 1000.')
-      const selectedTemplateId = item.templateId || product.templateId
-      if (selectedTemplateId && (!templateRows.some((template) => template.id === selectedTemplateId && template.status === 'active' && template.conversionStatus === 'ready') || !templateLinks.some((link) => link.templateId === selectedTemplateId && link.productId === product.id))) throw new Error('The selected editable template is not compatible with this product.')
-      if (selectedTemplateId && legacySize && !isTemplateCompatibleWithSize(selectedTemplateId, legacySize)) throw new Error('This template is not available for the selected size. Please choose another size.')
+      const requestedDesignType: DesignType = item.specifications?.designType === 'double_side' || item.specifications?.designMode === 'double_side' ? 'double_side' : 'single_side'
+      const designConfiguration = legacySize ? designConfigurationForSize(legacySize, requestedDesignType) : null
+      if (legacySize && !designConfiguration) throw new Error('The selected design option is not available for this production size.')
+      const configuredTemplateId = designConfiguration?.designType === 'double_side' ? designConfiguration.frontTemplateId : designConfiguration?.singleTemplateId
+      const selectedTemplateId = item.templateId || configuredTemplateId || product.templateId
+      if (selectedTemplateId && (!templateRows.some((template) => template.id === selectedTemplateId && template.status === 'active' && template.conversionStatus === 'ready') || (!templateLinks.some((link) => link.templateId === selectedTemplateId && link.productId === product.id) && product.templateId !== selectedTemplateId && configuredTemplateId !== selectedTemplateId))) throw new Error('The selected editable template is not compatible with this product.')
+      if (selectedTemplateId && legacySize && (!isTemplateCompatibleWithSize(selectedTemplateId, legacySize, requestedDesignType) || (configuredTemplateId && selectedTemplateId !== configuredTemplateId))) throw new Error('This template is not available for the selected size and design option.')
       const design = item.designId ? designRows.find((row) => row.id === item.designId && row.productId === product.id && row.templateId === selectedTemplateId && row.userId === session?.user.id) : null
       if (item.designId && !design) throw new Error('The selected customization is unavailable or does not belong to this account.')
       const artwork = item.artworkId ? artworkRows.find((row) => row.id === item.artworkId && row.productId === product.id && row.userId === session?.user.id && (row.templateSizeId === size.id || row.productSizeId === size.id)) : null
       const designSource = item.designSource || (design ? 'online_editor' : artwork ? 'customer_upload' : 'design_assistance')
       if (designSource === 'online_editor' && !design) throw new Error('Save the online customization before checkout.')
+      if (designSource === 'online_editor' && design) {
+        const saved = design.canvasData as Record<string, unknown>
+        const savedDesignType = saved.designType === 'double_side' || saved.designMode === 'double_side' ? 'double_side' : 'single_side'
+        if (savedDesignType !== requestedDesignType) throw new Error('The saved design type does not match the selected production option.')
+        const renderedAssets = saved.renderedAssets && typeof saved.renderedAssets === 'object' ? saved.renderedAssets as Record<string, unknown> : {}
+        if (!renderedAssets.front || (requestedDesignType === 'double_side' && !renderedAssets.back)) throw new Error('The saved design is missing required production side files.')
+      }
       if (designSource === 'customer_upload' && !artwork) throw new Error('The uploaded artwork is unavailable or belongs to another account.')
       const customHeight = item.specifications?.customHeight
       const customWidth = item.specifications?.customWidth
@@ -124,7 +136,7 @@ export async function POST(request: NextRequest) {
       const unitCents = cents(Number(size.unitPrice) * areaRatio)
       const productImage = productImageRows.find((image) => image.productId === product.id && image.isPrimary) || productImageRows.find((image) => image.productId === product.id)
       const category = categoryRows.find((row) => row.id === product.categoryId)
-      return { product, category, productImage: productImage?.url || null, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      return { product, category, productImage: productImage?.url || null, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, designType: requestedDesignType, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
     const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null
@@ -157,7 +169,7 @@ export async function POST(request: NextRequest) {
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, sideMode: 'sideMode' in item.size ? item.size.sideMode : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, shippingCategory: item.category?.category || null },
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, designType: item.designType, designMode: item.designType, sideMode: item.designType === 'double_side' ? 'double' : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, shippingCategory: item.category?.category || null },
       })))
       if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })

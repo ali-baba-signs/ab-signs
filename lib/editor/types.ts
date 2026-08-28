@@ -19,6 +19,7 @@ export interface ProductConfig {
   logicalCanvasHeight: number
   measurementUnit?: 'mm' | 'cm' | 'in' | 'ft' | 'm'
   sideMode?: 'single' | 'double'
+  designType?: 'single_side' | 'double_side'
   productId?: string
   productCategory?: 'banner' | 'flag'
   selectedSizeId?: string
@@ -45,12 +46,17 @@ export interface DesignTemplate {
 }
 
 export interface SavedDesign {
-  version: 1 | 2
+  version: 1 | 2 | 3
+  sizeId?: string
+  designMode?: 'single_side' | 'double_side'
+  designType?: 'single_side' | 'double_side'
   productConfig: ProductConfig
   templateId: string | null
   canvasJson: Record<string, unknown>
   objectsJson?: unknown[]
   sides?: { front: { canvasJson: Record<string, unknown> }; back?: { canvasJson: Record<string, unknown> } }
+  front?: { templateId: string | null; canvasJson: Record<string, unknown>; previewImage?: string }
+  back?: { templateId: string | null; canvasJson: Record<string, unknown>; previewImage?: string }
   updatedAt: string
 }
 

@@ -9,6 +9,9 @@ import { validateProductInput } from '../lib/products/validation'
 import { validateTemplateInput } from '../lib/templates/validation'
 import { formatDimensions, parseMeasurement, sameMeasurement } from '../lib/measurements'
 import { BANNER_SIZE_PRESETS } from '../lib/products/size-presets'
+import { validateTemplateSideAssignments } from '../lib/products/template-assignments'
+import { designConfigurationForSize, designSelectionsForProductionSize, enabledDesignConfigurations, uniqueProductionSizes } from '../lib/products/design-configurations'
+import { isTemplateCompatibleWithSize } from '../lib/templates/compatibility'
 
 test('integer and decimal physical dimensions normalize without artificial .01 offsets', () => {
   for (const value of ['500','600','1000','1200','1500','500.125']) assert.equal(parseMeasurement(value).value, Number(value))
@@ -25,6 +28,7 @@ test('fixed flag presets start with production dimensions but remain admin-edita
   assert.equal(customized.sizes[0].width, '55')
   assert.equal(customized.sizes[0].unitPrice, 95)
   const product=validateProductInput({...base,sizes:[{label:'Small – 2.6m',height:'200',width:'50',unit:'cm',unitPrice:80,enabled:true,variantType:'feather',sizeGroup:'small',sideMode:'double'}]})
+  assert.equal(product.designMode, 'double_side')
   assert.equal(product.sizes[0].sideMode,'double')
   assert.equal(product.sizes[0].width,'50')
   assert.equal(product.sizes[0].height,'200')
@@ -76,6 +80,58 @@ test('template validation separates fixed flag shapes from editable artwork', ()
   assert.equal(template.templateKind, 'flag')
   assert.equal(template.printableArea.width, template.logicalCanvasWidth)
   assert.equal((template.fixedCanvasData!.objects as Array<Record<string, unknown>>)[0].role, 'fixed-product-layer')
+})
+
+test('template roles keep double-sided front and back assignments distinct', () => {
+  const product = validateProductInput({ sku: 'DOUBLE-1', name: 'Double product', description: '<p>A double-sided production product.</p>', designMode: 'double_side', basePrice: 80, categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', images: [{ key: 'products/double.webp' }], sizes: [{ label: 'Double', width: 500, height: 2000, unit: 'mm', unitPrice: 80, enabled: true, sideMode: 'double', frontTemplateId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', backTemplateId: 'b94ab2d1-f1ec-49d8-9d56-b5ba0694baa3' }] })
+  assert.equal(product.designMode, 'double_side')
+  validateTemplateSideAssignments(product.sizes, [{ id: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateSide: 'front' }, { id: 'b94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateSide: 'back' }])
+  assert.throws(() => validateTemplateSideAssignments(product.sizes, [{ id: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateSide: 'front' }, { id: 'b94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', templateSide: 'single' }]), /marked as back/i)
+  const back = validateTemplateInput({ name: 'Back artwork', templateSide: 'back', productId: 'a94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', width: 500, height: 2000, unit: 'mm', status: 'active', assets: {}, canvasData: { objects: [{ type: 'rect' }] } })
+  assert.equal(back.templateSide, 'back')
+})
+
+test('one production size can expose independent single and double design configurations', () => {
+  const singleTemplateId = '194ab2d1-f1ec-49d8-9d56-b5ba0694baa3'
+  const frontTemplateId = '294ab2d1-f1ec-49d8-9d56-b5ba0694baa3'
+  const backTemplateId = '394ab2d1-f1ec-49d8-9d56-b5ba0694baa3'
+  const product = validateProductInput({
+    sku: 'MIXED-1', name: 'Mixed side product', description: '<p>Supports both production design types.</p>', basePrice: 120,
+    categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', images: [{ key: 'products/mixed.webp' }],
+    sizes: [{ label: '600 × 1800 mm', width: 600, height: 1800, unit: 'mm', unitPrice: 120, enabled: true, designConfigurations: [
+      { designType: 'single_side', enabled: true, singleTemplateId },
+      { designType: 'double_side', enabled: true, frontTemplateId, backTemplateId },
+    ] }],
+  })
+  const size = product.sizes[0]
+  assert.deepEqual(enabledDesignConfigurations(size).map((configuration) => configuration.designType), ['single_side', 'double_side'])
+  assert.equal(designConfigurationForSize(size, 'single_side')?.singleTemplateId, singleTemplateId)
+  assert.equal(designConfigurationForSize(size, 'double_side')?.backTemplateId, backTemplateId)
+  assert.equal(isTemplateCompatibleWithSize(singleTemplateId, size, 'single_side'), true)
+  assert.equal(isTemplateCompatibleWithSize(frontTemplateId, size, 'single_side'), false)
+  validateTemplateSideAssignments(product.sizes, [
+    { id: singleTemplateId, templateSide: 'single' },
+    { id: frontTemplateId, templateSide: 'front' },
+    { id: backTemplateId, templateSide: 'back' },
+  ])
+  assert.throws(() => validateProductInput({
+    sku: 'MISSING-BACK', name: 'Missing back', description: '<p>Invalid double option configuration.</p>', basePrice: 120,
+    categoryId: 'd94ab2d1-f1ec-49d8-9d56-b5ba0694baa3', images: [{ key: 'products/mixed.webp' }],
+    sizes: [{ label: 'Double only', width: 600, height: 1800, unit: 'mm', unitPrice: 120, enabled: true, designConfigurations: [{ designType: 'double_side', enabled: true, frontTemplateId }] }],
+  }), /both front and back templates/i)
+})
+
+test('legacy duplicate side rows appear as one production size with both customer options', () => {
+  const rows = [
+    { id: 'size-single', label: '2.8m Tear Drop – Single', width: '120', height: '280', unit: 'cm', variantType: 'teardrop', sizeGroup: 'medium', sideMode: 'single', frontTemplateId: 'single-template' },
+    { id: 'size-double', label: '2.8m Tear Drop – Double', width: '120.0', height: '280.00', unit: 'cm', variantType: 'teardrop', sizeGroup: 'medium', sideMode: 'double', frontTemplateId: 'front-template', backTemplateId: 'back-template' },
+  ]
+  assert.equal(uniqueProductionSizes(rows).length, 1)
+  const selections = designSelectionsForProductionSize(rows[0], rows)
+  assert.deepEqual(selections.map((selection) => [selection.configuration.designType, selection.size.id]), [
+    ['single_side', 'size-single'],
+    ['double_side', 'size-double'],
+  ])
 })
 
 test('order workflow accepts only configured transitions and computes the six-hour deadline', () => {

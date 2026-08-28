@@ -12,7 +12,7 @@ test('print-ready export is a real PDF with physical metadata, bleed, and crop m
   const text = Buffer.from(pdf).toString('latin1')
   assert.equal(text.slice(0, 8), '%PDF-1.6')
   assert.match(text, /\/Subtype \/Image/)
-  assert.match(text, /Trim 1000 x 2000 mm; bleed 3 mm; safety 0 mm; rectangle contour; crop marks yes/)
+  assert.match(text, /Trim 1000 x 2000 mm; bleed 3 mm; rectangle contour; crop marks yes; safety guides editor-only/)
   assert.match(text, /startxref\n\d+\n%%EOF/)
 })
 
@@ -44,10 +44,10 @@ test('production PDF uploads use a private print path and strict PDF type', () =
   assert.match(createUploadKey({ filename: 'front-production.svg', contentType: 'image/svg+xml', size: 1000, purpose: 'design-production', designId: 'draft-1' }, 'user-1'), /^generated\/print\/user-1\/draft-1\/.+\.svg$/)
 })
 
-test('flag production specs always use the required curved-guide offsets', () => {
+test('flag production specs use the admin-configured curved-guide offsets', () => {
   const spec = productionSpec({ widthMm: 500, heightMm: 2000, bleedMm: 3, safeMarginMm: 0, logicalCanvasWidth: 300, logicalCanvasHeight: 1200, productCategory: 'flag' })
   assert.equal(spec.productKind, 'flag')
-  assert.equal(spec.bleedMm, 20)
+  assert.equal(spec.bleedMm, 3)
   assert.equal(spec.cutLineMm, 0)
-  assert.equal(spec.safetyMm, 50)
+  assert.equal(spec.safetyMm, 0)
 })

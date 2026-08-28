@@ -16,6 +16,8 @@ import { heroSlides, resolveAsset } from '@/data/homepage'
 import { getHeroSlides } from '@/lib/home/hero-data'
 import { getHomepageCategories } from '@/lib/home/category-data'
 import { getHomepagePromotions } from '@/lib/home/promotion-data'
+import { getPopularProducts } from '@/lib/products/queries'
+import { richTextToPlainText } from '@/lib/content/sanitize-html'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +36,7 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   let homepageCategories: Awaited<ReturnType<typeof getHomepageCategories>> = []
   let homepagePromotions: Awaited<ReturnType<typeof getHomepagePromotions>> = []
+  let popularProducts: Awaited<ReturnType<typeof getPopularProducts>> = []
   let slides = heroSlides
     .filter((slide) => slide.enabled && slide.featured)
     .sort((a, b) => a.priority - b.priority)
@@ -59,6 +62,7 @@ export default async function HomePage() {
       buttonLabel: slide.buttonLabel || '',
       alignment: slide.horizontalAlignment as 'left' | 'center' | 'right',
       verticalAlignment: slide.verticalAlignment as 'top' | 'middle' | 'bottom',
+      styleConfig: slide.styleConfig,
       enabled: slide.enabled,
       featured: slide.featured,
       priority: slide.displayOrder,
@@ -70,6 +74,12 @@ export default async function HomePage() {
   }
   try { homepageCategories = await getHomepageCategories() } catch (error) { console.error('Homepage categories could not be loaded.', error) }
   try { homepagePromotions = await getHomepagePromotions() } catch (error) { console.error('Homepage promotions could not be loaded.', error) }
+  try { popularProducts = await getPopularProducts(3) } catch (error) { console.error('Popular products could not be loaded.', error) }
+
+  const popularProductCards = popularProducts.flatMap((product) => {
+    const image = product.images.find((item) => item.isPrimary) || product.images[0]
+    return image ? [{ id: product.id, name: product.name, description: richTextToPlainText(product.description || ''), image: image.url, basePrice: product.basePrice, soldQuantity: product.socialProof.soldQuantity }] : []
+  })
 
   return (
     <CartProvider>
@@ -79,7 +89,7 @@ export default async function HomePage() {
           {slides.length > 0 && <HeroCarousel slides={slides} />}
           <BenefitsStrip />
           <CategoryGrid categories={homepageCategories} />
-          <ProductHighlights />
+          <ProductHighlights products={popularProductCards} />
           <PromotionGrid promotions={homepagePromotions} />
           <DesignOnlineSection />
           <ArtworkOptions />
