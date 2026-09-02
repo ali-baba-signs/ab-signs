@@ -157,8 +157,8 @@ function CanvasFixVerificationPage() {
                         const rendered = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$editor$2f$browser$2d$preview$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["renderBrowserSide"])(canvas.toJSON(), {
                             widthMm: 1000,
                             heightMm: 500,
-                            bleedMm: 3,
-                            safeMarginMm: 10,
+                            bleedMm: 25,
+                            safeMarginMm: 0,
                             logicalCanvasWidth: 400,
                             logicalCanvasHeight: 200
                         });

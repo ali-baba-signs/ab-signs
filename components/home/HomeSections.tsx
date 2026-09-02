@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { ArrowRight, BadgeCheck, Boxes, PenTool, Truck, Upload, WandSparkles } from 'lucide-react'
 import { benefits } from '@/data/homepage'
 
+
+
 const benefitIcons = [BadgeCheck, Boxes, PenTool, Truck]
 
 export function BenefitsStrip() {

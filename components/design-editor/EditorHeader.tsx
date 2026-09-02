@@ -29,7 +29,7 @@ export function EditorHeader(props: Props) {
       <Button variant="ghost" size="sm" onClick={props.onRedo} disabled={props.disabled || !props.canRedo}><Redo2 /> Redo</Button>
       <span className="ml-auto hidden text-xs text-zinc-500 sm:block">{props.status}</span>
       <Button variant="outline" size="sm" onClick={props.onSave} disabled={props.disabled}><Save /> Save</Button>
-      <Button variant="outline" size="sm" onClick={props.onPreview} disabled={props.disabled}><Eye /> Preview</Button>
+      {/* <Button variant="outline" size="sm" onClick={props.onPreview} disabled={props.disabled}><Eye /> Preview</Button> */}
       <Button variant="outline" size="sm" onClick={props.onDownloadPdf} disabled={props.disabled}><Download /> PDF</Button>
       <Button variant="outline" size="sm" onClick={props.onDownloadSvg} disabled={props.disabled}><Download /> SVG</Button>
       <Button size="sm" onClick={props.onContinue} disabled={props.disabled} className="bg-[#ed1b68] hover:bg-[#c91556]">Continue</Button>

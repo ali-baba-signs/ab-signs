@@ -1,5 +1,6 @@
+
 const publicAssetUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL
-let r2RemotePattern
+let r2RemotePattern 
 try {
   if (publicAssetUrl) {
     const url = new URL(publicAssetUrl)
