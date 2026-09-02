@@ -76,6 +76,17 @@ export type EditorObject = FabricObject & {
   textAlign?: string
 }
 
+export interface CanvasSessionUpload {
+  fingerprint: string
+  filename: string
+  contentType: string
+  source: string
+  thumbnail: string
+  status: 'uploading' | 'uploaded' | 'failed'
+  assetKey?: string
+  error?: string
+}
+
 export const CUSTOM_PROPERTIES = [
   'id',
   'name',

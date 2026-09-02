@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { listDesignTemplates } from '@/lib/editor/templates'
 import { PRODUCT_PRESETS } from '@/lib/editor/editor-config'
-import type { DesignTemplate, EditorObject, EditorSection, ProductConfig } from '@/lib/editor/types'
+import type { CanvasSessionUpload, DesignTemplate, EditorObject, EditorSection, ProductConfig } from '@/lib/editor/types'
 
 interface Props {
   active: EditorSection
@@ -18,7 +18,9 @@ interface Props {
   onProductChange: (config: ProductConfig) => void
   onTemplate: (template: DesignTemplate) => void
   onAddText: (kind: 'heading' | 'subheading' | 'body') => void
-  onUpload: (file: File) => void
+  uploads: CanvasSessionUpload[]
+  onUpload: (file: File) => void | Promise<void>
+  onReuseUpload: (upload: CanvasSessionUpload) => void | Promise<void>
   onGraphic: (path: string, name: string) => void
   onBackground: (color: string) => void
   onSelectLayer: (object: EditorObject) => void
@@ -98,8 +100,44 @@ export function EditorPanels(props: Props) {
 
       {props.active === 'uploads' && <>
         <PanelTitle>Upload a logo or image</PanelTitle>
-        <p className="mb-4 text-xs leading-5 text-zinc-500">PNG, JPEG, WEBP, or SVG. Maximum 10 MB.</p>
-        <Input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(e) => e.target.files?.[0] && props.onUpload(e.target.files[0])} />
+        <div className="mb-4 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-600">
+          <p className="font-semibold text-zinc-900">Supported formats</p>
+          <p>PNG, JPEG/JPG, WEBP, or SVG</p>
+          <p>Maximum file size: 10 MB</p>
+        </div>
+        <Input
+          aria-label="Upload a logo or image"
+          type="file"
+          accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file) void props.onUpload(file)
+          }}
+        />
+        <div className="mt-5">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-700">Uploaded images</h3>
+          {!props.uploads.length && <p className="mt-2 text-xs text-zinc-500">Images uploaded in this design session will appear here.</p>}
+          <div className="mt-2 space-y-2">
+            {props.uploads.map((upload) => (
+              <button
+                key={upload.fingerprint}
+                type="button"
+                disabled={upload.status !== 'uploaded'}
+                onClick={() => void props.onReuseUpload(upload)}
+                className="flex w-full items-center gap-3 rounded-md border border-zinc-200 p-2 text-left hover:border-[#ed1b68] disabled:cursor-default disabled:opacity-70"
+              >
+                <Image unoptimized src={upload.thumbnail} alt="" width={44} height={44} className="h-11 w-11 rounded border bg-white object-contain" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold text-zinc-900">{upload.filename}</span>
+                  <span className={`block text-[11px] ${upload.status === 'failed' ? 'text-red-600' : upload.status === 'uploaded' ? 'text-green-700' : 'text-zinc-500'}`}>
+                    {upload.status === 'uploading' ? 'Uploading…' : upload.status === 'failed' ? upload.error || 'Upload failed. Try again.' : 'Upload successful · click to reuse'}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       </>}
 
       {props.active === 'graphics' && <>

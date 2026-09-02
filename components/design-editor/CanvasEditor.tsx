@@ -17,16 +17,35 @@ import { loadDesign as loadStoredDesign, saveDesign, serializeDesign } from '@/l
 import { renderBrowserSide, uploadBrowserRender, uploadProductionFile } from '@/lib/editor/browser-preview'
 import { downloadProductionFile, renderProductionFiles } from '@/lib/editor/browser-print-pdf'
 import {
+  type CanvasSessionUpload,
   CUSTOM_PROPERTIES,
   type DesignTemplate,
   type EditorObject,
   type EditorSection,
   type ProductConfig,
 } from '@/lib/editor/types'
+import { canvasUploadFingerprint, friendlyCanvasUploadError, validateCanvasImageSignature } from '@/lib/storage/canvas-uploads'
+import { validateUpload } from '@/lib/storage/upload-validation'
+import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
+import { storeCanvasUpload } from '@/lib/editor/canvas-image-upload'
 
 FabricObject.customProperties = [...CUSTOM_PROPERTIES]
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-const ALLOWED_UPLOADS = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
+
+async function readCanvasUpload(file: File) {
+  validateCanvasImageSignature(file.type, new Uint8Array(await file.slice(0, 16).arrayBuffer()))
+  if (file.type === 'image/svg+xml') {
+    const source = sanitizeSvgMarkup(await file.text())
+    return { source, thumbnail: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}` }
+  }
+  const source = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Upload failed. Try again.'))
+    reader.onabort = () => reject(new Error('Upload failed. Try again.'))
+    reader.readAsDataURL(file)
+  })
+  return { source, thumbnail: source }
+}
 
 async function addWatermark(dataUrl: string) {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -213,6 +232,8 @@ export function CanvasEditor() {
   const [status, setStatus] = useState('Ready')
   const [processing, setProcessing] = useState<string | null>(null)
   const busyRef = useRef(false)
+  const [sessionUploads, setSessionUploads] = useState<CanvasSessionUpload[]>([])
+  const sessionUploadsRef = useRef<CanvasSessionUpload[]>([])
   const [currentSide, setCurrentSide] = useState<'front' | 'back'>('front')
   const currentSideRef = useRef<'front' | 'back'>('front')
   const sideStatesRef = useRef<Partial<Record<'front' | 'back', Record<string, unknown>>>>({})
@@ -555,33 +576,96 @@ export function CanvasEditor() {
     }
   }, [activateTemplateSide, canUndo, refreshObjects, requestedDesignType, requestedProductId, requestedSizeId, requestedTemplateId, reset, restoreOriginalAtSize, router])
 
-  const upload = useCallback(async (file: File) => {
-    if (!ALLOWED_UPLOADS.has(file.type)) return setStatus('Unsupported image type')
-    if (file.size > MAX_UPLOAD_BYTES) return setStatus('Image is larger than 10 MB')
+  const updateSessionUploads = useCallback((update: (current: CanvasSessionUpload[]) => CanvasSessionUpload[]) => {
+    const next = update(sessionUploadsRef.current)
+    sessionUploadsRef.current = next
+    setSessionUploads(next)
+  }, [])
+
+  const insertSessionUpload = useCallback(async (upload: CanvasSessionUpload) => {
     const canvas = canvasRef.current
-    if (!canvas || busyRef.current) return
+    if (!canvas) return
+    let object: EditorObject
+    if (upload.contentType === 'image/svg+xml') {
+      const parsed = await loadSVGFromString(upload.source)
+      const objects = parsed.objects.filter(Boolean) as FabricObject[]
+      if (!objects.length) throw new Error('Upload failed. Try again.')
+      object = util.groupSVGElements(objects, parsed.options) as EditorObject
+    } else {
+      object = await FabricImage.fromURL(upload.source) as EditorObject
+    }
+    const canvasWidth = configRef.current.logicalCanvasWidth
+    const canvasHeight = configRef.current.logicalCanvasHeight
+    const availableWidth = canvasWidth * 0.6
+    const availableHeight = canvasHeight * 0.6
+    const width = Math.max(object.getScaledWidth(), 1)
+    const height = Math.max(object.getScaledHeight(), 1)
+    const scale = Math.min(availableWidth / width, availableHeight / height, 1)
+    object.set({
+      scaleX: (object.scaleX ?? 1) * scale,
+      scaleY: (object.scaleY ?? 1) * scale,
+      id: crypto.randomUUID(),
+      name: upload.filename,
+      role: 'uploaded-image',
+      assetKey: upload.assetKey,
+      locked: false,
+      selectable: true,
+      evented: true,
+      hasControls: true,
+    })
+    object.setPositionByOrigin(new Point(canvasWidth / 2, canvasHeight / 2), 'center', 'center')
+    object.setCoords()
+    canvas.add(object)
+    canvas.bringObjectToFront(object)
+    canvas.setActiveObject(object)
+    canvas.requestRenderAll()
+    refreshObjects()
+    snapshot()
+  }, [refreshObjects, snapshot])
+
+  const reuseSessionUpload = useCallback(async (item: CanvasSessionUpload) => {
+    if (busyRef.current || item.status !== 'uploaded') return
+    busyRef.current = true; setProcessing('Adding your artwork…')
+    try {
+      await insertSessionUpload(item)
+      setStatus(`${item.filename} reused from this session`)
+    } catch (error) {
+      setStatus(friendlyCanvasUploadError(error))
+    } finally { busyRef.current = false; setProcessing(null) }
+  }, [insertSessionUpload])
+
+  const upload = useCallback(async (file: File) => {
+    if (busyRef.current) return
+    try {
+      validateUpload({ filename: file.name, contentType: file.type, size: file.size, purpose: 'logo' })
+    } catch (error) {
+      setStatus(friendlyCanvasUploadError(error))
+      return
+    }
+    const fingerprint = canvasUploadFingerprint(file)
+    const existing = sessionUploadsRef.current.find((item) => item.fingerprint === fingerprint)
+    if (existing?.status === 'uploaded') {
+      await reuseSessionUpload(existing)
+      return
+    }
+    if (existing?.status === 'uploading') return
     busyRef.current = true; setProcessing('Uploading your artwork…')
     try {
-      let assetKey: string | undefined
-      if (session?.user && file.type !== 'image/svg+xml') {
-        const presignResponse = await fetch('/api/uploads/presign', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size, purpose: 'design-artwork' }) })
-        const presignPayload = await presignResponse.json()
-        if (!presignResponse.ok) throw new Error(presignPayload.error?.message || 'The artwork upload could not be prepared.')
-        const uploadResponse = await fetch(presignPayload.data.uploadUrl, { method: 'PUT', headers: { 'content-type': file.type }, body: file })
-        if (!uploadResponse.ok) throw new Error('The artwork upload failed. Please retry.')
-        assetKey = presignPayload.data.key
-      }
-      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Unable to read image')); reader.readAsDataURL(file) })
-      let object: EditorObject
-      if (file.type === 'image/svg+xml') { const text = await file.text(); if (/<script|javascript:|https?:\/\//i.test(text)) throw new Error('Unsafe SVG was rejected.'); const parsed = await loadSVGFromString(text); object = util.groupSVGElements(parsed.objects.filter(Boolean) as FabricObject[], parsed.options) as EditorObject }
-      else object = await FabricImage.fromURL(dataUrl) as EditorObject
-      const maxWidth = configRef.current.logicalCanvasWidth * 0.45
-      if ((object.width ?? 1) > maxWidth) object.scaleToWidth(maxWidth)
-      object.set({ left: 100, top: 100, id: crypto.randomUUID(), name: file.name, role: 'uploaded-image', assetKey })
-      canvas.add(object); canvas.setActiveObject(object); canvas.requestRenderAll(); setStatus(`${file.name} added`)
-    } catch (error) { setStatus(error instanceof Error ? error.message : 'Artwork upload failed.') }
+      const local = await readCanvasUpload(file)
+      const pending: CanvasSessionUpload = { fingerprint, filename: file.name, contentType: file.type, source: local.source, thumbnail: local.thumbnail, status: 'uploading' }
+      updateSessionUploads((current) => [...current.filter((item) => item.fingerprint !== fingerprint), pending])
+      const stored = session?.user ? await storeCanvasUpload(file) : null
+      const completed: CanvasSessionUpload = { ...pending, status: 'uploaded', assetKey: stored?.key }
+      updateSessionUploads((current) => current.map((item) => item.fingerprint === fingerprint ? completed : item))
+      await insertSessionUpload(completed)
+      setStatus('Upload successful.')
+    } catch (error) {
+      const message = friendlyCanvasUploadError(error)
+      updateSessionUploads((current) => current.map((item) => item.fingerprint === fingerprint ? { ...item, status: 'failed', error: message } : item))
+      setStatus(message)
+    }
     finally { busyRef.current = false; setProcessing(null) }
-  }, [session])
+  }, [insertSessionUpload, reuseSessionUpload, session, updateSessionUploads])
 
   const addGraphic = useCallback(async (path: string, name: string) => {
     const response = await fetch(path)
@@ -636,7 +720,15 @@ export function CanvasEditor() {
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
     const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
     const design = serializeDesign(canvas, configRef.current, templateId, sides, sideTemplateIdsRef.current)
-    saveDesign(design)
+    try { saveDesign(design) } catch {
+      // A large image can exceed localStorage quota; signed-in saves can still use the server.
+      if (!session?.user) {
+        setStatus('This design is too large to save on this device. Sign in to save it privately.')
+        busyRef.current = false
+        setProcessing(null)
+        return null
+      }
+    }
     if (!session?.user) {
       setStatus('Saved temporarily on this device. Sign in to save a private draft.')
       busyRef.current = false
@@ -679,6 +771,7 @@ export function CanvasEditor() {
           templateId,
           productId: requestedProductId,
           variantId: requestedSizeId,
+          uploadKeys: sessionUploadsRef.current.flatMap((upload) => upload.assetKey ? [upload.assetKey] : []),
         }),
       })
       const databasePayload = await databaseResponse.json()
@@ -687,6 +780,8 @@ export function CanvasEditor() {
           databasePayload.data?.design?.id ??
           databasePayload.design?.id ??
           savedDesignId.current
+        const deletedKeys: unknown = databasePayload.data?.uploadCleanup?.deletedKeys
+        if (Array.isArray(deletedKeys)) updateSessionUploads((current) => current.filter((upload) => !upload.assetKey || !deletedKeys.includes(upload.assetKey)))
       }
       setStatus(databaseResponse.ok
         ? `Private draft saved ${new Date().toLocaleTimeString()}`
@@ -696,7 +791,7 @@ export function CanvasEditor() {
       setStatus(error instanceof Error ? error.message : 'Private design could not be saved.')
       return null
     } finally { busyRef.current = false; setProcessing(null) }
-  }, [requestedProductId, requestedSizeId, session?.user, templateId])
+  }, [requestedProductId, requestedSizeId, session?.user, templateId, updateSessionUploads])
 
   const switchSide = useCallback(async (next: 'front' | 'back') => {
     const canvas = canvasRef.current
@@ -756,6 +851,7 @@ export function CanvasEditor() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (busyRef.current) return
       const target = event.target as HTMLElement
       if (target.matches('input, textarea, select') || target.isContentEditable) return
       const command = event.ctrlKey || event.metaKey
@@ -789,7 +885,7 @@ export function CanvasEditor() {
   return (
     <div className="flex h-[calc(100vh-5rem)] min-h-[620px] flex-col overflow-hidden bg-white text-zinc-900">
       <EditorHeader canUndo={canUndo} canRedo={canRedo} status={status} disabled={Boolean(processing)} onUndo={() => void undo()} onRedo={() => void redo()} onSave={() => void save()} onPreview={() => void exportOutput('preview')} onDownloadPdf={() => void exportOutput('pdf')} onDownloadSvg={() => void exportOutput('svg')} onContinue={() => void continueFromEditor()} />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1" inert={Boolean(processing)}>
         <EditorSidebar active={active} onChange={setActive} />
         <EditorPanels
           active={active}
@@ -800,7 +896,9 @@ export function CanvasEditor() {
           onProductChange={changeProduct}
           onTemplate={(item) => void loadTemplate(item)}
           onAddText={addText}
+          uploads={sessionUploads}
           onUpload={(file) => void upload(file)}
+          onReuseUpload={(item) => void reuseSessionUpload(item)}
           onGraphic={(path, name) => void addGraphic(path, name)}
           onBackground={(color) => { canvasRef.current?.set({ backgroundColor: color }); canvasRef.current?.requestRenderAll(); snapshot() }}
           onSelectLayer={(object) => { canvasRef.current?.setActiveObject(object); canvasRef.current?.requestRenderAll(); setSelected(object) }}

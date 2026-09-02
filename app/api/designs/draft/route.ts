@@ -10,6 +10,7 @@ import { createUploadKey } from '@/lib/storage/upload-validation'
 import { R2_PATHS } from '@/lib/storage/r2-paths'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
 import { designConfigurationForSize, type DesignType } from '@/lib/products/design-configurations'
+import { cleanupUnusedCanvasUploads } from '@/lib/storage/canvas-upload-cleanup'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const unitToMm: Record<string, number> = { mm: 1, cm: 10, in: 25.4, ft: 304.8, m: 1000 }
@@ -193,7 +194,13 @@ export async function POST(request: NextRequest) {
       return { ...row, canvasData: finalCanvasData }
     })
     if (typeof oldKey === 'string' && oldKey !== key) await deleteAssetIfOrphaned(oldKey)
-    return NextResponse.json({ data: { design: saved } }, { status: existing ? 200 : 201 })
+    // Saving is authoritative: used assets are now protected by the design and version rows.
+    // Cleanup must not turn an already successful save into a reported failure.
+    const uploadCleanup = await cleanupUnusedCanvasUploads(session.user.id, input.uploadKeys).catch((error) => {
+      console.error('Saved design upload cleanup deferred to scheduled cleanup', error)
+      return null
+    })
+    return NextResponse.json({ data: { design: saved, uploadCleanup } }, { status: existing ? 200 : 201 })
   } catch (error) {
     console.error('Private design save failed', error)
     return NextResponse.json({ error: { message: error instanceof Error ? error.message : 'The private design could not be saved.' } }, { status: 400 })

@@ -49,6 +49,8 @@ test('SVG and Fabric validation reject executable, external, and empty template 
   assert.throws(() => sanitizeSvgMarkup('<svg><script>alert(1)</script></svg>'), /forbidden/i)
   assert.throws(() => sanitizeSvgMarkup('<svg><image href="https://evil.invalid/a.png"/></svg>'), /external/i)
   assert.equal(sanitizeSvgMarkup('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>').startsWith('<svg'), true)
+  assert.equal(sanitizeSvgMarkup('<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>').startsWith('<svg'), true)
+  assert.throws(() => sanitizeSvgMarkup('<?xml-stylesheet href="https://example.com/style.css"?><svg></svg>'))
   assert.throws(() => validateFabricCanvasData({ objects: [] }), /editable Fabric objects/i)
   assert.deepEqual(validateFabricCanvasData({ version: '7.4.0', objects: [{ type: 'rect' }] }).objects, [{ type: 'rect' }])
 })

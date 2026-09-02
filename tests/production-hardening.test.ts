@@ -4,6 +4,7 @@ import { designToSvg } from '../lib/production/design-svg'
 import { nextProductSku, productSkuPrefix } from '../lib/products/sku'
 import { productWriteErrorMessage } from '../lib/products/write-errors'
 import { DESIGN_UPLOAD_ERROR, validateUpload } from '../lib/storage/upload-validation'
+import { canvasUploadFingerprint, canvasUploadFolder, collectCanvasUploadKeys, friendlyCanvasUploadError, validateCanvasImageSignature } from '../lib/storage/canvas-uploads'
 import { orderMilestone, orderMilestoneLabel } from '../lib/orders/workflow'
 
 test('canonical Fabric JSON exports as standalone SVG without a native canvas', () => {
@@ -71,6 +72,51 @@ test('customer design formats are strict and return the required message', () =>
   validateUpload({ filename: 'production.ai', contentType: 'application/vnd.adobe.illustrator', size: 500, purpose: 'design-artwork' })
   validateUpload({ filename: 'production.eps', contentType: 'application/postscript', size: 500, purpose: 'design-artwork' })
   assert.throws(() => validateUpload({ filename: 'movie.webm', contentType: 'video/webm', size: 500, purpose: 'design-artwork' }), new RegExp(DESIGN_UPLOAD_ERROR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+})
+
+test('canvas image uploads accept only matching image formats up to 10 MB', () => {
+  for (const [filename, contentType] of [
+    ['logo.png', 'image/png'],
+    ['photo.jpg', 'image/jpeg'],
+    ['photo.jpeg', 'image/jpeg'],
+    ['graphic.webp', 'image/webp'],
+    ['mark.svg', 'image/svg+xml'],
+  ]) validateUpload({ filename, contentType, size: 10 * 1024 * 1024, purpose: 'logo' })
+
+  assert.throws(
+    () => validateUpload({ filename: 'logo.gif', contentType: 'image/gif', size: 100, purpose: 'logo' }),
+    /Unsupported file type\. Please upload PNG, JPEG, WEBP, or SVG files only\./,
+  )
+  assert.throws(
+    () => validateUpload({ filename: 'logo.png', contentType: 'image/jpeg', size: 100, purpose: 'logo' }),
+    /Unsupported file type\. Please upload PNG, JPEG, WEBP, or SVG files only\./,
+  )
+  assert.throws(
+    () => validateUpload({ filename: 'logo.png', contentType: 'image/png', size: 10 * 1024 * 1024 + 1, purpose: 'logo' }),
+    /File size exceeds 10 MB limit\./,
+  )
+})
+
+test('canvas upload session helpers deduplicate files, preserve used keys, and hide fetch errors', () => {
+  const file = { name: 'Logo.PNG', size: 1234, type: 'image/png', lastModified: 99 }
+  assert.equal(canvasUploadFingerprint(file), canvasUploadFingerprint({ ...file }))
+  assert.notEqual(canvasUploadFingerprint(file), canvasUploadFingerprint({ ...file, size: 1235 }))
+  const used = collectCanvasUploadKeys({ objects: [{ assetKey: 'uploads/users/customer/temporary/logo.png' }, { assetKey: 'products/public.webp' }], back: { objects: [{ assetKey: 'uploads/users/customer/temporary/back.svg' }] } })
+  assert.deepEqual([...used].sort(), ['uploads/users/customer/temporary/back.svg', 'uploads/users/customer/temporary/logo.png'])
+  assert.equal(friendlyCanvasUploadError(new TypeError('Failed to fetch')), 'Upload failed. Try again.')
+  assert.equal(friendlyCanvasUploadError({ name: 'AbortError' }), 'Upload timed out. Try again.')
+  assert.equal(canvasUploadFolder('customer/../1'), 'uploads/users/customer1/temporary/canvas')
+  assert.equal(friendlyCanvasUploadError(new Error('SVG contains an unsafe or external reference.')), 'This SVG cannot be used safely. Export it as a self-contained SVG or upload PNG instead.')
+})
+
+test('canvas image signatures reject renamed files and accept PNG, JPEG, and WEBP headers', () => {
+  validateCanvasImageSignature('image/png', Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]))
+  validateCanvasImageSignature('image/jpeg', Uint8Array.from([255, 216, 255, 224]))
+  validateCanvasImageSignature('image/webp', new TextEncoder().encode('RIFF1234WEBP'))
+  for (const type of ['image/png', 'image/jpeg', 'image/webp']) {
+    assert.throws(() => validateCanvasImageSignature(type, new TextEncoder().encode('<html>Not an image</html>')), /Unsupported file type/)
+    assert.throws(() => validateCanvasImageSignature(type, new Uint8Array()), /Unsupported file type/)
+  }
 })
 
 test('legacy operational statuses collapse into five customer milestones plus attention', () => {
