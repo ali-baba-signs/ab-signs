@@ -1,8 +1,6 @@
 'use client'
 
-import {
-  Boxes, ImageUp, Layers, LayoutTemplate, Package, Palette, Shapes, Type,
-} from 'lucide-react'
+import { ImageUp, Layers, LayoutTemplate, Package, Shapes, Type } from 'lucide-react'
 import type { EditorSection } from '@/lib/editor/types'
 
 const sections: Array<{ id: EditorSection; label: string; icon: typeof Package }> = [
@@ -11,7 +9,6 @@ const sections: Array<{ id: EditorSection; label: string; icon: typeof Package }
   { id: 'text', label: 'Text', icon: Type },
   { id: 'uploads', label: 'Uploads', icon: ImageUp },
   { id: 'graphics', label: 'Graphics', icon: Shapes },
-  { id: 'background', label: 'Background', icon: Palette },
   { id: 'layers', label: 'Layers', icon: Layers },
 ]
 

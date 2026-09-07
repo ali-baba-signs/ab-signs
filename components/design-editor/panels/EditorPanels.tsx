@@ -22,7 +22,6 @@ interface Props {
   onUpload: (file: File) => void | Promise<void>
   onReuseUpload: (upload: CanvasSessionUpload) => void | Promise<void>
   onGraphic: (path: string, name: string) => void
-  onBackground: (color: string) => void
   onSelectLayer: (object: EditorObject) => void
   onLayerAction: (object: EditorObject, action: string) => void
   onChangeSelected: (values: Record<string, unknown>) => void
@@ -30,7 +29,6 @@ interface Props {
   onDelete: () => void
 }
 
-const colors = ['#ffffff', '#231f20', '#ed1b68', '#dc2626', '#145da0', '#16a34a', '#ffe600', '#f5f5f5']
 const graphics = ['star', 'arrow', 'phone', 'email', 'badge']
 
 function PanelTitle({ children }: { children: React.ReactNode }) {
@@ -108,6 +106,7 @@ export function EditorPanels(props: Props) {
         <Input
           aria-label="Upload a logo or image"
           type="file"
+          className="h-12 cursor-pointer border-2 border-primary bg-primary/5 px-2 py-2 font-bold file:mr-3 file:h-8 file:rounded-md file:bg-primary file:px-4 file:text-sm file:font-bold file:text-primary-foreground"
           accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"
           onChange={(event) => {
             const file = event.target.files?.[0]
@@ -149,13 +148,6 @@ export function EditorPanels(props: Props) {
               <span className="mt-1 block truncate text-[10px] capitalize">{name}</span>
             </button>
           ))}
-        </div>
-      </>}
-
-      {props.active === 'background' && <>
-        <PanelTitle>Background</PanelTitle>
-        <div className="grid grid-cols-4 gap-3">
-          {colors.map((color) => <button key={color} type="button" aria-label={`Set background ${color}`} onClick={() => props.onBackground(color)} className="aspect-square rounded-md border border-zinc-300 shadow-sm" style={{ background: color }} />)}
         </div>
       </>}
 

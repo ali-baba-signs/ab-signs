@@ -10,6 +10,7 @@ import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { nextProductSku, productSkuPrefix } from '@/lib/products/sku'
 import { validateTemplateSideAssignments } from '@/lib/products/template-assignments'
 import { productWriteErrorMessage } from '@/lib/products/write-errors'
+import { validateNewProductImageAssets } from '@/lib/products/image-assets'
 
 export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
       raw.sku = `${autoSkuPrefix}-0000`
     }
     input = validateProductInput(raw)
+    await validateNewProductImageAssets(input.images)
     if (!autoSkuPrefix) {
       const [existingSku] = await db.select({ id: products.id }).from(products).where(eq(products.sku, input.sku)).limit(1)
       if (existingSku) throw new Error('That SKU is already in use. Enter a unique SKU or leave the field blank to generate one.')

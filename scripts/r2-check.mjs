@@ -20,6 +20,7 @@ const missing = required.filter((key) => !process.env[key])
 const checkAllPrefixes = process.argv.includes('--all-prefixes')
 const checkPublicURL = process.argv.includes('--public')
 const checkWrite = process.argv.includes('--write') || checkAllPrefixes || checkPublicURL
+const canonicalPublicURL = 'https://assets.alibabasigns.com.au'
 
 const publicSmokePrefixes = [
   'homepage/hero/desktop',
@@ -78,10 +79,9 @@ if (missing.length) {
         }))
 
         if (verifyPublicRead) {
-          const baseURL = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL?.replace(/\/+$/, '')
-          if (!baseURL) {
-            throw new Error('NEXT_PUBLIC_R2_PUBLIC_BASE_URL is required for --public')
-          }
+          const configuredPublicURLs = [process.env.CLOUDFLARE_R2_PUBLIC_URL, process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL].filter(Boolean).map((value) => value.replace(/\/+$/, ''))
+          if (configuredPublicURLs.some((value) => value !== canonicalPublicURL)) throw new Error(`R2 public URL must be ${canonicalPublicURL}`)
+          const baseURL = canonicalPublicURL
 
           let response
           for (let attempt = 1; attempt <= 5; attempt += 1) {

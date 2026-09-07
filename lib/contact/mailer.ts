@@ -83,6 +83,32 @@ export async function sendPasswordResetEmail(input: { email: string; name: strin
   })
 }
 
+export async function sendAccountVerificationEmail(input: { email: string; name: string; url: string }) {
+  validateMailConfiguration()
+  const fromEmail = requiredEnvironment('SMTP_FROM_EMAIL')
+  const fromName = process.env.SMTP_FROM_NAME?.trim() || 'Ali Baba Signs'
+  await transport().sendMail({
+    from: { name: fromName, address: fromEmail },
+    to: input.email,
+    subject: 'Verify your Ali Baba Signs email address',
+    text: `Hi ${input.name || 'there'},\n\nVerify your email address to activate your Ali Baba Signs account. This secure link expires in one hour:\n${input.url}\n\nIf you did not create this account, you can ignore this email.`,
+    html: `<p>Hi ${escapeHtml(input.name || 'there')},</p><p>Verify your email address to activate your Ali Baba Signs account. This secure link expires in one hour.</p><p><a href="${escapeHtml(input.url)}">Verify email and activate account</a></p><p>If you did not create this account, you can ignore this email.</p>`,
+  })
+}
+
+export async function sendLoginVerificationCode(input: { email: string; name: string; code: string }) {
+  validateMailConfiguration()
+  const fromEmail = requiredEnvironment('SMTP_FROM_EMAIL')
+  const fromName = process.env.SMTP_FROM_NAME?.trim() || 'Ali Baba Signs'
+  await transport().sendMail({
+    from: { name: fromName, address: fromEmail },
+    to: input.email,
+    subject: 'Your Ali Baba Signs sign-in code',
+    text: `Hi ${input.name || 'there'},\n\nYour sign-in verification code is ${input.code}. It expires in five minutes.\n\nIf you did not try to sign in, change your password and contact support.`,
+    html: `<p>Hi ${escapeHtml(input.name || 'there')},</p><p>Use this code to finish signing in:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${escapeHtml(input.code)}</p><p>This code expires in five minutes. If you did not try to sign in, change your password and contact support.</p>`,
+  })
+}
+
 export async function sendContactEmail(input: ContactEmailInput) {
   const fromEmail = requiredEnvironment('SMTP_FROM_EMAIL')
   const fromName = process.env.SMTP_FROM_NAME?.trim() || 'Ali Baba Signs Website'

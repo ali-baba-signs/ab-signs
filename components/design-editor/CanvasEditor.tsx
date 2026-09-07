@@ -11,7 +11,7 @@ import { CanvasWorkspace } from './CanvasWorkspace'
 import { EditorPanels } from './panels/EditorPanels'
 import { useCanvasHistory } from './hooks/useCanvasHistory'
 import { DEFAULT_PRODUCT_CONFIG, normalizeProductConfig } from '@/lib/editor/editor-config'
-import { useSession } from '@/lib/auth-client'
+import { authClient, useSession } from '@/lib/auth-client'
 import { fetchTemplate } from '@/lib/editor/templates'
 import { loadDesign as loadStoredDesign, saveDesign, serializeDesign } from '@/lib/editor/design-serialization'
 import { renderBrowserSide, uploadBrowserRender, uploadProductionFile } from '@/lib/editor/browser-preview'
@@ -720,16 +720,17 @@ export function CanvasEditor() {
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
     const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
     const design = serializeDesign(canvas, configRef.current, templateId, sides, sideTemplateIdsRef.current)
+    const currentSession = session?.user ? session : (await authClient.getSession()).data
     try { saveDesign(design) } catch {
       // A large image can exceed localStorage quota; signed-in saves can still use the server.
-      if (!session?.user) {
+      if (!currentSession?.user) {
         setStatus('This design is too large to save on this device. Sign in to save it privately.')
         busyRef.current = false
         setProcessing(null)
         return null
       }
     }
-    if (!session?.user) {
+    if (!currentSession?.user) {
       setStatus('Saved temporarily on this device. Sign in to save a private draft.')
       busyRef.current = false
       setProcessing(null)
@@ -791,7 +792,7 @@ export function CanvasEditor() {
       setStatus(error instanceof Error ? error.message : 'Private design could not be saved.')
       return null
     } finally { busyRef.current = false; setProcessing(null) }
-  }, [requestedProductId, requestedSizeId, session?.user, templateId, updateSessionUploads])
+  }, [requestedProductId, requestedSizeId, session, templateId, updateSessionUploads])
 
   const switchSide = useCallback(async (next: 'front' | 'back') => {
     const canvas = canvasRef.current
@@ -814,17 +815,28 @@ export function CanvasEditor() {
   }, [activateTemplateSide, refreshObjects, reset, restoreOriginalAtSize, runWhileRestoring])
 
   const continueFromEditor = useCallback(async () => {
+    if (!requestedProductId || !requestedSizeId || !templateId) {
+      setStatus('Choose a product, production size, and template before continuing.')
+      return
+    }
     sideStatesRef.current[currentSideRef.current] = canvasRef.current?.toJSON()
     if (configRef.current.sideMode === 'double' && !sideStatesRef.current.back) { setStatus('Create or copy the Back artwork before continuing with this double-sided product.'); return }
     const customizationRef = await save()
     if (requestedProductId) {
       const params = new URLSearchParams()
-      if (!customizationRef || customizationRef.startsWith('local:')) { setStatus('Sign in and save your draft before generating a production preview.'); return }
+      if (!customizationRef) return
+      if (customizationRef.startsWith('local:')) {
+        const callbackUrl = `${window.location.pathname}${window.location.search}`
+        setStatus('Your design is saved on this device. Sign in to create the production preview.')
+        router.push(`/sign-in?callbackUrl=${encodeURIComponent(callbackUrl)}`)
+        return
+      }
       if (requestedSizeId) params.set('sizeId', requestedSizeId)
       if (requestedDesignType) params.set('designType', requestedDesignType)
       if (templateId) params.set('templateId', templateId)
       params.set('designId', customizationRef)
       params.set('productId', requestedProductId)
+      setStatus('Design saved. Opening your production preview…')
       router.push(`/design/preview?${params}`)
     } else {
       router.push('/products')
@@ -900,7 +912,6 @@ export function CanvasEditor() {
           onUpload={(file) => void upload(file)}
           onReuseUpload={(item) => void reuseSessionUpload(item)}
           onGraphic={(path, name) => void addGraphic(path, name)}
-          onBackground={(color) => { canvasRef.current?.set({ backgroundColor: color }); canvasRef.current?.requestRenderAll(); snapshot() }}
           onSelectLayer={(object) => { canvasRef.current?.setActiveObject(object); canvasRef.current?.requestRenderAll(); setSelected(object) }}
           onLayerAction={layerAction}
           onChangeSelected={changeSelected}

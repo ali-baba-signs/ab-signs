@@ -54,5 +54,8 @@ export function productionMetadata(config: ProductConfig) {
     cropMarks: spec.cropMarks,
     pageWidthMm: spec.pageWidthMm,
     pageHeightMm: spec.pageHeightMm,
+    previewColorSpace: 'sRGB',
+    pdfColorSpace: 'DeviceCMYK',
+    colorConversion: 'generic-process-cmyk',
   }
 }

@@ -23,6 +23,7 @@ export const users = pgTable('users', {
   image: text('image'),
   role: userRoleEnum('role').default('customer').notNull(),
   emailVerified: boolean('emailVerified').default(false).notNull(),
+  twoFactorEnabled: boolean('twoFactorEnabled').default(true).notNull(),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
 })
@@ -102,6 +103,16 @@ export const sessions = pgTable('sessions', {
   userAgent: text('userAgent'),
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+})
+
+export const twoFactors = pgTable('two_factors', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  secret: text('secret').notNull(),
+  backupCodes: text('backupCodes').notNull(),
+  verified: boolean('verified').default(true).notNull(),
+  failedVerificationCount: integer('failedVerificationCount').default(0).notNull(),
+  lockedUntil: timestamp('lockedUntil'),
 })
 
 // Product Categories
@@ -421,6 +432,8 @@ export const orderEmailEvents = pgTable('order_email_events', {
   id: uuid('id').primaryKey().defaultRandom(),
   orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
   eventType: varchar('event_type', { length: 40 }).notNull(),
+  dedupeKey: varchar('dedupe_key', { length: 120 }).default('lifecycle').notNull(),
+  payload: json('payload'),
   status: varchar('status', { length: 20 }).default('processing').notNull(),
   attempts: integer('attempts').default(1).notNull(),
   providerMessageId: varchar('provider_message_id', { length: 500 }),
@@ -428,7 +441,7 @@ export const orderEmailEvents = pgTable('order_email_events', {
   sentAt: timestamp('sent_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => [uniqueIndex('order_email_events_unique').on(table.orderId, table.eventType), index('order_email_events_status_idx').on(table.status, table.updatedAt)])
+}, (table) => [uniqueIndex('order_email_events_unique').on(table.orderId, table.eventType, table.dedupeKey), index('order_email_events_status_idx').on(table.status, table.updatedAt)])
 
 // Coupons remain the one authoritative discount-code table. Presentation and
 // eligibility live in related tables below so checkout has one pricing engine.

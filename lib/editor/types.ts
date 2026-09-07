@@ -6,7 +6,6 @@ export type EditorSection =
   | 'text'
   | 'uploads'
   | 'graphics'
-  | 'background'
   | 'layers'
 
 export interface ProductConfig {

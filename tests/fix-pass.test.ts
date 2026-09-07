@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPrintReadyPdf } from '../lib/pdf/print-ready-core'
+import { buildPrintReadyCmykPdf, buildPrintReadyPdf } from '../lib/pdf/print-ready-core'
 import { bannerShippingForArea, calculateShipping, printedAreaM2 } from '../lib/shipping/calculator'
 import { validateAustralianLocation } from '../lib/address/australia'
 import { createUploadKey, validateUpload } from '../lib/storage/upload-validation'
 import { productionSpec } from '../lib/production/production-spec'
+import { canonicalStoredAssetUrl, getStoredAssetUrl, R2_PUBLIC_BASE_URL } from '../lib/storage/r2-public-url'
 
 test('print-ready export is a real PDF with physical metadata, bleed, and crop marks', () => {
   const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9])
@@ -14,6 +15,13 @@ test('print-ready export is a real PDF with physical metadata, bleed, and crop m
   assert.match(text, /\/Subtype \/Image/)
   assert.match(text, /Trim 1000 x 2000 mm; bleed 3 mm; rectangle contour; crop marks yes; safety guides editor-only/)
   assert.match(text, /startxref\n\d+\n%%EOF/)
+})
+
+test('production CMYK export embeds a true four-channel DeviceCMYK image', () => {
+  const pdf = buildPrintReadyCmykPdf(Uint8Array.from([120, 156, 3, 0, 0, 0, 0, 1]), { widthMm: 100, heightMm: 50, bleedMm: 3, trimMarks: true, jpegWidth: 1, jpegHeight: 1 })
+  const text = Buffer.from(pdf).toString('latin1')
+  assert.match(text, /\/ColorSpace \/DeviceCMYK/)
+  assert.match(text, /\/Filter \/FlateDecode/)
 })
 
 test('banner shipping follows total printed area and ignores free-shipping products', () => {
@@ -50,4 +58,12 @@ test('flag production specs use the admin-configured curved-guide offsets', () =
   assert.equal(spec.bleedMm, 3)
   assert.equal(spec.cutLineMm, 0)
   assert.equal(spec.safetyMm, 0)
+})
+
+test('all public R2 asset URLs use the canonical custom domain without changing stored values', () => {
+  assert.equal(R2_PUBLIC_BASE_URL, 'https://assets.alibabasigns.com.au')
+  assert.equal(getStoredAssetUrl('products/My image.png'), 'https://assets.alibabasigns.com.au/products/My%20image.png')
+  assert.equal(canonicalStoredAssetUrl('https://legacy-bucket.r2.dev/products/My%20image.png'), 'https://assets.alibabasigns.com.au/products/My%20image.png')
+  assert.equal(canonicalStoredAssetUrl('https://example.com/external.png'), 'https://example.com/external.png')
+  assert.equal(canonicalStoredAssetUrl('https://legacy-bucket.r2.dev/wrong.png', 'products/right.png'), 'https://assets.alibabasigns.com.au/products/right.png')
 })

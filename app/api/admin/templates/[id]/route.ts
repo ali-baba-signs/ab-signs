@@ -6,16 +6,16 @@ import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { validateTemplateInput } from '@/lib/templates/validation'
 import { resolveTemplateProducts } from '@/lib/templates/product-selection'
-import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { canonicalStoredAssetUrl, getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { safeErrorMessage } from '@/lib/api/safe-error'
 import { designConfigurationsForSize } from '@/lib/products/design-configurations'
 
 function currentAssets(template: typeof templates.$inferSelect) {
   return {
-    previewImage: template.previewImageKey && template.previewAssetId ? { id: template.previewAssetId, key: template.previewImageKey, url: template.previewImageUrl ?? undefined } : null,
-    editableSvg: template.svgKey && template.svgAssetId ? { id: template.svgAssetId, key: template.svgKey, url: template.svgUrl ?? undefined } : null,
-    fixedSvg: template.fixedSvgKey && template.fixedSvgAssetId ? { id: template.fixedSvgAssetId, key: template.fixedSvgKey, url: template.fixedSvgUrl ?? undefined } : null,
+    previewImage: template.previewImageKey && template.previewAssetId ? { id: template.previewAssetId, key: template.previewImageKey, url: canonicalStoredAssetUrl(template.previewImageUrl, template.previewImageKey) ?? undefined } : null,
+    editableSvg: template.svgKey && template.svgAssetId ? { id: template.svgAssetId, key: template.svgKey, url: canonicalStoredAssetUrl(template.svgUrl, template.svgKey) ?? undefined } : null,
+    fixedSvg: template.fixedSvgKey && template.fixedSvgAssetId ? { id: template.fixedSvgAssetId, key: template.fixedSvgKey, url: canonicalStoredAssetUrl(template.fixedSvgUrl, template.fixedSvgKey) ?? undefined } : null,
   }
 }
 
@@ -28,7 +28,7 @@ export async function GET(_: NextRequest, context: { params: Promise<{ id: strin
   const productRows = links.length ? await db.select().from(products).where(inArray(products.id, links.map((link) => link.productId))) : []
   const [category] = productRows[0] ? await db.select().from(productCategories).where(eq(productCategories.id, productRows[0].categoryId)).limit(1) : []
   const sizes = productRows.length ? await db.select().from(productSizes).where(inArray(productSizes.productId, productRows.map((product) => product.id))).orderBy(asc(productSizes.order)) : []
-  return NextResponse.json({ data: { template: { ...template, productIds: links.map((link) => link.productId), products: productRows.map((product) => ({ ...product, sizes: sizes.filter((size) => size.productId === product.id) })), categoryId: category?.id || null, categoryName: category?.name || null, productName: productRows.map((product) => product.name).join(', ') || null, sizes: sizes.filter((size) => size.productId === productRows[0]?.id) } } })
+  return NextResponse.json({ data: { template: { ...template, thumbnail: canonicalStoredAssetUrl(template.thumbnail, template.previewImageKey), previewImageUrl: canonicalStoredAssetUrl(template.previewImageUrl, template.previewImageKey), svgUrl: canonicalStoredAssetUrl(template.svgUrl, template.svgKey), fixedSvgUrl: canonicalStoredAssetUrl(template.fixedSvgUrl, template.fixedSvgKey), productIds: links.map((link) => link.productId), products: productRows.map((product) => ({ ...product, sizes: sizes.filter((size) => size.productId === product.id) })), categoryId: category?.id || null, categoryName: category?.name || null, productName: productRows.map((product) => product.name).join(', ') || null, sizes: sizes.filter((size) => size.productId === productRows[0]?.id) } } })
 }
 
 export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {

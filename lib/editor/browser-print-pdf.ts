@@ -1,7 +1,7 @@
 import { FabricObject, Group, Line, Point, Rect, StaticCanvas } from 'fabric'
 import type { ProductConfig, EditorObject } from './types'
 import { CUSTOM_PROPERTIES } from './types'
-import { buildPrintReadyPdf } from '@/lib/pdf/print-ready-core'
+import { buildPrintReadyCmykPdf } from '@/lib/pdf/print-ready-core'
 import { productionMetadata, productionSpec } from '@/lib/production/production-spec'
 
 FabricObject.customProperties = [...CUSTOM_PROPERTIES]
@@ -19,7 +19,22 @@ export interface ProductionFiles {
   svg: ProductionFile<'image/svg+xml'>
 }
 
-const canvasBlob = (canvas: HTMLCanvasElement, type: string, quality?: number) => new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('The browser could not encode the production artwork.')), type, quality))
+async function renderCmykPixels(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('The browser could not prepare the CMYK production render.')
+  const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data
+  const cmyk = new Uint8Array(canvas.width * canvas.height * 4)
+  for (let source = 0, target = 0; source < rgba.length; source += 4, target += 4) {
+    const redInk = 255 - rgba[source], greenInk = 255 - rgba[source + 1], blueInk = 255 - rgba[source + 2]
+    const black = Math.min(redInk, greenInk, blueInk)
+    cmyk[target] = redInk - black
+    cmyk[target + 1] = greenInk - black
+    cmyk[target + 2] = blueInk - black
+    cmyk[target + 3] = black
+  }
+  const compressed = await new Response(new Blob([cmyk.buffer]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer()
+  return new Uint8Array(compressed)
+}
 
 function styleGuide(object: FabricObject, color: string, strokeWidth: number, dash: number[]) {
   object.set({ fill: 'rgba(0,0,0,0)', stroke: color, strokeWidth, strokeDashArray: dash, strokeUniform: true, opacity: 1, selectable: false, evented: false, objectCaching: false, excludeFromExport: false })
@@ -105,10 +120,10 @@ export async function renderProductionFiles(canvasJson: Record<string, unknown>,
     const metadata = productionMetadata(config)
     const svgMarkup = injectSvgMetadata(canvas.toSVG({ suppressPreamble: false, width: `${spec.pageWidthMm}mm`, height: `${spec.pageHeightMm}mm` }), metadata, title)
     const svg = { blob: new Blob([svgMarkup], { type: 'image/svg+xml' }), contentType: 'image/svg+xml' as const, pixelWidth: pageWidth, pixelHeight: pageHeight, metadata }
-    const multiplier = Math.min(4, 6000 / Math.max(pageWidth, pageHeight))
+    const multiplier = Math.min(4, 4000 / Math.max(pageWidth, pageHeight))
     const raster = canvas.toCanvasElement(multiplier)
-    const jpegBlob = await canvasBlob(raster, 'image/jpeg', 0.98)
-    const pdfBytes = buildPrintReadyPdf(new Uint8Array(await jpegBlob.arrayBuffer()), { widthMm: spec.trimWidthMm, heightMm: spec.trimHeightMm, bleedMm: spec.bleedMm, safetyMm: spec.safetyMm, productKind: spec.productKind, trimMarks: spec.cropMarks, jpegWidth: raster.width, jpegHeight: raster.height, title, renderedPageWidthMm: spec.pageWidthMm, renderedPageHeightMm: spec.pageHeightMm })
+    const cmykPixels = await renderCmykPixels(raster)
+    const pdfBytes = buildPrintReadyCmykPdf(cmykPixels, { widthMm: spec.trimWidthMm, heightMm: spec.trimHeightMm, bleedMm: spec.bleedMm, safetyMm: spec.safetyMm, productKind: spec.productKind, trimMarks: spec.cropMarks, jpegWidth: raster.width, jpegHeight: raster.height, title, renderedPageWidthMm: spec.pageWidthMm, renderedPageHeightMm: spec.pageHeightMm })
     const pdf = { blob: new Blob([pdfBytes], { type: 'application/pdf' }), contentType: 'application/pdf' as const, pixelWidth: raster.width, pixelHeight: raster.height, metadata }
     return { pdf, svg }
   } finally { canvas.dispose() }

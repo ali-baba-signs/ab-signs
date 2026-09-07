@@ -10,6 +10,7 @@ import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { validateTemplateSideAssignments } from '@/lib/products/template-assignments'
 import { productWriteErrorMessage } from '@/lib/products/write-errors'
+import { validateNewProductImageAssets } from '@/lib/products/image-assets'
 
 export async function GET(_: NextRequest, context: { params: Promise<{ id: string }> }) {
   if (!(await getAdminSession())) return NextResponse.json({ error: { code: 'ADMIN_REQUIRED', message: 'Admin access is required.' } }, { status: 401 })
@@ -28,6 +29,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!existingProduct) throw new Error('Product not found.')
     const raw = await request.json() as Record<string, unknown>
     input = validateProductInput({ ...raw, sku: existingProduct.sku })
+    await validateNewProductImageAssets(input.images)
     const referencedTemplateIds = [...new Set(input.sizes.flatMap((size) => size.designConfigurations.flatMap((configuration) => [configuration.singleTemplateId, configuration.frontTemplateId, configuration.backTemplateId].filter((templateId): templateId is string => Boolean(templateId)))))]
     if (referencedTemplateIds.length) {
       const ready = await db.select({ id: templates.id, templateSide: templates.templateSide, status: templates.status, conversionStatus: templates.conversionStatus }).from(templates).where(inArray(templates.id, referencedTemplateIds))

@@ -8,6 +8,7 @@ import { assertTransition, deadlineState } from '@/lib/orders/workflow'
 import { createPresignedDownloadUrl } from '@/lib/storage/r2'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { deliverOrderEmailEvent } from '@/lib/orders/emails'
+import { cleanPlainText } from '@/lib/validation/customer-input'
 
 async function details(id: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
@@ -56,6 +57,9 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     if (!order) throw new Error('Order not found.')
     const nextStatus = body.status && body.status !== order.status ? assertTransition(order.status, body.status) : order.status
     const now = new Date()
+    const customerNote = Object.hasOwn(body, 'customerNote') ? cleanPlainText(body.customerNote, 5000) : order.customerNotes || ''
+    const internalNote = Object.hasOwn(body, 'internalNote') ? cleanPlainText(body.internalNote, 5000) : order.internalNotes || ''
+    const customerNoteChanged = Object.hasOwn(body, 'customerNote') && customerNote !== (order.customerNotes || '')
     const confirming = nextStatus === 'design_confirmed' && order.status !== 'design_confirmed'
     const date = (value: unknown, label: string) => { if (value === '' || value === null || value === undefined) return null; if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) throw new Error(`${label} must be a valid date and time.`); return new Date(value) }
     const paymentStatuses = new Set(['awaiting_payment','paid','payment_failed','cancelled','refunded'])
@@ -75,7 +79,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         updatedAt: now,
       }
       if (nextStatus === 'dispatched' && !order.dispatchedAt) updates.dispatchedAt = now
-      if (nextStatus === 'delivered' && !order.deliveredAt) { updates.deliveredAt = now; updates.deliveredByAdminId = session.user.id; updates.deliveryNote = typeof body.customerNote === 'string' ? body.customerNote.trim().slice(0, 2000) || null : null }
+      if (nextStatus === 'delivered' && !order.deliveredAt) { updates.deliveredAt = now; updates.deliveredByAdminId = session.user.id; updates.deliveryNote = customerNote.slice(0, 2000) || null }
       if (nextStatus === 'ready_for_pickup' && !order.readyForPickupAt) updates.readyForPickupAt = now
       if (nextStatus === 'completed' && deliveryType === 'pickup' && !order.pickupCompletedAt) updates.pickupCompletedAt = now
       if (confirming && !order.designConfirmedAt) { updates.designConfirmedAt = now; updates.designConfirmationOnTime = order.designConfirmationDeadline ? now <= order.designConfirmationDeadline : null }
@@ -86,19 +90,22 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
       if (deliveryType === 'delivery' && Object.hasOwn(body,'courierName')) updates.courierName = typeof body.courierName === 'string' ? body.courierName.trim().slice(0,120) || null : null
       if (deliveryType === 'delivery' && Object.hasOwn(body,'trackingNumber')) updates.trackingNumber = typeof body.trackingNumber === 'string' ? body.trackingNumber.trim().slice(0,160) || null : null
       if (deliveryType === 'pickup') { updates.courierName = null; updates.trackingNumber = null }
-      if (Object.hasOwn(body,'internalNote')) updates.internalNotes = typeof body.internalNote === 'string' ? body.internalNote.trim().slice(0,5000) || null : null
-      if (Object.hasOwn(body,'customerNote')) updates.customerNotes = typeof body.customerNote === 'string' ? body.customerNote.trim().slice(0,5000) || null : null
+      if (Object.hasOwn(body,'internalNote')) updates.internalNotes = internalNote || null
+      if (Object.hasOwn(body,'customerNote')) updates.customerNotes = customerNote || null
       const rows = await tx.update(orders).set(updates).where(eq(orders.id, id)).returning()
-      if (nextStatus !== order.status) await tx.insert(orderStatusHistory).values({ orderId: id, status: nextStatus, previousStatus: order.status, newStatus: nextStatus, changedByAdmin: session.user.id, notes: typeof body.note === 'string' ? body.note.trim().slice(0, 2000) : null, internalNote: typeof body.internalNote === 'string' ? body.internalNote.trim().slice(0, 5000) : null, customerVisibleNote: typeof body.customerNote === 'string' ? body.customerNote.trim().slice(0, 5000) : null, expectedCompletionAt: date(body.expectedCompletionAt, 'Expected completion'), actualCompletionAt: now })
+      const [historyEntry] = nextStatus !== order.status ? await tx.insert(orderStatusHistory).values({ orderId: id, status: nextStatus, previousStatus: order.status, newStatus: nextStatus, changedByAdmin: session.user.id, notes: cleanPlainText(body.note, 2000) || null, internalNote: internalNote || null, customerVisibleNote: customerNote || null, expectedCompletionAt: date(body.expectedCompletionAt, 'Expected completion'), actualCompletionAt: now }).returning({ id: orderStatusHistory.id }) : []
       await tx.insert(adminActivityLogs).values(activityValues(session, { actionType: nextStatus !== order.status ? 'order.status_changed' : receiptAssetId !== order.receiptAssetId ? 'order.receipt_uploaded' : 'order.updated', entityType: 'order', entityId: id, entityName: order.orderNumber, description: nextStatus !== order.status ? `Changed ${order.orderNumber} from ${order.status} to ${nextStatus}.` : receiptAssetId !== order.receiptAssetId ? `Attached a payment receipt to ${order.orderNumber}.` : `Updated order ${order.orderNumber}.`, metadata: { previousStatus: order.status, newStatus: nextStatus } }))
       let emailEventId: string | null = null
       if (['delivered', 'completed'].includes(nextStatus) && nextStatus !== order.status) {
-        const claimed = await tx.insert(orderEmailEvents).values({ orderId: id, eventType: 'order_completed', status: 'processing' }).onConflictDoNothing().returning({ id: orderEmailEvents.id })
+        const claimed = await tx.insert(orderEmailEvents).values({ orderId: id, eventType: 'order_completed', dedupeKey: 'lifecycle', status: 'processing' }).onConflictDoNothing().returning({ id: orderEmailEvents.id })
         emailEventId = claimed[0]?.id || null
-      } else if (['delivered', 'completed'].includes(nextStatus)) {
+      } else if (['delivered', 'completed'].includes(nextStatus) && !customerNoteChanged) {
         const staleBefore = new Date(now.getTime() - 5 * 60 * 1000)
         const retried = await tx.update(orderEmailEvents).set({ status: 'processing', attempts: sql`${orderEmailEvents.attempts} + 1`, error: null, updatedAt: now }).where(and(eq(orderEmailEvents.orderId, id), eq(orderEmailEvents.eventType, 'order_completed'), or(eq(orderEmailEvents.status, 'failed'), and(eq(orderEmailEvents.status, 'processing'), lt(orderEmailEvents.updatedAt, staleBefore))))).returning({ id: orderEmailEvents.id })
         emailEventId = retried[0]?.id || null
+      } else if (nextStatus !== order.status || customerNoteChanged) {
+        const claimed = await tx.insert(orderEmailEvents).values({ orderId: id, eventType: 'order_update', dedupeKey: historyEntry?.id || crypto.randomUUID(), payload: { status: nextStatus, customerNote: customerNote || null }, status: 'processing' }).onConflictDoNothing().returning({ id: orderEmailEvents.id })
+        emailEventId = claimed[0]?.id || null
       }
       return { updated: rows[0], emailEventId }
     })

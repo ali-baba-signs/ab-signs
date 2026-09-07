@@ -6,7 +6,7 @@ import { getAdminSession } from '@/lib/auth/require-admin'
 import { activityValues } from '@/lib/admin/activity'
 import { validateTemplateInput } from '@/lib/templates/validation'
 import { resolveTemplateProducts } from '@/lib/templates/product-selection'
-import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { canonicalStoredAssetUrl, getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { safeErrorMessage } from '@/lib/api/safe-error'
 
 export async function GET() {
@@ -20,7 +20,7 @@ export async function GET() {
       db.select().from(templateProducts),
     ])
     const productsWithSizes = productRows.map((product) => ({ ...product, sizes: sizes.filter((size) => size.productId === product.id) }))
-    return NextResponse.json({ data: { templates: rows.map((row) => { const productIds = links.filter((link) => link.templateId === row.id).map((link) => link.productId); const assigned = productsWithSizes.filter((item) => productIds.includes(item.id)); const category = categories.find((item) => item.id === assigned[0]?.categoryId); return { ...row, productIds, categoryId: assigned[0]?.categoryId || null, categoryName: category?.name || null, productName: assigned.map((item) => item.name).join(', ') || null, products: assigned, sizes: assigned[0]?.sizes || [] } }), categories, products: productsWithSizes } }, { headers: { 'cache-control': 'no-store' } })
+    return NextResponse.json({ data: { templates: rows.map((row) => { const productIds = links.filter((link) => link.templateId === row.id).map((link) => link.productId); const assigned = productsWithSizes.filter((item) => productIds.includes(item.id)); const category = categories.find((item) => item.id === assigned[0]?.categoryId); return { ...row, thumbnail: canonicalStoredAssetUrl(row.thumbnail, row.previewImageKey), previewImageUrl: canonicalStoredAssetUrl(row.previewImageUrl, row.previewImageKey), svgUrl: canonicalStoredAssetUrl(row.svgUrl, row.svgKey), fixedSvgUrl: canonicalStoredAssetUrl(row.fixedSvgUrl, row.fixedSvgKey), productIds, categoryId: assigned[0]?.categoryId || null, categoryName: category?.name || null, productName: assigned.map((item) => item.name).join(', ') || null, products: assigned, sizes: assigned[0]?.sizes || [] } }), categories, products: productsWithSizes } }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     console.error('Template list failed', error)
     return NextResponse.json({ error: { code: 'TEMPLATES_LOAD_FAILED', message: 'Templates could not be loaded. Apply the latest database migration and try again.' } }, { status: 500 })

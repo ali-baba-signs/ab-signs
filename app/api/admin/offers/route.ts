@@ -3,7 +3,7 @@ import { asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { coupons, heroSlides, homepagePromotions, offers, productImages, products, storageAssets } from '@/lib/db/schema'
 import { getAdminSession } from '@/lib/auth/require-admin'
-import { getStoredAssetUrl } from '@/lib/storage/r2-public-url'
+import { canonicalStoredAssetUrl, getStoredAssetUrl } from '@/lib/storage/r2-public-url'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -72,7 +72,7 @@ function withAssetUrls<T extends typeof offers.$inferSelect>(rows: T[], assets: 
   return rows.map((offer) => {
     const image = assets.find((asset) => asset.id === offer.imageAssetId)
     const mobile = assets.find((asset) => asset.id === offer.mobileImageAssetId)
-    return { ...offer, imageUrl: image ? getStoredAssetUrl(image.objectKey) : offer.imageUrl, mobileImageUrl: mobile ? getStoredAssetUrl(mobile.objectKey) : offer.mobileImageUrl }
+    return { ...offer, imageUrl: image ? getStoredAssetUrl(image.objectKey) : canonicalStoredAssetUrl(offer.imageUrl), mobileImageUrl: mobile ? getStoredAssetUrl(mobile.objectKey) : canonicalStoredAssetUrl(offer.mobileImageUrl) }
   })
 }
 

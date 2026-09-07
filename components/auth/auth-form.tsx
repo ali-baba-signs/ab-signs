@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
 import { adminAuthClient } from '@/lib/admin-auth-client'
 import { adminPath } from '@/lib/auth/admin-path'
@@ -19,14 +19,62 @@ export function AuthForm({
   admin?: boolean
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(() => searchParams.get('verified') === '1' ? 'Email verified. Sign in to continue.' : null)
   const [loading, setLoading] = useState(false)
+  const [step, setStep] = useState<'credentials' | 'mfa'>('credentials')
+  const [code, setCode] = useState('')
+  const [resendAvailableAt, setResendAvailableAt] = useState(0)
+  const [countdown, setCountdown] = useState(0)
 
   const isSignUp = mode === 'sign-up'
+  const callbackURL = useMemo(() => {
+    const value = searchParams.get('callbackUrl')
+    return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!resendAvailableAt) return
+    const update = () => setCountdown(Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000)))
+    update()
+    const timer = window.setInterval(update, 1000)
+    return () => window.clearInterval(timer)
+  }, [resendAvailableAt])
+
+  async function sendMfaCode() {
+    const result = await authClient.twoFactor.sendOtp()
+    if (result.error) throw new Error(result.error.message || 'The verification code could not be sent.')
+    setResendAvailableAt(Date.now() + 30_000)
+  }
+
+  async function resendVerificationEmail() {
+    if (!email || loading) return
+    setLoading(true); setError(null); setSuccess(null)
+    const result = await authClient.sendVerificationEmail({ email, callbackURL: '/sign-in?verified=1' })
+    if (result.error) setError(result.error.message || 'The verification email could not be resent.')
+    else setSuccess('Verification email sent. Check your inbox and spam folder.')
+    setLoading(false)
+  }
+
+  async function verifyMfa(event: React.FormEvent) {
+    event.preventDefault()
+    if (loading) return
+    setLoading(true); setError(null)
+    try {
+      const result = await authClient.twoFactor.verifyOtp({ code })
+      if (result.error) throw new Error(result.error.message || 'The verification code is invalid or expired.')
+      setSuccess('Login successful.')
+      router.push(callbackURL)
+      router.refresh()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The verification code could not be checked.')
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,24 +83,35 @@ export function AuthForm({
     setLoading(true)
 
     try {
-      const client = admin ? adminAuthClient : authClient
-      const { error } = isSignUp
-        ? await client.signUp.email({ email, password, name })
-        : await client.signIn.email({ email, password })
+      const result = admin
+        ? await adminAuthClient.signIn.email({ email, password })
+        : isSignUp
+          ? await authClient.signUp.email({ email, password, name, callbackURL: '/sign-in?verified=1' })
+          : await authClient.signIn.email({ email, password })
+      const { error } = result
 
       if (error) {
-        setError(error.message ?? 'Could not complete the request. Check the email, password, and server console.')
+        const message = error.message ?? 'Could not complete the request. Check the email and password.'
+        setError((error as { code?: string }).code === 'EMAIL_NOT_VERIFIED' ? 'Verify your email address before signing in.' : message)
         setLoading(false)
         return
       }
 
-      setSuccess(isSignUp ? 'Account created successfully.' : 'Login successful.')
+      if (!admin && !isSignUp && (result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) {
+        await sendMfaCode()
+        setStep('mfa')
+        setSuccess('A six-digit code was sent to your email address.')
+        setLoading(false)
+        return
+      }
+
+      setSuccess(isSignUp ? 'Check your email to activate your account. You cannot sign in until verification succeeds.' : 'Login successful.')
       setLoading(false)
 
-      setTimeout(() => {
-        router.push(admin ? adminPath() : '/')
+      if (!isSignUp) setTimeout(() => {
+        router.push(admin ? adminPath() : callbackURL)
         router.refresh()
-      }, 1400)
+      }, 600)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
       setLoading(false)
@@ -81,11 +140,13 @@ export function AuthForm({
             <Image src="/blogo.png" alt="Ali Baba Signs" width={220} height={72} priority className="h-24 w-auto" />
           </Link>
           <h1 className="text-3xl font-bold text-foreground">
-            {admin ? 'Admin Sign In' : isSignUp ? 'Create Account' : 'Welcome Back'}
+            {admin ? 'Admin Sign In' : step === 'mfa' ? 'Check Your Email' : isSignUp ? 'Create Account' : 'Welcome Back'}
           </h1>
           <p className="text-muted-foreground mt-2">
             {admin
               ? 'Sign in with an Ali Baba Signs admin account'
+              : step === 'mfa'
+                ? `Enter the six-digit code sent to ${email}`
               : isSignUp
                 ? 'Sign up to start creating custom designs'
                 : 'Sign in to your Ali Baba Signs account'}
@@ -93,7 +154,14 @@ export function AuthForm({
         </div>
 
         <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form onSubmit={step === 'mfa' ? verifyMfa : handleSubmit} className="flex flex-col gap-4">
+            {step === 'mfa' ? <>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mfa-code" className="text-foreground font-medium">Verification code</Label>
+                <Input id="mfa-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="h-12 text-center text-xl font-bold tracking-[0.35em]" required autoFocus />
+                <p className="text-xs text-muted-foreground">The code expires after five minutes.</p>
+              </div>
+            </> : <>
             {isSignUp && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="name" className="text-foreground font-medium">
@@ -147,6 +215,7 @@ export function AuthForm({
               </p>
               {!admin && !isSignUp && <Link href="/forgot-password" className="self-end text-sm font-semibold text-primary hover:underline">Forgot password?</Link>}
             </div>
+            </>}
 
             {error && (
               <div
@@ -174,17 +243,21 @@ export function AuthForm({
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  {isSignUp ? 'Creating account...' : 'Signing in...'}
+                  {step === 'mfa' ? 'Verifying code...' : isSignUp ? 'Sending verification email...' : 'Checking password...'}
                 </span>
+              ) : step === 'mfa' ? (
+                'Verify & Sign In'
               ) : isSignUp ? (
                 'Create Account'
               ) : (
                 'Sign In'
               )}
             </Button>
+            {step === 'mfa' && <div className="flex items-center justify-between gap-3 text-sm"><button type="button" className="font-semibold text-primary hover:underline disabled:text-muted-foreground" disabled={loading || countdown > 0} onClick={() => void sendMfaCode().then(() => setSuccess('A new verification code was sent.')).catch((reason) => setError(reason instanceof Error ? reason.message : 'The code could not be resent.'))}>{countdown > 0 ? `Resend in ${countdown}s` : 'Resend code'}</button><button type="button" className="font-semibold hover:underline" onClick={() => { setStep('credentials'); setCode(''); setError(null); setSuccess(null) }}>Use another account</button></div>}
+            {!admin && !isSignUp && step === 'credentials' && error?.toLowerCase().includes('verify your email') && <Button type="button" variant="outline" onClick={() => void resendVerificationEmail()} disabled={loading}>Resend verification email</Button>}
           </form>
 
-          {!admin && (
+          {!admin && step === 'credentials' && (
             <>
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
@@ -209,11 +282,11 @@ export function AuthForm({
 
         <p className="text-xs text-muted-foreground text-center mt-6">
           By {isSignUp ? 'signing up' : 'signing in'}, you agree to our{' '}
-          <Link href="/terms" className="underline hover:text-foreground">
+          <Link href="/terms-of-service" className="underline hover:text-foreground">
             Terms of Service
           </Link>{' '}
           and{' '}
-          <Link href="/privacy" className="underline hover:text-foreground">
+          <Link href="/privacy-policy" className="underline hover:text-foreground">
             Privacy Policy
           </Link>
         </p>

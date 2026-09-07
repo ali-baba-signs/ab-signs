@@ -135,7 +135,7 @@ export function ImageCropUpload({ label, recommendedWidth, recommendedHeight, va
         <p className="text-sm font-semibold">{label}{optional ? ' (optional)' : ''}</p>
         <p className="mt-1 text-xs text-muted-foreground">Recommended {recommendedWidth} × {recommendedHeight}px ({recommendedWidth / recommendedHeight >= 1 ? 'landscape' : 'portrait'}). Choose an image, drag it inside the display area, zoom, then apply the crop.</p>
       </div>
-      <label className={`inline-flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs font-semibold ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+      <label className={`inline-flex min-h-11 items-center gap-2 rounded-md border-2 border-primary bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
         <ImagePlus className="h-4 w-4" /> {sourceUrl ? 'Choose another' : 'Choose image'}
         <input disabled={disabled} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { choose(event.target.files?.[0]); event.currentTarget.value = '' }} />
       </label>

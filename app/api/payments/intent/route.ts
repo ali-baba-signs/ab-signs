@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       if (!reservation || reservation.status !== 'reserved' || reservation.expiresAt <= new Date()) return NextResponse.json({ error: { code: 'PAYMENT_EXPIRED', message: 'This coupon payment session has expired. Return to checkout to reserve the offer again.' } }, { status: 410 })
     }
     const mode = stripeMode()
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { timeout: 10_000, maxNetworkRetries: 1 })
     const amount = assertAuthoritativeTotal(data)
     const existing = await db.select().from(paymentRecords).where(and(eq(paymentRecords.orderId, order.id), eq(paymentRecords.provider, 'stripe'))).limit(1)
     let intent: Stripe.PaymentIntent

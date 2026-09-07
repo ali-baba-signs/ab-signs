@@ -14,6 +14,8 @@ import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
 import { validateAustralianLocation } from '@/lib/address/australia'
 import { calculateShipping } from '@/lib/shipping/calculator'
 import { designConfigurationForSize, type DesignType } from '@/lib/products/design-configurations'
+import { cleanPlainText, normalizeAustralianPhone } from '@/lib/validation/customer-input'
+import { canonicalStoredAssetUrl } from '@/lib/storage/r2-public-url'
 
 interface CheckoutItem { productId?: string; sizeId?: string; templateId?: string | null; designId?: string | null; artworkId?: string | null; designSource?: 'online_editor' | 'customer_upload' | 'design_assistance'; quantity?: number; specifications?: Record<string, string> }
 interface Address { firstName?: string; lastName?: string; address?: string; suburb?: string; city?: string; state?: string; postalCode?: string; country?: string; phone?: string }
@@ -21,9 +23,14 @@ interface Address { firstName?: string; lastName?: string; address?: string; sub
 function cleanAddress(value: unknown) {
   const input = value as Address
   const required = ['firstName', 'lastName', 'address'] as const
-  for (const field of required) if (typeof input?.[field] !== 'string' || input[field]!.trim().length < 1) throw new Error(`Shipping ${field} is required.`)
+  for (const field of required) if (!cleanPlainText(input?.[field], field === 'address' ? 500 : 100)) throw new Error(`Shipping ${field} is required.`)
   const location = validateAustralianLocation(input)
-  return { ...Object.fromEntries(Object.entries(input).map(([key, item]) => [key, typeof item === 'string' ? item.trim().slice(0, 500) : ''])), suburb: location.suburb, city: location.suburb, state: location.state, postalCode: location.postalCode, country: location.country }
+  return {
+    firstName: cleanPlainText(input.firstName, 100), lastName: cleanPlainText(input.lastName, 100),
+    address: cleanPlainText(input.address, 500), addressLine2: cleanPlainText((input as Address & { addressLine2?: string }).addressLine2, 500),
+    phone: normalizeAustralianPhone(input.phone, true), suburb: location.suburb, city: location.suburb,
+    state: location.state, postalCode: location.postalCode, country: location.country,
+  }
 }
 
 function cents(value: number) { return Math.round(value * 100) }
@@ -136,7 +143,7 @@ export async function POST(request: NextRequest) {
       const unitCents = cents(Number(size.unitPrice) * areaRatio)
       const productImage = productImageRows.find((image) => image.productId === product.id && image.isPrimary) || productImageRows.find((image) => image.productId === product.id)
       const category = categoryRows.find((row) => row.id === product.categoryId)
-      return { product, category, productImage: productImage?.url || null, size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, designType: requestedDesignType, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      return { product, category, productImage: canonicalStoredAssetUrl(productImage?.url, productImage?.storageKey), size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, designType: requestedDesignType, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
     const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null

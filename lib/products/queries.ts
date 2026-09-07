@@ -5,6 +5,7 @@ import { db } from '@/lib/db/client'
 import { orderItems, orders, productCategories, productImages, productReviews, products, productSizes, templateProducts, templates } from '@/lib/db/schema'
 import { compatibleSizesForTemplate } from '@/lib/templates/compatibility'
 import { designConfigurationsForSize } from '@/lib/products/design-configurations'
+import { canonicalStoredAssetUrl } from '@/lib/storage/r2-public-url'
 
 export async function getProductsWithDetails(productId?: string, includeInactive = false) {
   const rows = await db.select().from(products)
@@ -16,11 +17,12 @@ export async function getProductsWithDetails(productId?: string, includeInactive
     db.select().from(productImages).where(inArray(productImages.productId, ids)).orderBy(asc(productImages.order)),
     db.select().from(productSizes).where(inArray(productSizes.productId, ids)).orderBy(asc(productSizes.order)),
     db.select().from(productCategories),
-    db.select({ id: templates.id, productId: templates.productId, name: templates.name, status: templates.status, conversionStatus: templates.conversionStatus, previewImageUrl: templates.previewImageUrl, templateSide: templates.templateSide }).from(templates),
+    db.select({ id: templates.id, productId: templates.productId, name: templates.name, status: templates.status, conversionStatus: templates.conversionStatus, previewImageUrl: templates.previewImageUrl, previewImageKey: templates.previewImageKey, templateSide: templates.templateSide }).from(templates),
     db.select().from(templateProducts).where(inArray(templateProducts.productId, ids)),
     db.select({ productId: productReviews.productId, averageRating: sql<number>`coalesce(avg(${productReviews.overall}), 0)`, reviewCount: sql<number>`count(*)::int` }).from(productReviews).where(and(inArray(productReviews.productId, ids), eq(productReviews.moderationStatus, 'published'))).groupBy(productReviews.productId),
     db.select({ productId: orderItems.productId, soldQuantity: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int` }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(inArray(orderItems.productId, ids), eq(orders.paymentStatus, 'paid'), notInArray(orders.status, ['cancelled', 'refunded']))).groupBy(orderItems.productId),
   ])
+  const canonicalTemplates = templateRows.map((template) => ({ ...template, previewImageUrl: canonicalStoredAssetUrl(template.previewImageUrl, template.previewImageKey) }))
   return rows.map((product) => {
     const productSizeRows = sizes.filter((size) => size.productId === product.id)
     const configuredTemplateIds = new Set(productSizeRows.flatMap((size) => designConfigurationsForSize(size).flatMap((configuration) => [configuration.singleTemplateId, configuration.frontTemplateId, configuration.backTemplateId].filter((id): id is string => Boolean(id)))))
@@ -28,7 +30,7 @@ export async function getProductsWithDetails(productId?: string, includeInactive
     const availableTemplateIds = new Set([...configuredTemplateIds, ...linkedTemplateIds, ...(product.templateId ? [product.templateId] : [])])
     return ({
     ...product,
-    images: images.filter((image) => image.productId === product.id),
+    images: images.filter((image) => image.productId === product.id).map((image) => ({ ...image, url: canonicalStoredAssetUrl(image.url, image.storageKey) || '' })),
     sizes: productSizeRows,
     category: categories.find((category) => category.id === product.categoryId) ?? null,
     socialProof: {
@@ -36,13 +38,13 @@ export async function getProductsWithDetails(productId?: string, includeInactive
       reviewCount: Number(reviewSummary.find((row) => row.productId === product.id)?.reviewCount || 0),
       soldQuantity: Number(soldSummary.find((row) => row.productId === product.id)?.soldQuantity || 0),
     },
-    templates: templateRows
+    templates: canonicalTemplates
       .filter((template) => template.templateSide !== 'back' && availableTemplateIds.has(template.id))
       .map((template) => ({
         ...template,
         compatibleSizeIds: compatibleSizesForTemplate(template.id, productSizeRows).map((size) => size.id),
       })),
-    template: templateRows.find((template) => template.templateSide !== 'back' && template.status === 'active' && template.conversionStatus === 'ready' && availableTemplateIds.has(template.id)) ?? null,
+    template: canonicalTemplates.find((template) => template.templateSide !== 'back' && template.status === 'active' && template.conversionStatus === 'ready' && availableTemplateIds.has(template.id)) ?? null,
   })})
 }
 

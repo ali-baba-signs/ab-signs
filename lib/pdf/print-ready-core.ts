@@ -5,8 +5,7 @@ const pt = (mm: number) => mm * 72 / 25.4
 const fixed = (value: number) => Number(value.toFixed(4))
 const escapePdf = (value: string) => value.replace(/[\\()]/g, '\\$&').replace(/[^\x20-\x7e]/g, '?')
 
-export function buildPrintReadyPdf(jpeg: Uint8Array, options: PrintPdfOptions) {
-  if (!jpeg.length || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw new Error('The print render is not a valid JPEG image.')
+function buildPrintPdf(image: Uint8Array, imageDictionary: string, options: PrintPdfOptions) {
   if (!(options.widthMm > 0 && options.heightMm > 0 && options.jpegWidth > 0 && options.jpegHeight > 0)) throw new Error('Print PDF dimensions are invalid.')
   const bleed = Math.max(0, options.bleedMm), markMargin = options.trimMarks ? Math.max(8, bleed + 5) : 0
   const renderedPage = Number(options.renderedPageWidthMm) > 0 && Number(options.renderedPageHeightMm) > 0
@@ -30,7 +29,7 @@ export function buildPrintReadyPdf(jpeg: Uint8Array, options: PrintPdfOptions) {
   const objects: Uint8Array[] = [
     ascii('<< /Type /Catalog /Pages 2 0 R >>'), ascii('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
     ascii(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /UserUnit ${userUnit} /Resources << /XObject << /Artwork 4 0 R >> >> /Contents 5 0 R >>`),
-    (() => { const head=ascii(`<< /Type /XObject /Subtype /Image /Width ${options.jpegWidth} /Height ${options.jpegHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`),tail=ascii('\nendstream'),out=new Uint8Array(head.length+jpeg.length+tail.length);out.set(head);out.set(jpeg,head.length);out.set(tail,head.length+jpeg.length);return out })(),
+    (() => { const head=ascii(`<< /Type /XObject /Subtype /Image /Width ${options.jpegWidth} /Height ${options.jpegHeight} ${imageDictionary} /Length ${image.length} >>\nstream\n`),tail=ascii('\nendstream'),out=new Uint8Array(head.length+image.length+tail.length);out.set(head);out.set(image,head.length);out.set(tail,head.length+image.length);return out })(),
     ascii(`<< /Length ${ascii(content).length} >>\nstream\n${content}endstream`),
     ascii(`<< /Title (${escapePdf(options.title || 'Ali Baba Signs print-ready artwork')}) /Creator (Ali Baba Signs Design Editor) /Subject (Trim ${options.widthMm} x ${options.heightMm} mm; bleed ${bleed} mm; ${options.productKind || 'rectangle'} contour; crop marks ${options.trimMarks ? 'yes' : 'no'}; safety guides editor-only) >>`),
   ]
@@ -39,4 +38,16 @@ export function buildPrintReadyPdf(jpeg: Uint8Array, options: PrintPdfOptions) {
   const xrefOffset=length
   chunks.push(ascii(`xref\n0 ${objects.length+1}\n0000000000 65535 f \n${offsets.slice(1).map((offset)=>`${String(offset).padStart(10,'0')} 00000 n `).join('\n')}\ntrailer\n<< /Size ${objects.length+1} /Root 1 0 R /Info 6 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`))
   const output=new Uint8Array(chunks.reduce((sum,chunk)=>sum+chunk.length,0));let cursor=0;chunks.forEach((chunk)=>{output.set(chunk,cursor);cursor+=chunk.length});return output
+}
+
+export function buildPrintReadyPdf(jpeg: Uint8Array, options: PrintPdfOptions) {
+  if (!jpeg.length || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw new Error('The print render is not a valid JPEG image.')
+  return buildPrintPdf(jpeg, '/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode', options)
+}
+
+/** Builds a true four-channel process-CMYK PDF from zlib-compressed CMYK pixels. */
+export function buildPrintReadyCmykPdf(compressedCmyk: Uint8Array, options: PrintPdfOptions) {
+  const expectedPixels = options.jpegWidth * options.jpegHeight
+  if (!compressedCmyk.length || !Number.isSafeInteger(expectedPixels) || expectedPixels <= 0) throw new Error('The CMYK print render is invalid.')
+  return buildPrintPdf(compressedCmyk, '/ColorSpace /DeviceCMYK /BitsPerComponent 8 /Filter /FlateDecode', options)
 }

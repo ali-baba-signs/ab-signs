@@ -98,10 +98,11 @@ CLOUDFLARE_ACCOUNT_ID="your-account-id"
 CLOUDFLARE_R2_BUCKET="your-bucket"
 CLOUDFLARE_R2_ACCESS_KEY_ID="an-R2-S3-access-key"
 CLOUDFLARE_R2_SECRET_ACCESS_KEY="the-matching-secret"
-NEXT_PUBLIC_R2_PUBLIC_BASE_URL="https://assets.example.com"
+CLOUDFLARE_R2_PUBLIC_URL="https://assets.alibabasigns.com.au"
+NEXT_PUBLIC_R2_PUBLIC_BASE_URL="https://assets.alibabasigns.com.au"
 ```
 
-Create an R2 API token with Object Read & Write permission scoped to the selected bucket. Attach a public custom domain (recommended) or R2 public development URL to that bucket and use it as `NEXT_PUBLIC_R2_PUBLIC_BASE_URL`. The S3 endpoint is derived as `https://<account-id>.r2.cloudflarestorage.com` with region `auto`.
+Create an R2 API token with Object Read & Write permission scoped to the selected bucket. The public asset origin is the custom domain `https://assets.alibabasigns.com.au`; do not use an `r2.dev` development URL. The S3 endpoint is derived as `https://<account-id>.r2.cloudflarestorage.com` with region `auto`.
 
 Verify listing, writes, public reads, and cleanup:
 

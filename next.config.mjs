@@ -1,5 +1,5 @@
 
-const publicAssetUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL
+const publicAssetUrl = 'https://assets.alibabasigns.com.au'
 let r2RemotePattern 
 try {
   if (publicAssetUrl) {
