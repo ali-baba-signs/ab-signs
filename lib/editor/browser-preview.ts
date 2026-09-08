@@ -1,5 +1,6 @@
 import { StaticCanvas } from 'fabric'
 import type { ProductConfig } from './types'
+import { DESIGN_RENDER_CHUNK_BYTES, friendlyDesignRenderError, type DesignRenderPurpose, type DesignRenderUploadManifest } from '@/lib/storage/design-render-uploads'
 
 export interface BrowserRenderAsset {
   key: string
@@ -48,23 +49,11 @@ export async function uploadBrowserRender(
   filename: string,
   designId: string,
 ): Promise<BrowserRenderAsset> {
-  const presignResponse = await fetch('/api/uploads/presign', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ filename, contentType: asset.contentType, size: asset.blob.size, purpose: 'design-preview', designId }),
-  })
-  const presignPayload = await presignResponse.json()
-  if (!presignResponse.ok) throw new Error(presignPayload.error?.message || 'The design preview upload could not be prepared.')
-  const uploadResponse = await fetch(presignPayload.data.uploadUrl, {
-    method: 'PUT',
-    headers: { 'content-type': asset.contentType },
-    body: asset.blob,
-  })
-  if (!uploadResponse.ok) throw new Error('The generated design preview could not be uploaded.')
+  const uploaded = await uploadGeneratedDesignAsset(asset.blob, filename, asset.contentType, 'design-preview', designId)
   return {
-    key: presignPayload.data.key,
+    key: uploaded.key,
     contentType: asset.contentType,
-    size: asset.blob.size,
+    size: uploaded.size,
     pixelWidth: asset.pixelWidth,
     pixelHeight: asset.pixelHeight,
   }
@@ -75,12 +64,56 @@ export async function uploadProductionFile(
   filename: string,
   designId: string,
 ) {
-  const presignResponse = await fetch('/api/uploads/presign', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filename, contentType: asset.contentType, size: asset.blob.size, purpose: 'design-production', designId }) })
-  const presignPayload = await presignResponse.json()
-  if (!presignResponse.ok) throw new Error(presignPayload.error?.message || 'The production file upload could not be prepared.')
-  const uploadResponse = await fetch(presignPayload.data.uploadUrl, { method: 'PUT', headers: { 'content-type': asset.contentType }, body: asset.blob })
-  if (!uploadResponse.ok) throw new Error('The generated production file could not be uploaded.')
-  return { key: presignPayload.data.key as string, contentType: asset.contentType, size: asset.blob.size, pixelWidth: asset.pixelWidth, pixelHeight: asset.pixelHeight, metadata: asset.metadata }
+  const uploaded = await uploadGeneratedDesignAsset(asset.blob, filename, asset.contentType, 'design-production', designId)
+  return { key: uploaded.key, contentType: asset.contentType, size: uploaded.size, pixelWidth: asset.pixelWidth, pixelHeight: asset.pixelHeight, metadata: asset.metadata }
+}
+
+async function responsePayload(response: Response) {
+  const text = await response.text()
+  if (!text) return null
+  try { return JSON.parse(text) as { data?: Record<string, unknown>; error?: { message?: string } } }
+  catch { return null }
+}
+
+export async function uploadGeneratedDesignAsset(
+  blob: Blob,
+  filename: string,
+  contentType: string,
+  purpose: DesignRenderPurpose,
+  designId: string,
+  fetcher: typeof fetch = fetch,
+) {
+  const manifest: DesignRenderUploadManifest = { uploadId: crypto.randomUUID(), filename, contentType, size: blob.size, purpose, designId }
+  const send = async (body: FormData | string) => {
+    const controller = new AbortController()
+    const timeout = globalThis.setTimeout(() => controller.abort(), 60_000)
+    try {
+      const response = await fetcher('/api/uploads/design-render', {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: { 'x-design-render-upload': '1', ...(typeof body === 'string' ? { 'content-type': 'application/json' } : {}) },
+        body,
+      })
+      const payload = await responsePayload(response)
+      if (!response.ok) throw new Error(payload?.error?.message || `Design storage returned HTTP ${response.status}. Please retry.`)
+      return payload?.data
+    } catch (error) {
+      if (error instanceof Error && !/^Failed to fetch$/i.test(error.message) && error.name !== 'TypeError') throw error
+      throw new Error(friendlyDesignRenderError(error), { cause: error })
+    } finally { globalThis.clearTimeout(timeout) }
+  }
+  for (let offset = 0, index = 0; offset < blob.size; offset += DESIGN_RENDER_CHUNK_BYTES, index += 1) {
+    const form = new FormData()
+    form.set('manifest', JSON.stringify(manifest))
+    form.set('index', String(index))
+    form.set('file', blob.slice(offset, offset + DESIGN_RENDER_CHUNK_BYTES), 'chunk.part')
+    const part = await send(form)
+    if (part?.received !== index) throw new Error('The generated artwork upload was interrupted. Please retry.')
+  }
+  const completed = await send(JSON.stringify({ manifest }))
+  if (typeof completed?.key !== 'string' || !completed.key || typeof completed.size !== 'number') throw new Error('Design storage returned an incomplete response. Please retry.')
+  return { key: completed.key, size: completed.size }
 }
 
 export const uploadProductionPdf = uploadProductionFile

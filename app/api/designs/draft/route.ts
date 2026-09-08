@@ -5,7 +5,7 @@ import { db } from '@/lib/db/client'
 import { designs, designVersions, productSizes, products, templates } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { registerStorageAsset, deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
-import { getObjectBody, getObjectMetadata, uploadObject } from '@/lib/storage/r2'
+import { getObjectBody, getObjectMetadata, R2ConfigurationError, uploadObject } from '@/lib/storage/r2'
 import { createUploadKey } from '@/lib/storage/upload-validation'
 import { R2_PATHS } from '@/lib/storage/r2-paths'
 import { isTemplateCompatibleWithSize } from '@/lib/templates/compatibility'
@@ -25,6 +25,19 @@ type UploadedRender = {
 
 type ProductionContentType = 'application/pdf' | 'image/svg+xml'
 type UploadedProduction = { key: string; contentType: ProductionContentType; size: number; pixelWidth: number; pixelHeight: number; metadata?: Record<string, unknown> }
+
+function designSaveFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  if (error instanceof R2ConfigurationError) return { status: 503, code: error.code, message: 'Design storage is temporarily unavailable. Your editor remains open; retry shortly.' }
+  if (/Design data|browser preview|browser render|production (PDF|SVG)|Choose a valid|selected product|selected template|selected size|design option|configured|does not belong|changed during upload|not a real|too large|not found|access denied/i.test(message)) {
+    return { status: 400, code: 'DESIGN_VALIDATION_FAILED', message }
+  }
+  const details = error as { name?: unknown; code?: unknown; $metadata?: { httpStatusCode?: number } }
+  if (details?.$metadata?.httpStatusCode || /timeout|network|fetch|socket|ECONN|ENOTFOUND|storage|NoSuchKey|NotFound/i.test(`${details?.name || ''} ${details?.code || ''} ${message}`)) {
+    return { status: 502, code: 'DESIGN_STORAGE_FAILED', message: 'Design storage did not complete the save. Your editor remains open; retry the save.' }
+  }
+  return { status: 500, code: 'DESIGN_SAVE_FAILED', message: 'The design record could not be saved. Your editor remains open; please retry.' }
+}
 
 function uploadedRender(value: unknown): UploadedRender {
   const row = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -203,6 +216,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: { design: saved, uploadCleanup } }, { status: existing ? 200 : 201 })
   } catch (error) {
     console.error('Private design save failed', error)
-    return NextResponse.json({ error: { message: error instanceof Error ? error.message : 'The private design could not be saved.' } }, { status: 400 })
+    const failure = designSaveFailure(error)
+    return NextResponse.json({ error: { code: failure.code, message: failure.message } }, { status: failure.status })
   }
 }

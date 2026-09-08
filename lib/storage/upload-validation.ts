@@ -67,6 +67,8 @@ export function validateUpload(input: UploadRequest) {
       ? MAX_CANVAS_IMAGE_SIZE
       : input.purpose === 'design-artwork'
       ? MAX_ARTWORK_SIZE
+      : input.purpose === 'design-production'
+      ? MAX_ARTWORK_SIZE
       : input.purpose === 'template'
         ? MAX_TEMPLATE_SIZE
         : MAX_IMAGE_SIZE

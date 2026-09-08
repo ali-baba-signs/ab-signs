@@ -47,6 +47,13 @@ async function readCanvasUpload(file: File) {
   return { source, thumbnail: source }
 }
 
+async function readApiResponse(response: Response) {
+  const text = await response.text()
+  if (!text) return null
+  try { return JSON.parse(text) as { data?: { design?: { id?: string }; uploadCleanup?: { deletedKeys?: unknown } }; design?: { id?: string }; error?: { message?: string } } }
+  catch { return null }
+}
+
 async function addWatermark(dataUrl: string) {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const element = new window.Image()
@@ -760,34 +767,38 @@ export function CanvasEditor() {
 
       setStatus('Saving private draft…')
       setProcessing('Saving your artwork…')
-      const databaseResponse = await fetch('/api/designs/draft', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          id: savedDesignId.current ?? undefined,
-          name: 'Untitled design',
-          design,
-          previews: { front: front.preview, ...(back ? { back: back.preview } : {}) },
-          production: { front: front.production, ...(back ? { back: back.production } : {}) },
-          templateId,
-          productId: requestedProductId,
-          variantId: requestedSizeId,
-          uploadKeys: sessionUploadsRef.current.flatMap((upload) => upload.assetKey ? [upload.assetKey] : []),
-        }),
-      })
-      const databasePayload = await databaseResponse.json()
-      if (databaseResponse.ok) {
-        savedDesignId.current =
-          databasePayload.data?.design?.id ??
-          databasePayload.design?.id ??
-          savedDesignId.current
-        const deletedKeys: unknown = databasePayload.data?.uploadCleanup?.deletedKeys
-        if (Array.isArray(deletedKeys)) updateSessionUploads((current) => current.filter((upload) => !upload.assetKey || !deletedKeys.includes(upload.assetKey)))
-      }
-      setStatus(databaseResponse.ok
-        ? `Private draft saved ${new Date().toLocaleTimeString()}`
-        : databasePayload.error?.message || 'Private design could not be saved.')
-      return databaseResponse.ok ? savedDesignId.current : null
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), 90_000)
+      let databaseResponse: Response
+      try {
+        databaseResponse = await fetch('/api/designs/draft', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          signal: controller.signal,
+          body: JSON.stringify({
+            id: savedDesignId.current ?? undefined,
+            name: 'Untitled design',
+            design,
+            previews: { front: front.preview, ...(back ? { back: back.preview } : {}) },
+            production: { front: front.production, ...(back ? { back: back.production } : {}) },
+            templateId,
+            productId: requestedProductId,
+            variantId: requestedSizeId,
+            uploadKeys: sessionUploadsRef.current.flatMap((upload) => upload.assetKey ? [upload.assetKey] : []),
+          }),
+        })
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw new Error('Saving the design timed out. Your editor remains open; check your connection and retry.', { cause: error })
+        throw new Error('The design save service could not be reached. Your editor remains open; check your connection and retry.', { cause: error })
+      } finally { window.clearTimeout(timeout) }
+      const databasePayload = await readApiResponse(databaseResponse)
+      if (!databaseResponse.ok) throw new Error(databasePayload?.error?.message || `The design save service returned HTTP ${databaseResponse.status}. Please retry.`)
+      savedDesignId.current = databasePayload?.data?.design?.id ?? databasePayload?.design?.id ?? savedDesignId.current
+      const deletedKeys: unknown = databasePayload?.data?.uploadCleanup?.deletedKeys
+      if (Array.isArray(deletedKeys)) updateSessionUploads((current) => current.filter((upload) => !upload.assetKey || !deletedKeys.includes(upload.assetKey)))
+      setStatus(`Private draft saved ${new Date().toLocaleTimeString()}`)
+      return savedDesignId.current
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Private design could not be saved.')
       return null
