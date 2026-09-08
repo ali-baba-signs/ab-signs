@@ -11,7 +11,7 @@ export const runtime = 'nodejs'
 export async function POST(request: NextRequest) {
   try {
     if (request.headers.get('x-design-render-upload') !== '1') return NextResponse.json({ error: { message: 'The generated artwork upload could not be authorized.' } }, { status: 403 })
-    const session = await getSession()
+    const session = await getSession(request)
     if (!session?.user) return NextResponse.json({ error: { code: 'UPLOAD_NOT_AUTHORIZED', message: 'Your session expired. Sign in again, then retry saving the design.' } }, { status: 401 })
     const response = { status: 201, headers: { 'cache-control': 'private, no-store' } }
     if (request.headers.get('content-type')?.includes('application/json')) {
@@ -32,6 +32,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof UploadValidationError || error instanceof SvgValidationError) return NextResponse.json({ error: { code: 'INVALID_RENDER', message: friendlyDesignRenderError(error) } }, { status: 400 })
     if (error instanceof R2ConfigurationError) return NextResponse.json({ error: { code: error.code, message: 'Design storage is temporarily unavailable. Your design is still open; retry shortly.' } }, { status: 503 })
     console.error('Generated design upload failed', error)
-    return NextResponse.json({ error: { code: 'DESIGN_RENDER_UPLOAD_FAILED', message: friendlyDesignRenderError(error) } }, { status: 502 })
+    return NextResponse.json({ error: { code: 'DESIGN_RENDER_UPLOAD_FAILED', message: 'Design storage could not store the generated artwork. Your design is still open; retry shortly.' } }, { status: 502 })
   }
 }

@@ -3,13 +3,12 @@ import { pool } from '@/lib/db/client'
 import { getAuthBaseURL, getTrustedOrigins } from '@/lib/auth/origins'
 
 const authBaseURL = getAuthBaseURL()
-const crossSiteDevelopment = process.env.NODE_ENV === 'development' && authBaseURL.startsWith('https://')
 
 export const adminAuth = betterAuth({
   database: pool,
   secret: process.env.ADMIN_AUTH_SECRET ?? process.env.BETTER_AUTH_SECRET,
   basePath: '/api/admin-auth',
-  baseURL: authBaseURL,
+  ...(authBaseURL ? { baseURL: authBaseURL } : {}),
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
@@ -30,9 +29,6 @@ export const adminAuth = betterAuth({
   verification: { modelName: 'admin_verifications' },
   advanced: {
     cookiePrefix: 'alibaba_admin',
-    ...(crossSiteDevelopment
-      ? { defaultCookieAttributes: { sameSite: 'none' as const, secure: true } }
-      : {}),
   },
   trustedOrigins: getTrustedOrigins,
 })

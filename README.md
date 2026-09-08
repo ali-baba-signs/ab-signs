@@ -8,9 +8,13 @@ Create `.env.local` in the project root:
 DATABASE_URL="postgresql://..."
 BETTER_AUTH_SECRET="use-a-real-random-secret"
 BETTER_AUTH_URL="http://localhost:3000"
+NEXT_PUBLIC_SITE_URL="http://localhost:3000"
 ```
 
-For production, set `BETTER_AUTH_URL` to the real website domain.
+Authentication resolves its origin in this order: `BETTER_AUTH_URL`, then
+`NEXT_PUBLIC_SITE_URL`, then the incoming request origin. Use the same origin
+for both variables in each environment. No source-code change is needed when
+moving between local development, testing, and production.
 
 Next.js loads env files into `process.env`. For local development, `.env.local`
 overrides `.env`. Do not use `process.env.local`; that object does not exist
@@ -23,6 +27,7 @@ variables because `.env.local` is local-only and should not be deployed:
 DATABASE_URL="postgresql://..."
 BETTER_AUTH_SECRET="production-random-secret"
 BETTER_AUTH_URL="https://your-real-domain.com"
+NEXT_PUBLIC_SITE_URL="https://your-real-domain.com"
 ```
 
 Generate a good local auth secret:

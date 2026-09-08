@@ -6,6 +6,7 @@ import { orderEmailEvents, orderItems, orders, storageAssets } from '@/lib/db/sc
 import { sendTransactionalEmail } from '@/lib/contact/mailer'
 import { createPresignedDownloadUrl } from '@/lib/storage/r2'
 import { normalizeOrderStatus, ORDER_STATUS_LABELS } from '@/lib/orders/workflow'
+import { getAuthBaseURL } from '@/lib/auth/origins'
 
 export type OrderEmailType = 'order_confirmation' | 'order_completed' | 'order_update'
 
@@ -18,7 +19,9 @@ function money(value: unknown, currency: string) {
 }
 
 function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.BETTER_AUTH_URL || 'http://localhost:3000').replace(/\/$/, '')
+  const configured = getAuthBaseURL()
+  if (!configured) throw new Error('BETTER_AUTH_URL or NEXT_PUBLIC_SITE_URL is required to create order email links.')
+  return configured
 }
 
 async function emailData(orderId: string) {

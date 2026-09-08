@@ -5,11 +5,10 @@ import { getAuthBaseURL, getTrustedOrigins } from '@/lib/auth/origins'
 import { sendAccountVerificationEmail, sendLoginVerificationCode, sendPasswordResetEmail } from '@/lib/contact/mailer'
 
 const authBaseURL = getAuthBaseURL()
-const crossSiteDevelopment = process.env.NODE_ENV === 'development' && authBaseURL.startsWith('https://')
 
 export const auth = betterAuth({
   database: pool,
-  baseURL: authBaseURL,
+  ...(authBaseURL ? { baseURL: authBaseURL } : {}),
   emailAndPassword: {
     enabled: true,
     autoSignIn: false,
@@ -53,16 +52,6 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // 1 day
   },
   trustedOrigins: getTrustedOrigins,
-  ...(crossSiteDevelopment
-    ? {
-        advanced: {
-          defaultCookieAttributes: {
-            sameSite: 'none' as const,
-            secure: true,
-          },
-        },
-      }
-    : {}),
   plugins: [
     twoFactor({
       twoFactorTable: 'two_factors',

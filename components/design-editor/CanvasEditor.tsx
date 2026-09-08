@@ -727,7 +727,18 @@ export function CanvasEditor() {
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
     const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
     const design = serializeDesign(canvas, configRef.current, templateId, sides, sideTemplateIdsRef.current)
-    const currentSession = session?.user ? session : (await authClient.getSession()).data
+    let currentSession = session?.user ? session : null
+    if (!currentSession?.user) {
+      try {
+        currentSession = (await authClient.getSession()).data
+      } catch (error) {
+        setStatus('Your session could not be checked because the authentication service is unreachable. Your design remains open; retry shortly.')
+        console.error('Design save session check failed', error)
+        busyRef.current = false
+        setProcessing(null)
+        return null
+      }
+    }
     try { saveDesign(design) } catch {
       // A large image can exceed localStorage quota; signed-in saves can still use the server.
       if (!currentSession?.user) {
@@ -749,8 +760,15 @@ export function CanvasEditor() {
       setProcessing('Rendering your artwork…')
       const renderGroupId = savedDesignId.current ?? crypto.randomUUID()
       const renderAndUpload = async (canvasJson: Record<string, unknown>, side: 'front' | 'back') => {
-        const rendered = await renderBrowserSide(canvasJson, configRef.current)
-        const production = await renderProductionFiles(canvasJson, configRef.current, `${side} production artwork`)
+        let rendered: Awaited<ReturnType<typeof renderBrowserSide>>
+        let production: Awaited<ReturnType<typeof renderProductionFiles>>
+        try {
+          rendered = await renderBrowserSide(canvasJson, configRef.current)
+          production = await renderProductionFiles(canvasJson, configRef.current, `${side} production artwork`)
+        } catch (error) {
+          console.error(`${side} design render failed`, error)
+          throw new Error(`The ${side} artwork preview could not be generated. Your design remains open; review the artwork and retry.`, { cause: error })
+        }
         setProcessing(`Uploading ${side} artwork…`)
         const [previewAsset, productionPdf, productionSvg] = await Promise.all([
           uploadBrowserRender(rendered.preview, `${side}-preview.png`, renderGroupId),

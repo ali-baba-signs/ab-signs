@@ -1,12 +1,16 @@
 const LOCAL_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
-const PRODUCTION_ORIGINS = ['https://alibabasigns.com.au', 'https://www.alibabasigns.com.au','https://devtest.alibabasigns.com.au']
-
 
 function normalizeOrigin(value: string | undefined) {
-  if (!value || value.includes('your-domain.com')) return undefined
+  if (!value) return undefined
+
+  const candidate = value.trim()
+  if (!candidate || candidate.includes('your-domain.com')) return undefined
+  if (/^[a-z][a-z\d+.-]*:/i.test(candidate) && !/^https?:\/\//i.test(candidate)) return undefined
 
   try {
-    return new URL(value.startsWith('http') ? value : `https://${value}`).origin
+    const url = new URL(/^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+    return url.origin
   } catch {
     return undefined
   }
@@ -15,7 +19,6 @@ function normalizeOrigin(value: string | undefined) {
 function configuredOrigins() {
   return [
     ...LOCAL_ORIGINS,
-    ...PRODUCTION_ORIGINS,
     normalizeOrigin(process.env.BETTER_AUTH_URL),
     normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL),
     normalizeOrigin(process.env.V0_RUNTIME_URL),
@@ -24,45 +27,35 @@ function configuredOrigins() {
   ].filter((origin): origin is string => Boolean(origin))
 }
 
-/**
- * Prefer the exact Vercel deployment URL for preview builds. A localhost
- * BETTER_AUTH_URL is useful locally but must never override a deployed host.
- */
-export function getAuthBaseURL() {
-  const vercelURL = normalizeOrigin(process.env.VERCEL_URL)
-  const configuredURL = normalizeOrigin(process.env.BETTER_AUTH_URL)
+function requestOrigin(request: Request | undefined) {
+  if (!request) return undefined
 
-  if (vercelURL) return vercelURL
-  if (process.env.NODE_ENV !== 'production' && configuredURL) return configuredURL
-  if (configuredURL && !configuredURL.includes('localhost') && !configuredURL.includes('127.0.0.1')) {
-    return configuredURL
+  try {
+    return new URL(request.url).origin
+  } catch {
+    return undefined
   }
-
-  return normalizeOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
-    normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL) ??
-    normalizeOrigin(process.env.V0_RUNTIME_URL) ??
-    'http://localhost:3000'
 }
 
 /**
- * Better Auth calls this for every state-changing request. Alongside explicitly
- * configured origins, allow only the request's exact effective host. This
- * supports branch preview URLs without trusting every site on vercel.app.
+ * Authentication URL priority is intentionally environment-only first. When
+ * neither variable is set, returning undefined lets Better Auth derive the
+ * exact origin from the incoming request instead of pinning the app to a host.
+ */
+export function getAuthBaseURL(request?: Request) {
+  return normalizeOrigin(process.env.BETTER_AUTH_URL) ??
+    normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL) ??
+    requestOrigin(request)
+}
+
+/**
+ * Better Auth calls this for every state-changing request. Local development,
+ * configured deployment URLs, and the request's own origin are trusted; no
+ * application deployment domain is embedded in source code.
  */
 export function getTrustedOrigins(request?: Request) {
   const origins = new Set(configuredOrigins())
-  if (!request) return [...origins]
-
-  const requestURL = new URL(request.url)
-  const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-  const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-  const effectiveHost = forwardedHost || requestURL.host
-  const effectiveProtocol = forwardedProto === 'http' || forwardedProto === 'https'
-    ? forwardedProto
-    : requestURL.protocol.replace(':', '')
-
-  if (effectiveHost) origins.add(`${effectiveProtocol}://${effectiveHost}`)
-  origins.add(requestURL.origin)
-
+  const origin = requestOrigin(request)
+  if (origin) origins.add(origin)
   return [...origins]
 }

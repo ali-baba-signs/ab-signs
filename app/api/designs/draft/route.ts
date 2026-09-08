@@ -32,11 +32,15 @@ function designSaveFailure(error: unknown) {
   if (/Design data|browser preview|browser render|production (PDF|SVG)|Choose a valid|selected product|selected template|selected size|design option|configured|does not belong|changed during upload|not a real|too large|not found|access denied/i.test(message)) {
     return { status: 400, code: 'DESIGN_VALIDATION_FAILED', message }
   }
-  const details = error as { name?: unknown; code?: unknown; $metadata?: { httpStatusCode?: number } }
+  const details = error as { name?: unknown; code?: unknown; stack?: unknown; severity?: unknown; $metadata?: { httpStatusCode?: number } }
+  const databaseEvidence = `${details?.name || ''} ${details?.code || ''} ${message} ${details?.stack || ''}`
+  if (details?.severity || /^[0-9A-Z]{5}$/.test(String(details?.code || '')) || /postgres|pg-pool|pg-protocol|drizzle|database connection|connection terminated|relation .* does not exist/i.test(databaseEvidence)) {
+    return { status: 500, code: 'DESIGN_DATABASE_FAILED', message: 'Your artwork was uploaded, but the design record could not be saved. Your editor remains open; please retry.' }
+  }
   if (details?.$metadata?.httpStatusCode || /timeout|network|fetch|socket|ECONN|ENOTFOUND|storage|NoSuchKey|NotFound/i.test(`${details?.name || ''} ${details?.code || ''} ${message}`)) {
     return { status: 502, code: 'DESIGN_STORAGE_FAILED', message: 'Design storage did not complete the save. Your editor remains open; retry the save.' }
   }
-  return { status: 500, code: 'DESIGN_SAVE_FAILED', message: 'The design record could not be saved. Your editor remains open; please retry.' }
+  return { status: 500, code: 'DESIGN_DATABASE_FAILED', message: 'The design record could not be saved. Your editor remains open; please retry.' }
 }
 
 function uploadedRender(value: unknown): UploadedRender {
@@ -95,8 +99,8 @@ async function acceptProduction(render: UploadedProduction, ownerId: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session?.user) return NextResponse.json({ error: { message: 'Sign in to save a private design.' } }, { status: 401 })
+  const session = await getSession(request)
+  if (!session?.user) return NextResponse.json({ error: { code: 'DESIGN_NOT_AUTHORIZED', message: 'Your session expired. Please sign in again, then retry saving your design.' } }, { status: 401 })
   try {
     const input = await request.json() as Record<string, unknown>
     const id = typeof input.id === 'string' && uuid.test(input.id) ? input.id : null
