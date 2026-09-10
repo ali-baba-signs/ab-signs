@@ -14,14 +14,15 @@ const sections: Array<{ id: EditorSection; label: string; icon: typeof Package }
 
 export function EditorSidebar({ active, onChange }: { active: EditorSection; onChange: (value: EditorSection) => void }) {
   return (
-    <nav className="flex w-[78px] shrink-0 flex-col border-r border-zinc-200 bg-white py-2">
+    <nav aria-label="Editor tools" className="grid w-full shrink-0 grid-cols-6 border-b border-zinc-200 bg-white lg:flex lg:w-[78px] lg:flex-col lg:border-b-0 lg:border-r lg:py-2">
       {sections.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
           type="button"
+          aria-pressed={active === id}
           onClick={() => onChange(id)}
           className={`flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium transition ${
-            active === id ? 'border-r-2 border-[#ed1b68] bg-pink-50 text-[#ed1b68]' : 'text-zinc-600 hover:bg-zinc-50'
+            active === id ? 'border-b-2 border-[#ed1b68] bg-pink-50 text-[#ed1b68] lg:border-b-0 lg:border-r-2' : 'text-zinc-600 hover:bg-zinc-50'
           }`}
         >
           <Icon className="h-5 w-5" />

@@ -13,6 +13,7 @@ export interface ContactEmailInput {
   subject: string
   message: string
   recipient: string
+  artwork?: { filename: string; contentType: string; content: Buffer }
 }
 
 function requiredEnvironment(name: string) {
@@ -123,6 +124,7 @@ export async function sendContactEmail(input: ContactEmailInput) {
     subject: `[Website enquiry] ${input.subject.replace(/[\r\n]+/g, ' ')}`,
     text: `${fields.map(([label, value]) => `${label}: ${value}`).join('\n')}\n\n${input.message}`,
     html: `<h2>New website enquiry</h2><dl>${fields.map(([label, value]) => `<dt><strong>${escapeHtml(label)}</strong></dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl><h3>${escapeHtml(input.subject)}</h3><p>${escapeHtml(input.message).replace(/\r?\n/g, '<br>')}</p>`,
+    attachments: input.artwork ? [{ filename: input.artwork.filename, contentType: input.artwork.contentType, content: input.artwork.content }] : undefined,
   })
 
   if (process.env.SMTP_SEND_ACKNOWLEDGEMENT?.toLowerCase() === 'true') {

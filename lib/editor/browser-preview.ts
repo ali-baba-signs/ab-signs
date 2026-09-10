@@ -1,6 +1,7 @@
 import { StaticCanvas } from 'fabric'
 import type { ProductConfig } from './types'
 import { DESIGN_RENDER_CHUNK_BYTES, friendlyDesignRenderError, type DesignRenderPurpose, type DesignRenderUploadManifest } from '@/lib/storage/design-render-uploads'
+import { ensureCompleteGeneratedSvg, prepareCanvasJsonForExport } from './svg-export'
 
 export interface BrowserRenderAsset {
   key: string
@@ -30,7 +31,7 @@ export async function renderBrowserSide(
   const element = document.createElement('canvas')
   const canvas = new StaticCanvas(element, { width, height, backgroundColor: '#ffffff', renderOnAddRemove: false })
   try {
-    await canvas.loadFromJSON(canvasJson)
+    await canvas.loadFromJSON(await prepareCanvasJsonForExport(canvasJson))
     canvas.renderAll()
     const filter = (object: { excludeFromExport?: boolean }) => !object.excludeFromExport
     const maxDimension = Math.max(width, height)
@@ -83,6 +84,14 @@ export async function uploadGeneratedDesignAsset(
   designId: string,
   fetcher: typeof fetch = fetch,
 ) {
+  if (contentType === 'image/svg+xml') {
+    try {
+      ensureCompleteGeneratedSvg(await blob.text(), '1', '1')
+    } catch (error) {
+      console.error('Generated SVG rejected before upload', error)
+      throw new Error('Your design preview could not be generated. Please retry.', { cause: error })
+    }
+  }
   const manifest: DesignRenderUploadManifest = { uploadId: crypto.randomUUID(), filename, contentType, size: blob.size, purpose, designId }
   const send = async (body: FormData | string) => {
     const controller = new AbortController()

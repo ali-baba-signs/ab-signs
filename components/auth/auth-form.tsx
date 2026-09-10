@@ -30,6 +30,7 @@ export function AuthForm({
   const [code, setCode] = useState('')
   const [resendAvailableAt, setResendAvailableAt] = useState(0)
   const [countdown, setCountdown] = useState(0)
+  const [emailDeliveryFailed, setEmailDeliveryFailed] = useState(false)
 
   const isSignUp = mode === 'sign-up'
   const callbackURL = useMemo(() => {
@@ -54,10 +55,21 @@ export function AuthForm({
   async function resendVerificationEmail() {
     if (!email || loading) return
     setLoading(true); setError(null); setSuccess(null)
-    const result = await authClient.sendVerificationEmail({ email, callbackURL: '/sign-in?verified=1' })
-    if (result.error) setError(result.error.message || 'The verification email could not be resent.')
-    else setSuccess('Verification email sent. Check your inbox and spam folder.')
-    setLoading(false)
+    try {
+      const result = await authClient.sendVerificationEmail({ email, callbackURL: '/sign-in?verified=1' })
+      if (result.error) {
+        setEmailDeliveryFailed((result.error as { code?: string }).code === 'EMAIL_DELIVERY_FAILED')
+        setError(result.error.message || 'The verification email could not be resent.')
+      } else {
+        setEmailDeliveryFailed(false)
+        setSuccess('Verification email sent. Check your inbox and spam folder.')
+      }
+    } catch (reason) {
+      setEmailDeliveryFailed(true)
+      setError(reason instanceof Error ? `The verification email request failed: ${reason.message}` : 'The verification email service could not be reached.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function verifyMfa(event: React.FormEvent) {
@@ -80,6 +92,7 @@ export function AuthForm({
     e.preventDefault()
     setError(null)
     setSuccess(null)
+    setEmailDeliveryFailed(false)
     setLoading(true)
 
     try {
@@ -92,14 +105,16 @@ export function AuthForm({
 
       if (error) {
         const message = error.message ?? 'Could not complete the request. Check the email and password.'
-        setError((error as { code?: string }).code === 'EMAIL_NOT_VERIFIED' ? 'Verify your email address before signing in.' : message)
+        const code = (error as { code?: string }).code
+        setEmailDeliveryFailed(code === 'EMAIL_DELIVERY_FAILED')
+        setError(code === 'EMAIL_NOT_VERIFIED' ? 'Verify your email address before signing in.' : message)
         setLoading(false)
         return
       }
 
       if (!admin && !isSignUp && (result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) {
-        await sendMfaCode()
         setStep('mfa')
+        await sendMfaCode()
         setSuccess('A six-digit code was sent to your email address.')
         setLoading(false)
         return
@@ -254,7 +269,7 @@ export function AuthForm({
               )}
             </Button>
             {step === 'mfa' && <div className="flex items-center justify-between gap-3 text-sm"><button type="button" className="font-semibold text-primary hover:underline disabled:text-muted-foreground" disabled={loading || countdown > 0} onClick={() => void sendMfaCode().then(() => setSuccess('A new verification code was sent.')).catch((reason) => setError(reason instanceof Error ? reason.message : 'The code could not be resent.'))}>{countdown > 0 ? `Resend in ${countdown}s` : 'Resend code'}</button><button type="button" className="font-semibold hover:underline" onClick={() => { setStep('credentials'); setCode(''); setError(null); setSuccess(null) }}>Use another account</button></div>}
-            {!admin && !isSignUp && step === 'credentials' && error?.toLowerCase().includes('verify your email') && <Button type="button" variant="outline" onClick={() => void resendVerificationEmail()} disabled={loading}>Resend verification email</Button>}
+            {!admin && step === 'credentials' && (emailDeliveryFailed || (!isSignUp && error?.toLowerCase().includes('verify your email'))) && <Button type="button" variant="outline" onClick={() => void resendVerificationEmail()} disabled={loading}>Resend verification email</Button>}
           </form>
 
           {!admin && step === 'credentials' && (

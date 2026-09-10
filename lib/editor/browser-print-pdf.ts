@@ -3,6 +3,8 @@ import type { ProductConfig, EditorObject } from './types'
 import { CUSTOM_PROPERTIES } from './types'
 import { buildPrintReadyCmykPdf } from '@/lib/pdf/print-ready-core'
 import { productionMetadata, productionSpec } from '@/lib/production/production-spec'
+import { ensureCompleteGeneratedSvg, prepareCanvasJsonForExport } from './svg-export'
+import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
 
 FabricObject.customProperties = [...CUSTOM_PROPERTIES]
 
@@ -72,7 +74,7 @@ async function createProductionCanvas(canvasJson: Record<string, unknown>, confi
   const trimLeft = (spec.markMarginMm + spec.bleedMm) * scaleX, trimTop = (spec.markMarginMm + spec.bleedMm) * scaleY
   const pageWidth = Math.round(spec.pageWidthMm * scaleX), pageHeight = Math.round(spec.pageHeightMm * scaleY)
   const canvas = new StaticCanvas(document.createElement('canvas'), { width, height, backgroundColor: '#ffffff', renderOnAddRemove: false })
-  await canvas.loadFromJSON(canvasJson)
+  await canvas.loadFromJSON(await prepareCanvasJsonForExport(canvasJson))
   const fixedLayer = (canvas.getObjects() as EditorObject[]).find((object) => object.role === 'fixed-product-layer')
   if (spec.productKind === 'flag' && !fixedLayer) {
     canvas.dispose()
@@ -118,7 +120,14 @@ export async function renderProductionFiles(canvasJson: Record<string, unknown>,
   const { canvas, spec, pageWidth, pageHeight } = await createProductionCanvas(canvasJson, config)
   try {
     const metadata = productionMetadata(config)
-    const svgMarkup = injectSvgMetadata(canvas.toSVG({ suppressPreamble: false, width: `${spec.pageWidthMm}mm`, height: `${spec.pageHeightMm}mm` }), metadata, title)
+    const width = `${spec.pageWidthMm}mm`, height = `${spec.pageHeightMm}mm`
+    const svgMarkup = sanitizeSvgMarkup(ensureCompleteGeneratedSvg(
+      // Fabric's preamble includes a legacy external SVG 1.1 DOCTYPE. Production
+      // SVGs must be self-contained, so emit the root document without it.
+      injectSvgMetadata(canvas.toSVG({ suppressPreamble: true, width, height }), metadata, title),
+      width,
+      height,
+    ))
     const svg = { blob: new Blob([svgMarkup], { type: 'image/svg+xml' }), contentType: 'image/svg+xml' as const, pixelWidth: pageWidth, pixelHeight: pageHeight, metadata }
     const multiplier = Math.min(4, 4000 / Math.max(pageWidth, pageHeight))
     const raster = canvas.toCanvasElement(multiplier)

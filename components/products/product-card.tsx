@@ -6,6 +6,7 @@ import { Star } from 'lucide-react'
 
 interface ProductCardProps {
   id: string
+  customQuote?: boolean
   name: string
   description?: string
   basePrice: string
@@ -18,6 +19,7 @@ interface ProductCardProps {
 
 export function ProductCard({
   id,
+  customQuote = false,
   name,
   description,
   basePrice,
@@ -27,10 +29,11 @@ export function ProductCard({
   reviewCount = 0,
   soldQuantity = 0,
 }: ProductCardProps) {
+  const href = `/products/${id}`
   return (
-    <div className="group">
-      <Link href={`/products/${id}`}>
-        <div className="relative h-64 rounded-lg overflow-hidden mb-4 bg-secondary border border-border group-hover:border-primary transition-all">
+    <article className="group flex h-full min-w-0 flex-col">
+      <Link href={href}>
+        <div className="relative mb-3 aspect-square overflow-hidden rounded-lg border border-border bg-secondary transition-all group-hover:border-primary sm:mb-4">
           {image ? (
             <img
               src={image}
@@ -51,19 +54,19 @@ export function ProductCard({
           )}
         </div>
       </Link>
-      <h3 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
-        <Link href={`/products/${id}`} className="hover:underline">{name}</Link>
+      <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-foreground transition-colors group-hover:text-primary sm:text-lg sm:leading-7">
+        <Link href={href} className="hover:underline">{name}</Link>
       </h3>
-      {description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{description}</p>}
-      <div className="flex items-center justify-between mt-4 grid grid-cols-2 gap-2">
-        <span className="text-lg font-bold text-primary ">${basePrice}</span>
-        <Link href={`/products/${id}`}><Button size="sm" className="w-full bg-primary hover:bg-opacity-90 text-white">Choose options</Button></Link>
+      <p className="mt-1 line-clamp-2 min-h-10 text-xs text-muted-foreground sm:text-sm">{description || 'Custom printed product'}</p>
+      <div className="mt-auto grid gap-2 pt-3 sm:grid-cols-2 sm:items-center sm:pt-4">
+        {!customQuote && <span className="text-base font-bold text-primary sm:text-lg">${basePrice}</span>}
+        <Link href={customQuote ? '/contact' : href} className={customQuote ? 'sm:col-span-2' : ''}><Button size="sm" className="w-full bg-primary hover:bg-opacity-90 text-white">{customQuote ? 'Request Custom Quote' : 'Choose options'}</Button></Link>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-3 text-xs text-muted-foreground" aria-label="Product popularity">
+      {!customQuote && <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-3 text-[11px] text-muted-foreground sm:gap-x-3 sm:text-xs" aria-label="Product popularity">
         <span className="inline-flex items-center gap-1 font-semibold text-foreground"><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />{reviewCount ? averageRating.toFixed(1) : 'New'}</span>
         <span>{reviewCount} review{reviewCount === 1 ? '' : 's'}</span>
         <span>{soldQuantity >= 500 ? `${Math.floor(soldQuantity / 100) * 100}+` : soldQuantity} sold</span>
-      </div>
-    </div>
+      </div>}
+    </article>
   )
 }

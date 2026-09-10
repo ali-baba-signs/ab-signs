@@ -51,7 +51,7 @@ export function EditorPanels(props: Props) {
   )
 
   return (
-    <aside className="w-[270px] shrink-0 overflow-y-auto border-r border-zinc-200 bg-white p-4">
+    <aside className="max-h-56 w-full shrink-0 overflow-y-auto border-b border-zinc-200 bg-white p-4 lg:max-h-none lg:w-[270px] lg:border-b-0 lg:border-r">
       {props.active === 'product' && <>
         <PanelTitle>Product options</PanelTitle>
         {props.productSizeLocked ? <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm"><p className="font-semibold">Size inherited from the selected template</p><p className="mt-1 text-zinc-600">{props.productConfig.widthMm.toFixed(1)} × {props.productConfig.heightMm.toFixed(1)} mm</p><p className="mt-2 text-xs text-zinc-500">Return to the product page to choose another supported size.</p></div> : <>

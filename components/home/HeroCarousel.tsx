@@ -17,6 +17,8 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
 
   useEffect(() => {
   const handleKeyDown = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement
+    if (!target.closest('[aria-roledescription="carousel"]') || target.closest('input,textarea,select,[contenteditable="true"]')) return
     if (event.key === 'ArrowLeft') {
       setActive((value) => (value - 1 + slides.length) % slides.length)
     }
@@ -46,12 +48,12 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
   aria-roledescription="carousel"
   aria-label="Featured products and design services"
   tabIndex={0}
-  className="relative h-[clamp(420px,62vw,760px)] w-full overflow-hidden bg-zinc-100 focus:outline-none"
+  className="relative w-full overflow-hidden bg-white focus:outline-none lg:h-[clamp(420px,62vw,760px)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
       {slides.map((item, index) => (
-        <div key={item.id} aria-hidden={index !== active} className={`absolute inset-0 transition-opacity duration-700 ${index === active ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+        <div key={item.id} aria-hidden={index !== active} className={`absolute inset-x-0 top-0 h-80 transition-opacity duration-700 lg:inset-0 lg:h-auto ${index === active ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
           <picture>
             <source media="(max-width: 639px)" srcSet={item.mobileImage} />
             <Image
@@ -70,7 +72,7 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
           </picture>
         </div>
       ))}
-      <div className="absolute inset-0 z-0 flex">
+      <div className="absolute inset-x-0 top-0 z-0 flex h-80 lg:inset-0 lg:h-auto">
   
   {/* Left click zone */}
   <button
@@ -93,8 +95,8 @@ export function HeroCarousel({ slides }: { slides: Array<HeroSlide & { image: st
   />
 
 </div>
-      <div className={`pointer-events-none relative z-20 mx-auto flex h-full w-full max-w-[1440px] px-5 py-10 sm:px-8 sm:py-16 lg:px-12 ${slide.verticalAlignment === 'top' ? 'items-start' : slide.verticalAlignment === 'bottom' ? 'items-end' : 'items-center'}`}>
-        <div className={`max-w-2xl ${slide.alignment === 'right' ? 'lg:ml-auto' : slide.alignment === 'center' ? 'mx-auto' : ''}`} style={{ textAlign: style.textAlignment }}>
+      <div className={`pointer-events-none relative z-20 mx-auto flex w-full max-w-[1440px] px-5 pb-16 pt-[344px] sm:px-8 lg:h-full lg:px-12 lg:py-16 ${slide.verticalAlignment === 'top' ? 'items-start' : slide.verticalAlignment === 'bottom' ? 'items-end' : 'items-center'}`}>
+        <div className={`w-full max-w-2xl lg:max-w-[48%] ${slide.alignment === 'right' ? 'lg:ml-auto' : slide.alignment === 'center' ? 'mx-auto' : ''}`} style={{ textAlign: style.textAlignment }}>
           {slide.eyebrow && <p className="mb-4 inline-flex px-3 py-1 uppercase tracking-[.22em]" style={{ color: style.eyebrowColor, backgroundColor: style.eyebrowBackgroundColor, fontSize: responsiveFontSize(style.eyebrowSize, .85), fontWeight: style.eyebrowWeight, borderRadius: style.eyebrowRadius }}>{slide.eyebrow}</p>}
           {slide.title && <h1 className="leading-[1.02]" style={{ color: style.headingColor, fontSize: responsiveFontSize(style.headingSize, .56), fontWeight: style.headingWeight }}>{slide.title}</h1>}
           {slide.description && <p className={`max-w-xl leading-[1.55] ${slide.title || slide.eyebrow ? 'mt-5' : ''} ${style.textAlignment === 'right' ? 'ml-auto' : style.textAlignment === 'center' ? 'mx-auto' : ''}`} style={{ color: style.descriptionColor, fontSize: responsiveFontSize(style.descriptionSize, .88) }}>{slide.description}</p>}

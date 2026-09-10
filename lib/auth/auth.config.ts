@@ -3,8 +3,31 @@ import { twoFactor } from 'better-auth/plugins'
 import { pool } from '@/lib/db/client'
 import { getAuthBaseURL, getTrustedOrigins } from '@/lib/auth/origins'
 import { sendAccountVerificationEmail, sendLoginVerificationCode, sendPasswordResetEmail } from '@/lib/contact/mailer'
+import { captureAuthEmailDeliveryFailure, type AuthEmailKind } from '@/lib/auth/email-delivery'
+import { isLocalAuthBypass } from '@/lib/auth/dev-bypass'
 
 const authBaseURL = getAuthBaseURL()
+export const localMfaBypass = isLocalAuthBypass()
+
+if (localMfaBypass) console.warn('Local MFA bypass enabled. Password and registration email verification are still required.')
+
+async function deliverAuthenticationEmail(kind: AuthEmailKind, delivery: () => Promise<void>) {
+  try {
+    await delivery()
+    if (process.env.NODE_ENV === 'development') console.info(`Authentication ${kind} email accepted by SMTP.`)
+  } catch (error) {
+    captureAuthEmailDeliveryFailure(kind, error)
+    const details = error as { code?: unknown; responseCode?: unknown; command?: unknown; message?: unknown }
+    console.error('Authentication email delivery failed', {
+      kind,
+      code: details?.code,
+      responseCode: details?.responseCode,
+      command: details?.command,
+      message: details?.message,
+    })
+    throw error
+  }
+}
 
 export const auth = betterAuth({
   database: pool,
@@ -15,14 +38,14 @@ export const auth = betterAuth({
     requireEmailVerification: true,
     resetPasswordTokenExpiresIn: 60 * 60,
     revokeSessionsOnPasswordReset: true,
-    sendResetPassword: async ({ user, url }) => sendPasswordResetEmail({ email: user.email, name: user.name, url }),
+    sendResetPassword: async ({ user, url }) => deliverAuthenticationEmail('password-reset', () => sendPasswordResetEmail({ email: user.email, name: user.name, url })),
   },
   emailVerification: {
     expiresIn: 60 * 60,
     sendOnSignUp: true,
     sendOnSignIn: false,
     autoSignInAfterVerification: false,
-    sendVerificationEmail: async ({ user, url }) => sendAccountVerificationEmail({ email: user.email, name: user.name, url }),
+    sendVerificationEmail: async ({ user, url }) => deliverAuthenticationEmail('verification', () => sendAccountVerificationEmail({ email: user.email, name: user.name, url })),
   },
   rateLimit: {
     enabled: true,
@@ -52,7 +75,7 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // 1 day
   },
   trustedOrigins: getTrustedOrigins,
-  plugins: [
+  plugins: localMfaBypass ? [] : [
     twoFactor({
       twoFactorTable: 'two_factors',
       twoFactorCookieMaxAge: 10 * 60,
@@ -63,7 +86,7 @@ export const auth = betterAuth({
         digits: 6,
         allowedAttempts: 5,
         storeOTP: 'hashed',
-        sendOTP: async ({ user, otp }) => sendLoginVerificationCode({ email: user.email, name: user.name, code: otp }),
+        sendOTP: async ({ user, otp }) => deliverAuthenticationEmail('login-code', () => sendLoginVerificationCode({ email: user.email, name: user.name, code: otp })),
       },
     }),
   ],

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { createUploadKey, UploadValidationError } from './upload-validation'
 import { deleteObject, getObjectBody, getObjectMetadata, uploadObject } from './r2'
 import { designRenderChunkSize, type DesignRenderUploadManifest } from './design-render-uploads'
-import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
+import { sanitizeSvgMarkup, SvgValidationError, svgDocumentDiagnostics } from '@/lib/templates/svg-sanitization'
 
 function safeOwner(ownerId: string) {
   return ownerId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)
@@ -24,10 +24,18 @@ export async function storeDesignRenderChunk(ownerId: string, manifest: DesignRe
   return { received: index }
 }
 
-function validateGeneratedFile(contentType: string, body: Buffer) {
+export function validateGeneratedFile(contentType: string, body: Buffer) {
   if (contentType === 'image/png' && !body.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new UploadValidationError('INVALID_FILE_CONTENT', 'The generated design preview is not a valid PNG.')
   if (contentType === 'application/pdf' && !body.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new UploadValidationError('INVALID_FILE_CONTENT', 'The generated production file is not a valid PDF.')
-  if (contentType === 'image/svg+xml') return Buffer.from(sanitizeSvgMarkup(body.toString('utf8')), 'utf8')
+  if (contentType === 'image/svg+xml') {
+    const markup = body.toString('utf8')
+    try {
+      return Buffer.from(sanitizeSvgMarkup(markup), 'utf8')
+    } catch (error) {
+      if (error instanceof SvgValidationError) console.error('Generated SVG validation failed', svgDocumentDiagnostics(markup))
+      throw error
+    }
+  }
   return body
 }
 

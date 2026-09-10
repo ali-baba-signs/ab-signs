@@ -26,7 +26,8 @@ import {
 } from '@/lib/editor/types'
 import { canvasUploadFingerprint, friendlyCanvasUploadError, validateCanvasImageSignature } from '@/lib/storage/canvas-uploads'
 import { validateUpload } from '@/lib/storage/upload-validation'
-import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
+import { sanitizeSvgMarkup, SvgValidationError } from '@/lib/templates/svg-sanitization'
+import { GeneratedSvgError } from '@/lib/editor/svg-export'
 import { storeCanvasUpload } from '@/lib/editor/canvas-image-upload'
 
 FabricObject.customProperties = [...CUSTOM_PROPERTIES]
@@ -271,8 +272,8 @@ export function CanvasEditor() {
     const canvas = canvasRef.current
     const workspace = workspaceRef.current
     if (!canvas || !workspace) return
-    const availableWidth = Math.max(280, workspace.clientWidth - 110)
-    const availableHeight = Math.max(220, workspace.clientHeight - 110)
+    const availableWidth = Math.max(40, workspace.clientWidth - 110)
+    const availableHeight = Math.max(40, workspace.clientHeight - 160)
     const nextZoom = Math.min(
       availableWidth / config.logicalCanvasWidth,
       availableHeight / config.logicalCanvasHeight,
@@ -767,7 +768,7 @@ export function CanvasEditor() {
           production = await renderProductionFiles(canvasJson, configRef.current, `${side} production artwork`)
         } catch (error) {
           console.error(`${side} design render failed`, error)
-          throw new Error(`The ${side} artwork preview could not be generated. Your design remains open; review the artwork and retry.`, { cause: error })
+          throw new Error('Your design preview could not be generated. Please retry.', { cause: error })
         }
         setProcessing(`Uploading ${side} artwork…`)
         const [previewAsset, productionPdf, productionSvg] = await Promise.all([
@@ -886,7 +887,12 @@ export function CanvasEditor() {
       canvas.setDimensions({ width: oldWidth, height: oldHeight }); canvas.setZoom(oldZoom); guidesEnabledRef.current = guides; canvas.requestRenderAll()
       if (format === 'preview') { const data = await addWatermark(originalData); const preview = window.open('', '_blank', 'noopener,noreferrer'); if (preview) preview.document.write(`<title>Design Preview</title><img alt="Design preview" style="max-width:100%;height:auto" src="${data}">`) }
       else { const production = await renderProductionFiles(canvasJson, configRef.current); downloadProductionFile(production[format], `alibaba-signs-${Date.now()}.${format}`) }
-    } catch (error) { setStatus(error instanceof Error ? error.message : 'The design export failed.') }
+    } catch (error) {
+      console.error(`Design ${format} export failed`, error)
+      setStatus(error instanceof GeneratedSvgError || error instanceof SvgValidationError
+        ? 'Your design preview could not be generated. Please retry.'
+        : error instanceof Error ? error.message : 'The design export failed.')
+    }
     finally { busyRef.current = false; setProcessing(null) }
   }, [guides])
 
@@ -924,9 +930,9 @@ export function CanvasEditor() {
   }, [deleteSelected, duplicateSelected, redo, scheduleSnapshot, undo])
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] min-h-[620px] flex-col overflow-hidden bg-white text-zinc-900">
+    <div className="flex min-h-[620px] min-w-0 flex-col overflow-hidden bg-white text-zinc-900 lg:h-[calc(100dvh-5rem)]">
       <EditorHeader canUndo={canUndo} canRedo={canRedo} status={status} disabled={Boolean(processing)} onUndo={() => void undo()} onRedo={() => void redo()} onSave={() => void save()} onPreview={() => void exportOutput('preview')} onDownloadPdf={() => void exportOutput('pdf')} onDownloadSvg={() => void exportOutput('svg')} onContinue={() => void continueFromEditor()} />
-      <div className="flex min-h-0 flex-1" inert={Boolean(processing)}>
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row" inert={Boolean(processing)}>
         <EditorSidebar active={active} onChange={setActive} />
         <EditorPanels
           active={active}
@@ -947,7 +953,7 @@ export function CanvasEditor() {
           onDuplicate={() => void duplicateSelected()}
           onDelete={deleteSelected}
         />
-        <div className="relative flex min-w-0 flex-1"><CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />{productConfig.sideMode === 'double' && <div className="absolute right-3 top-3 z-20 rounded-md border bg-white p-1 shadow"><p className="px-2 pb-1 text-[11px] font-semibold text-zinc-500">Design side</p><div className="flex gap-1"><button type="button" onClick={() => void switchSide('front')} aria-pressed={currentSide === 'front'} className={`rounded px-4 py-2 text-xs font-bold ${currentSide === 'front' ? 'bg-primary text-primary-foreground' : 'hover:bg-zinc-100'}`}>Front</button><button type="button" onClick={() => void switchSide('back')} aria-pressed={currentSide === 'back'} className={`rounded px-4 py-2 text-xs font-bold ${currentSide === 'back' ? 'bg-primary text-primary-foreground' : 'hover:bg-zinc-100'}`}>Back</button></div></div>}</div>
+        <div className="relative flex min-h-[420px] min-w-0 flex-1 lg:min-h-0"><CanvasWorkspace canvasRef={elementRef} workspaceRef={workspaceRef} guides={guides} zoom={zoom} productConfig={productConfig} onFit={() => fitToScreen()} onToggleGuides={() => { guidesEnabledRef.current = !guides; setGuides(!guides); canvasRef.current?.requestRenderAll() }} />{productConfig.sideMode === 'double' && <div className="absolute right-3 top-24 z-20 rounded-md border bg-white p-1 shadow lg:top-3"><p className="px-2 pb-1 text-[11px] font-semibold text-zinc-500">Design side</p><div className="flex gap-1"><button type="button" onClick={() => void switchSide('front')} aria-pressed={currentSide === 'front'} className={`rounded px-4 py-2 text-xs font-bold ${currentSide === 'front' ? 'bg-primary text-primary-foreground' : 'hover:bg-zinc-100'}`}>Front</button><button type="button" onClick={() => void switchSide('back')} aria-pressed={currentSide === 'back'} className={`rounded px-4 py-2 text-xs font-bold ${currentSide === 'back' ? 'bg-primary text-primary-foreground' : 'hover:bg-zinc-100'}`}>Back</button></div></div>}</div>
       </div>
       {processing && <div className="fixed inset-0 z-[100] grid place-items-center bg-white/55 backdrop-blur-[1px]" role="dialog" aria-modal="true" aria-live="polite"><div className="flex items-center gap-3 rounded-xl border bg-white/95 px-5 py-4 shadow-xl"><span className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-200 border-t-[#ed1b68]"/><p className="font-semibold">{processing}</p></div></div>}
     </div>

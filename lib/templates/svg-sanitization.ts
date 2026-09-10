@@ -6,10 +6,31 @@ const externalCssUrl = /url\(\s*["']?\s*(?:https?:|\/\/|javascript:)/i
 
 export class SvgValidationError extends Error {}
 
+function diagnosticSnippet(value: string) {
+  return value
+    .replace(/(data:image\/[a-z0-9.+-]+(?:;charset=[^;,]+)?(?:;base64)?,)[^"'\s)>]+/gi, '$1[image-data-redacted]')
+    .replace(/[a-z0-9+/_=%-]{80,}/gi, '[long-data-redacted]')
+    .replace(/[\r\n\t]+/g, ' ')
+}
+
+export function svgDocumentDiagnostics(value: string) {
+  const normalized = value.replace(/^\uFEFF/, '').trim()
+  const withoutDeclaration = normalized.replace(/^<\?xml\s[^?]*\?>\s*/i, '')
+  return {
+    length: value.length,
+    startsWithSvg: /^<svg\b/i.test(withoutDeclaration),
+    hasClosingSvg: /<\/svg>/i.test(normalized),
+    endsWithClosingSvg: /<\/svg>\s*$/i.test(normalized),
+    first200: diagnosticSnippet(value.slice(0, 200)),
+    last200: diagnosticSnippet(value.slice(-200)),
+  }
+}
+
 export function sanitizeSvgMarkup(value: string) {
   if (!value || value.length > 10 * 1024 * 1024) throw new SvgValidationError('SVG must be smaller than 10 MB.')
   const svg = value.replace(/^\uFEFF/, '').replace(/<!--([\s\S]*?)-->/g, '').trim().replace(/^<\?xml\s[^?]*\?>\s*/i, '')
-  if (!/^<svg\b/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) throw new SvgValidationError('The file is not a complete SVG document.')
+  if (!/^<svg\b/i.test(svg)) throw new SvgValidationError('The generated SVG root element is missing.')
+  if (!/<\/svg>\s*$/i.test(svg)) throw new SvgValidationError('The generated SVG closing tag is missing.')
   if (/<!doctype|<!entity|<\?xml-stylesheet/i.test(svg)) throw new SvgValidationError('SVG document types, entities, and external stylesheets are not supported.')
   if (forbiddenElements.test(svg)) throw new SvgValidationError('SVG contains a forbidden embedded element.')
   if (eventAttribute.test(svg)) throw new SvgValidationError('SVG event-handler attributes are not allowed.')

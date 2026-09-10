@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
@@ -26,7 +26,7 @@ type UploadedRender = {
 type ProductionContentType = 'application/pdf' | 'image/svg+xml'
 type UploadedProduction = { key: string; contentType: ProductionContentType; size: number; pixelWidth: number; pixelHeight: number; metadata?: Record<string, unknown> }
 
-function designSaveFailure(error: unknown) {
+function designSaveFailure(error: unknown, stage: string) {
   const message = error instanceof Error ? error.message : ''
   if (error instanceof R2ConfigurationError) return { status: 503, code: error.code, message: 'Design storage is temporarily unavailable. Your editor remains open; retry shortly.' }
   if (/Design data|browser preview|browser render|production (PDF|SVG)|Choose a valid|selected product|selected template|selected size|design option|configured|does not belong|changed during upload|not a real|too large|not found|access denied/i.test(message)) {
@@ -37,6 +37,9 @@ function designSaveFailure(error: unknown) {
   if (details?.severity || /^[0-9A-Z]{5}$/.test(String(details?.code || '')) || /postgres|pg-pool|pg-protocol|drizzle|database connection|connection terminated|relation .* does not exist/i.test(databaseEvidence)) {
     return { status: 500, code: 'DESIGN_DATABASE_FAILED', message: 'Your artwork was uploaded, but the design record could not be saved. Your editor remains open; please retry.' }
   }
+  if (stage === 'authentication') return { status: 503, code: 'AUTH_SESSION_CHECK_FAILED', message: 'Your session could not be checked because authentication storage failed. Your editor remains open; retry shortly.' }
+  if (stage.startsWith('database')) return { status: 500, code: 'DESIGN_DATABASE_FAILED', message: 'Your artwork was uploaded, but the design record could not be saved. Your editor remains open; please retry.' }
+  if (stage.startsWith('storage')) return { status: 502, code: 'DESIGN_STORAGE_FAILED', message: 'Cloudflare R2 did not complete the design save. Your editor remains open; retry shortly.' }
   if (details?.$metadata?.httpStatusCode || /timeout|network|fetch|socket|ECONN|ENOTFOUND|storage|NoSuchKey|NotFound/i.test(`${details?.name || ''} ${details?.code || ''} ${message}`)) {
     return { status: 502, code: 'DESIGN_STORAGE_FAILED', message: 'Design storage did not complete the save. Your editor remains open; retry the save.' }
   }
@@ -99,9 +102,12 @@ async function acceptProduction(render: UploadedProduction, ownerId: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession(request)
-  if (!session?.user) return NextResponse.json({ error: { code: 'DESIGN_NOT_AUTHORIZED', message: 'Your session expired. Please sign in again, then retry saving your design.' } }, { status: 401 })
+  const requestId = randomUUID()
+  let stage = 'authentication'
   try {
+    const session = await getSession(request)
+    if (!session?.user) return NextResponse.json({ error: { code: 'DESIGN_NOT_AUTHORIZED', message: 'Your session expired. Please sign in again, then retry saving your design.', requestId } }, { status: 401 })
+    stage = 'request-validation'
     const input = await request.json() as Record<string, unknown>
     const id = typeof input.id === 'string' && uuid.test(input.id) ? input.id : null
     const productId = typeof input.productId === 'string' && uuid.test(input.productId) ? input.productId : null
@@ -117,6 +123,7 @@ export async function POST(request: NextRequest) {
     const variantId = typeof input.variantId === 'string' && uuid.test(input.variantId) ? input.variantId : typeof input.sizeId === 'string' && uuid.test(input.sizeId) ? input.sizeId : null
     if (!productId || !templateId || !variantId) throw new Error('Choose a valid product, template, and production variant before saving the design.')
 
+    stage = 'database-catalog-read'
     const [[product], [template], [productSize]] = await Promise.all([
       db.select().from(products).where(eq(products.id, productId)).limit(1),
       db.select().from(templates).where(eq(templates.id, templateId)).limit(1),
@@ -157,6 +164,7 @@ export async function POST(request: NextRequest) {
     const backProductionFiles = productionInput.back && typeof productionInput.back === 'object' ? productionInput.back as Record<string, unknown> : {}
     const backProductionInput = sideMode === 'double' ? uploadedProduction(backProductionFiles.pdf ?? productionInput.back, 'application/pdf') : null
     const backSvgInput = sideMode === 'double' ? uploadedProduction(backProductionFiles.svg, 'image/svg+xml') : null
+    stage = 'storage-render-verification'
     const [front, back, frontProduction, backProduction, frontSvg, backSvg] = await Promise.all([
       acceptPreview(frontInput, session.user.id),
       backInput ? acceptPreview(backInput, session.user.id) : Promise.resolve(null),
@@ -167,6 +175,7 @@ export async function POST(request: NextRequest) {
     ])
 
     const key = createUploadKey({ filename: 'design-draft.json', contentType: 'application/json', size: body.length, purpose: 'design-draft', designId: id || undefined }, session.user.id)
+    stage = 'storage-draft-upload'
     await uploadObject({ key, body, contentType: 'application/json', metadata: { ownerId: session.user.id, private: 'true' } })
     const asset = await registerStorageAsset({ key, contentType: 'application/json', size: body.length, etag: createHash('sha256').update(body).digest('hex') })
     const canvasData = {
@@ -196,6 +205,7 @@ export async function POST(request: NextRequest) {
     }
     const oldKey = existing && existing.assetId ? (existing.canvasData as Record<string, unknown>)?.assetKey : null
 
+    stage = 'database-design-save'
     const saved = await db.transaction(async (tx) => {
       if (existing) {
         const [latest] = await tx.select({ version: designVersions.version }).from(designVersions).where(eq(designVersions.designId, existing.id)).orderBy(desc(designVersions.version)).limit(1)
@@ -217,10 +227,12 @@ export async function POST(request: NextRequest) {
       console.error('Saved design upload cleanup deferred to scheduled cleanup', error)
       return null
     })
-    return NextResponse.json({ data: { design: saved, uploadCleanup } }, { status: existing ? 200 : 201 })
+    return NextResponse.json({ data: { design: saved, uploadCleanup } }, { status: existing ? 200 : 201, headers: { 'cache-control': 'private, no-store', 'x-request-id': requestId } })
   } catch (error) {
-    console.error('Private design save failed', error)
-    const failure = designSaveFailure(error)
-    return NextResponse.json({ error: { code: failure.code, message: failure.message } }, { status: failure.status })
+    const details = error as { name?: unknown; code?: unknown; message?: unknown; stack?: unknown; $metadata?: { httpStatusCode?: number } }
+    console.error('Private design save failed', { requestId, stage, name: details?.name, code: details?.code, status: details?.$metadata?.httpStatusCode, message: details?.message, stack: details?.stack })
+    const failure = designSaveFailure(error, stage)
+    const message = failure.status >= 500 ? `${failure.message} Reference: ${requestId}.` : failure.message
+    return NextResponse.json({ error: { code: failure.code, message, requestId } }, { status: failure.status, headers: { 'cache-control': 'private, no-store', 'x-request-id': requestId } })
   }
 }

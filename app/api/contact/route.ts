@@ -5,6 +5,8 @@ import { db } from '@/lib/db/client'
 import { contactSubmissions } from '@/lib/db/schema'
 import { sendContactEmail } from '@/lib/contact/mailer'
 import { loadStoreSettings } from '@/lib/store/load-settings'
+import { validateUpload } from '@/lib/storage/upload-validation'
+import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
 
 class ContactError extends Error {
   constructor(message: string, readonly status = 400, readonly code = 'INVALID_CONTACT') { super(message) }
@@ -14,10 +16,23 @@ function requestIp(request: NextRequest) {
   return request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
 
+function validateArtworkBytes(extension: string, body: Buffer) {
+  const pdf = body.subarray(0, 5).equals(Buffer.from('%PDF-'))
+  const postscript = body.subarray(0, 20).toString('ascii').startsWith('%!PS-Adobe')
+  if (extension === 'pdf' && !pdf) throw new ContactError('The PDF signature is invalid.')
+  if (extension === 'png' && body.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new ContactError('The PNG signature is invalid.')
+  if (extension === 'eps' && !postscript) throw new ContactError('The EPS signature is invalid.')
+  if (extension === 'ai' && !pdf && !postscript) throw new ContactError('The AI file signature is invalid.')
+}
+
 export async function POST(request: NextRequest) {
   let submissionId: string | null = null
   try {
-    const input = await request.json() as Record<string, unknown>
+    const isMultipart = request.headers.get('content-type')?.toLowerCase().includes('multipart/form-data')
+    const formData = isMultipart ? await request.formData() : null
+    const input = formData
+      ? Object.fromEntries([...formData.entries()].filter(([, entry]) => typeof entry === 'string')) as Record<string, unknown>
+      : await request.json() as Record<string, unknown>
     const value = (key: string, max: number) => typeof input[key] === 'string' ? input[key].trim().slice(0, max) : ''
     if (value('website', 200)) return NextResponse.json({ data: { message: 'Message received.' } }, { status: 201 })
 
@@ -36,6 +51,24 @@ export async function POST(request: NextRequest) {
     if (subject.length < 3) throw new ContactError('Enter a subject.')
     if (message.length < 10) throw new ContactError('Message must contain at least 10 characters.')
 
+    let artwork: { filename: string; contentType: string; content: Buffer } | undefined
+    const file = formData?.get('artwork')
+    if (file instanceof File && file.size) {
+      try {
+        if (enquiryType !== 'Custom quotation') throw new Error('Artwork can only be attached to a custom quotation.')
+        const extension = file.name.split('.').pop()?.toLowerCase() || ''
+        const inferredTypes: Record<string, string> = { pdf: 'application/pdf', svg: 'image/svg+xml', png: 'image/png', eps: 'application/postscript', ai: 'application/vnd.adobe.illustrator' }
+        const contentType = file.type || inferredTypes[extension] || ''
+        validateUpload({ filename: file.name, contentType, size: file.size, purpose: 'design-artwork' })
+        const content = Buffer.from(await file.arrayBuffer())
+        validateArtworkBytes(extension, content)
+        if (contentType === 'image/svg+xml') sanitizeSvgMarkup(content.toString('utf8'))
+        artwork = { filename: file.name.slice(0, 255), contentType, content }
+      } catch (artworkError) {
+        throw artworkError instanceof ContactError ? artworkError : new ContactError(artworkError instanceof Error ? artworkError.message : 'The artwork file is invalid.')
+      }
+    }
+
     const ipHash = createHash('sha256').update(`${process.env.CONTACT_RATE_LIMIT_SALT || 'ali-baba-signs-contact'}:${requestIp(request)}`).digest('hex')
     const since = new Date(Date.now() - 15 * 60 * 1000)
     const [recent] = await db.select({ value: count() }).from(contactSubmissions).where(and(eq(contactSubmissions.ipHash, ipHash), gte(contactSubmissions.createdAt, since)))
@@ -50,7 +83,7 @@ export async function POST(request: NextRequest) {
     const settings = await loadStoreSettings()
     const recipient = settings.storeEmail || process.env.CONTACT_TO_EMAIL?.trim() || process.env.CONTACT_FALLBACK_EMAIL?.trim()
     if (!recipient) throw new Error('Contact recipient is not configured.')
-    await sendContactEmail({ id: saved.id, name, email, phone, company, orderNumber, enquiryType, subject, message, recipient })
+    await sendContactEmail({ id: saved.id, name, email, phone, company, orderNumber, enquiryType, subject, message, recipient, artwork })
     await db.update(contactSubmissions).set({ emailStatus: 'sent', updatedAt: new Date() }).where(eq(contactSubmissions.id, saved.id))
     return NextResponse.json({ data: { id: saved.id, message: 'Thanks — your enquiry has been sent.' } }, { status: 201 })
   } catch (error) {

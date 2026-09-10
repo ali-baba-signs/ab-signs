@@ -37,8 +37,12 @@ export function designRenderChunkSize(manifest: DesignRenderUploadManifest, inde
 
 export function friendlyDesignRenderError(error: unknown) {
   const details = error as { name?: unknown; message?: unknown }
-  if (String(details?.name || '') === 'AbortError') return 'The artwork upload timed out. Check your connection and retry.'
+  const name = String(details?.name || '')
+  if (name === 'AbortError') return 'The artwork upload timed out before the server responded. Your design is still open; retry.'
   const message = String(details?.message || '')
+  if (/SVG root|SVG closing tag|complete SVG document|SVG document types|SVG contains|Imported SVG/i.test(message)) return 'Your design preview could not be generated. Please retry.'
   if (/generated artwork|production file|design preview|sign in|storage is temporarily|maximum file size|filename extension/i.test(message)) return message
-  return 'The generated artwork could not be stored. Your design is still open; check your connection and retry.'
+  if (name === 'TypeError' || /failed to fetch|network|load failed/i.test(message)) return 'A network connection to the design upload service could not be made. Your design is still open; retry when the service is reachable.'
+  const detail = message.replace(/[\r\n]+/g, ' ').trim().slice(0, 160)
+  return `The artwork upload stopped before storage responded.${detail ? ` Browser detail: ${detail}.` : ''} Your design is still open; retry.`
 }

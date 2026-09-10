@@ -38,25 +38,21 @@ export function Header() {
         </div>
       </div>
 
-      <div className="border-b border-zinc-200">
-        <div className="mx-auto grid min-h-20 max-w-[1440px] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 sm:gap-6 sm:px-8">
-          <button type="button" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-label="Toggle navigation" className="grid h-11 w-11 place-items-center rounded-md hover:bg-zinc-100 lg:hidden">
-            {menuOpen ? <X /> : <Menu />}
-          </button>
-          <Link href="/" className="hidden shrink-0 lg:block"><Image src="/blogo.png" alt="Alibaba Signs" width={210} height={70} priority className="h-12 w-auto" /></Link>
-          <Link href="/" className="justify-self-center lg:hidden"><Image src="/blogo.png" alt="Alibaba Signs" width={150} height={50} priority className="h-9 w-auto" /></Link>
+      <div className="relative z-20 border-b border-zinc-200">
+        <div className="mx-auto grid min-h-20 max-w-[1440px] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-3 px-4 py-3 sm:grid-cols-[auto_minmax(160px,1fr)_auto] sm:gap-4 sm:px-8 lg:gap-6">
+          <Link href="/" className="min-w-0 shrink-0"><Image src="/blogo.png" alt="Alibaba Signs" width={210} height={70} priority className="h-9 w-auto max-w-full object-contain object-left lg:h-12" /></Link>
 
-          <form action="/products" className="relative hidden w-full max-w-2xl justify-self-center lg:block">
+          <form action="/products" className="relative order-3 col-span-2 w-full min-w-0 sm:order-none sm:col-span-1 sm:max-w-2xl sm:justify-self-center">
             <label htmlFor="site-search" className="sr-only">Search products</label>
-            <input id="site-search" name="search" type="search" placeholder="What are you looking for?" className="h-12 w-full rounded-md border border-zinc-300 bg-zinc-50 px-4 pr-12 text-sm outline-none transition focus:border-[#ed1b68] focus:bg-white focus:ring-2 focus:ring-[#ed1b68]/15" />
-            <button aria-label="Search" className="absolute right-1 top-1 grid h-10 w-10 place-items-center rounded text-[#ed1b68]"><Search className="h-5 w-5" /></button>
+            <input id="site-search" name="search" type="search" placeholder="Search products" className="h-11 w-full min-w-0 rounded-md border border-zinc-300 bg-zinc-50 px-3 pr-11 text-sm outline-none transition focus:border-[#ed1b68] focus:bg-white focus:ring-2 focus:ring-[#ed1b68]/15 lg:h-12 lg:px-4 lg:pr-12" />
+            <button aria-label="Search" className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded text-[#ed1b68]"><Search className="h-5 w-5" /></button>
           </form>
 
-          <div className="flex items-center justify-self-end">
+          <div className="flex min-w-0 items-center justify-self-end">
             <Link href="/contact" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need help?</span>Contact us</Link>
             <div className="relative">
-              <button type="button" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} className="flex min-h-11 items-center gap-2 rounded-md px-2 hover:bg-zinc-100">
-                <UserRound className="h-5 w-5" /><span className="hidden text-sm font-bold sm:inline">{isPending ? 'Account' : session?.user?.name?.split(' ')[0] || 'Account'}</span>
+              <button type="button" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-label={session?.user ? 'Open account menu' : 'Sign in or create an account'} className="flex min-h-11 min-w-0 items-center gap-1 rounded-md px-1.5 hover:bg-zinc-100 sm:gap-2 sm:px-2">
+                <UserRound className="h-5 w-5 shrink-0" /><span className="max-w-16 truncate text-xs font-bold sm:max-w-24 sm:text-sm">{isPending ? 'Account' : session?.user?.name?.split(' ')[0] || 'Sign in'}</span>
               </button>
               {accountOpen && <div className="absolute right-0 top-full mt-2 w-52 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl">
                 {session?.user ? <>
@@ -72,15 +68,14 @@ export function Header() {
               </div>}
             </div>
             <Link href="/cart" aria-label={`Cart with ${items.length} items`} className="relative grid h-11 w-11 place-items-center rounded-md hover:bg-zinc-100"><ShoppingBag className="h-5 w-5" />{items.length > 0 && <span className="absolute right-0 top-0 grid h-5 min-w-5 place-items-center rounded-full bg-[#ed1b68] px-1 text-[10px] font-bold text-white">{items.length}</span>}</Link>
+            <button type="button" onClick={() => setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-controls="mobile-product-navigation" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} className="grid h-11 w-11 shrink-0 place-items-center rounded-md hover:bg-zinc-100 lg:hidden">
+              {menuOpen ? <X /> : <Menu />}
+            </button>
           </div>
         </div>
-        <form action="/products" className="relative mx-4 mb-4 lg:hidden">
-          <input name="search" aria-label="Search products" type="search" placeholder="What are you looking for?" className="h-11 w-full rounded-md border border-zinc-300 bg-zinc-50 px-4 pr-11 text-sm" />
-          <button aria-label="Search" className="absolute right-1 top-0 grid h-11 w-10 place-items-center"><Search className="h-5 w-5" /></button>
-        </form>
       </div>
 
-      <nav aria-label="Product categories" className={`${menuOpen ? 'block' : 'hidden'} border-b border-zinc-200 bg-white lg:block`}>
+      <nav id="mobile-product-navigation" aria-label="Product categories" className={`absolute left-0 right-0 top-full max-h-[calc(100vh-2rem)] overflow-y-auto border-b border-zinc-200 bg-white shadow-xl transition duration-200 ease-out lg:static lg:max-h-none lg:overflow-visible lg:shadow-none ${menuOpen ? 'visible translate-y-0 opacity-100' : 'pointer-events-none invisible -translate-y-2 opacity-0 lg:pointer-events-auto lg:visible lg:translate-y-0 lg:opacity-100'}`}>
         <div className="mx-auto flex max-w-[1440px] flex-col px-4 lg:h-12 lg:flex-row lg:items-center lg:gap-1 lg:px-8">
           <Link href="/products" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">All products</Link>
           <Link href="/offers" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold text-[#ed1b68] hover:text-[#ed1b68]">Offers &amp; Vouchers</Link>

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { assertTransition, allowedTransitions, deadlineState, designDeadline } from '../lib/orders/workflow'
 import { createReceiptPdf } from '../lib/pdf/receipt'
 import { createTemplateCanvasSize } from '../lib/templates/size-conversion'
-import { sanitizeSvgMarkup, validateFabricCanvasData } from '../lib/templates/svg-sanitization'
+import { sanitizeSvgMarkup, svgDocumentDiagnostics, validateFabricCanvasData } from '../lib/templates/svg-sanitization'
 import { createUploadKey, validateUpload } from '../lib/storage/upload-validation'
 import { validateProductInput } from '../lib/products/validation'
 import { validateTemplateInput } from '../lib/templates/validation'
@@ -51,6 +51,10 @@ test('SVG and Fabric validation reject executable, external, and empty template 
   assert.equal(sanitizeSvgMarkup('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>').startsWith('<svg'), true)
   assert.equal(sanitizeSvgMarkup('<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>').startsWith('<svg'), true)
   assert.throws(() => sanitizeSvgMarkup('<?xml-stylesheet href="https://example.com/style.css"?><svg></svg>'))
+  const diagnostics = svgDocumentDiagnostics('<svg><image href="data:image/png;base64,secret"/></svg>')
+  assert.equal(diagnostics.startsWithSvg, true)
+  assert.equal(diagnostics.endsWithClosingSvg, true)
+  assert.doesNotMatch(diagnostics.first200, /secret/)
   assert.throws(() => validateFabricCanvasData({ objects: [] }), /editable Fabric objects/i)
   assert.deepEqual(validateFabricCanvasData({ version: '7.4.0', objects: [{ type: 'rect' }] }).objects, [{ type: 'rect' }])
 })
