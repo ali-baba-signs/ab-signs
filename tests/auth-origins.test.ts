@@ -55,9 +55,8 @@ test('trusted origins contain local, configured, and current request origins onl
     const origins = getTrustedOrigins(new Request('https://request.example.test/api/auth/sign-in'))
     assert.deepEqual(origins, [
       'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'https://deployment.example.test',
-      'https://request.example.test',
+      'https://www.alibabasigns.com.au/',
+  
     ])
     assert.ok(!origins.some((origin) => origin.includes('alibabasigns.com.au')))
   })

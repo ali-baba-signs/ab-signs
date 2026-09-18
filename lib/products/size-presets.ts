@@ -19,3 +19,4 @@ export const FLAG_PRINT_PRESETS = {
   large: { label: 'Large – 4.5m', width: 70, height: 340, assembledHeightDescription: 'Approximately 4.5 m assembled height' },
   extra_large: { label: 'Extra Large – 5.5m', width: 80, height: 410, assembledHeightDescription: 'Approximately 5.5 m assembled height' },
 } as const
+

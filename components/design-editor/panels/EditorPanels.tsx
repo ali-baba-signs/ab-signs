@@ -6,7 +6,8 @@ import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Lock, Trash2, Unlock } from 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { listDesignTemplates } from '@/lib/editor/templates'
-import { PRODUCT_PRESETS } from '@/lib/editor/editor-config'
+// import { PRODUCT_PRESETS } from '@/lib/editor/editor-config'
+import { BANNER_SIZE_PRESETS, FLAG_PRINT_PRESETS } from '@/lib/products/size-presets'
 import type { CanvasSessionUpload, DesignTemplate, EditorObject, EditorSection, ProductConfig } from '@/lib/editor/types'
 
 interface Props {
@@ -29,8 +30,20 @@ interface Props {
   onDelete: () => void
 }
 
-const graphics = ['star', 'arrow', 'phone', 'email', 'badge']
-
+const graphics = ['star', 'arrow', 'phone', 'email', 'badge','rectangle']
+const NORMALIZED_PRESETS = [
+  ...BANNER_SIZE_PRESETS.map(([w, h]) => ({
+    label: `Banner: ${w} × ${h} mm`,
+    widthMm: w,
+    heightMm: h,
+  })),
+  ...Object.entries(FLAG_PRINT_PRESETS).map(([key, item]) => ({
+    label: `Flag: ${item.label} (${item.width * 10} × ${item.height * 10} mm)`,
+    // item.width and height are in cm -> multiplied by 10 for mm
+    widthMm: item.width * 10,
+    heightMm: item.height * 10,
+  })),
+]
 function PanelTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="mb-4 text-base font-bold text-zinc-900">{children}</h2>
 }
@@ -49,27 +62,98 @@ export function EditorPanels(props: Props) {
     () => availableTemplates.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase())),
     [availableTemplates, query],
   )
-
+const selectedPresetIndex = useMemo(() => {
+    return NORMALIZED_PRESETS.findIndex(
+      (p) => p.widthMm === props.productConfig.widthMm && p.heightMm === props.productConfig.heightMm,
+    )
+  }, [props.productConfig.widthMm, props.productConfig.heightMm])
   return (
-    <aside className="max-h-56 w-full shrink-0 overflow-y-auto border-b border-zinc-200 bg-white p-4 lg:max-h-none lg:w-[270px] lg:border-b-0 lg:border-r">
-      {props.active === 'product' && <>
-        <PanelTitle>Product options</PanelTitle>
-        {props.productSizeLocked ? <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm"><p className="font-semibold">Size inherited from the selected template</p><p className="mt-1 text-zinc-600">{props.productConfig.widthMm.toFixed(1)} × {props.productConfig.heightMm.toFixed(1)} mm</p><p className="mt-2 text-xs text-zinc-500">Return to the product page to choose another supported size.</p></div> : <>
-        <label className="mb-2 block text-xs font-semibold text-zinc-600">Size preset</label>
-        <select
-          className="h-10 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm"
-          onChange={(event) => props.onProductChange(PRODUCT_PRESETS[Number(event.target.value)].config)}
-        >
-          {PRODUCT_PRESETS.map((preset, index) => <option key={preset.name} value={index}>{preset.name}</option>)}
-        </select>
-        <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-          <label>Width (mm)<Input type="number" value={props.productConfig.widthMm} onChange={(e) => props.onProductChange({ ...props.productConfig, widthMm: Number(e.target.value) })} /></label>
-          <label>Height (mm)<Input type="number" value={props.productConfig.heightMm} onChange={(e) => props.onProductChange({ ...props.productConfig, heightMm: Number(e.target.value) })} /></label>
-          <div className="rounded border bg-zinc-50 p-2 text-xs"><span className="font-semibold">Bleed</span><span className="block text-zinc-600">{props.productConfig.bleedMm} mm · set by admin</span></div>
-          <div className="rounded border bg-zinc-50 p-2 text-xs"><span className="font-semibold">Safe area</span><span className="block text-zinc-600">{props.productConfig.safeMarginMm} mm · set by admin</span></div>
-        </div>
-        </>}
-      </>}
+<aside className="max-h-56 w-full shrink-0 overflow-y-auto border-b border-zinc-200 bg-white p-4 lg:max-h-none lg:w-[270px] lg:border-b-0 lg:border-r">
+      {props.active === 'product' && (
+        <>
+          <PanelTitle>Product options</PanelTitle>
+          {props.productSizeLocked ? (
+            <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+              <p className="font-semibold">Size inherited from selected product</p>
+              <p className="mt-1 text-zinc-600">
+                {props.productConfig.widthMm.toFixed(1)} × {props.productConfig.heightMm.toFixed(1)} mm
+              </p>
+              <p className="mt-2 text-xs text-zinc-500">
+                Size is locked. Return to the product page to select another size.
+              </p>
+            </div>
+          ) : (
+            <>
+              <label className="mb-2 block text-xs font-semibold text-zinc-600">Preset Size</label>
+              <select
+                className="h-10 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm"
+                value={selectedPresetIndex !== -1 ? selectedPresetIndex : 'custom'}
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (val === 'custom') return
+                  const preset = NORMALIZED_PRESETS[Number(val)]
+                  if (preset) {
+                    props.onProductChange({
+                      ...props.productConfig,
+                      widthMm: preset.widthMm,
+                      heightMm: preset.heightMm,
+                    })
+                  }
+                }}
+              >
+                <option value="custom" disabled={selectedPresetIndex !== -1}>
+                  {selectedPresetIndex === -1 ? 'Custom Size' : '-- Select a preset --'}
+                </option>
+                <optgroup label="Banners">
+                  {BANNER_SIZE_PRESETS.map(([w, h], idx) => (
+                    <option key={`banner-${w}-${h}`} value={idx}>
+                      {w} × {h} mm
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Flags">
+                  {Object.entries(FLAG_PRINT_PRESETS).map(([key, item], idx) => (
+                    <option key={`flag-${key}`} value={BANNER_SIZE_PRESETS.length + idx}>
+                      {item.label} ({item.width * 10} × {item.height * 10} mm)
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+
+              <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                <label>
+                  Width (mm)
+                  <Input
+                    type="number"
+                    value={props.productConfig.widthMm}
+                    onChange={(e) =>
+                      props.onProductChange({ ...props.productConfig, widthMm: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <label>
+                  Height (mm)
+                  <Input
+                    type="number"
+                    value={props.productConfig.heightMm}
+                    onChange={(e) =>
+                      props.onProductChange({ ...props.productConfig, heightMm: Number(e.target.value) })
+                    }
+                  />
+                </label>
+                <div className="rounded border bg-zinc-50 p-2 text-xs">
+                  <span className="font-semibold">Bleed</span>
+                  <span className="block text-zinc-600">{props.productConfig.bleedMm} mm · set by admin</span>
+                </div>
+                <div className="rounded border bg-zinc-50 p-2 text-xs">
+                  <span className="font-semibold">Safe area</span>
+                  <span className="block text-zinc-600">{props.productConfig.safeMarginMm} mm · set by admin</span>
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
 
       {props.active === 'templates' && <>
         <PanelTitle>Templates</PanelTitle>

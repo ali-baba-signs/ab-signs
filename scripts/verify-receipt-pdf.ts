@@ -7,7 +7,7 @@ const outputDirectory = resolve('tmp', 'pdfs')
 const output = resolve(outputDirectory, 'sample-receipt.pdf')
 await mkdir(outputDirectory, { recursive: true })
 await writeFile(output, createReceiptPdf({
-  storeName: 'Ali Baba Signs', storeEmail: 'sales@alibabasigns.com.au', storePhone: '04 33 88 55 79', storeAddress: 'Southern River, Western Australia',
+  storeName: 'Ali Baba Signs', storeEmail: 'sales@alibabasigns.com.au', storePhone: '04 78 23 09 45', storeAddress: 'Southern River, Western Australia',
   orderNumber: 'ABS-VERIFY-001', orderDate: '21/08/2026, 9:00 am', paymentDate: '21/08/2026, 9:05 am', fulfilmentType: 'Delivery', receiptNumber: 'receipt_verify_001', paymentStatus: 'paid',
   customerName: 'Test Customer', customerEmail: 'customer@example.com', shippingAddress: '10 Example Street, Perth, WA, 6000, Australia',
   stripePaymentIntentId: 'pi_3VerifyAliBabaSigns', cardBrand: 'visa', cardLast4: '4242', currency: 'AUD',

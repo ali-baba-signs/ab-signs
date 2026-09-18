@@ -12,7 +12,7 @@ function PolicyContent({ title, intro, sections }: { title: string; intro: strin
   </ContentPage>
 }
 
-const contact = { title: 'Contact Us', items: ['Ali Baba Signs', 'Perth, Western Australia', 'Email: sales@alibabasigns.com.au', 'Phone: 04 33 88 55 79', 'Website: www.alibabasigns.com.au'] }
+const contact = { title: 'Contact Us', items: ['Ali Baba Signs', 'Perth, Western Australia', 'Email: sales@alibabasigns.com.au', 'Phone: 04 78 23 09 45', 'Website: www.alibabasigns.com.au'] }
 
 export function AboutContent() {
   return <ContentPage eyebrow="Company" title="About Us – Ali Baba Signs" intro="Ali Baba Signs is a proudly Australian, family-owned small signage and printing business established in 2019.">
@@ -49,7 +49,7 @@ export function TermsContent() { return <PolicyContent title="Terms & Conditions
   { title: '6. Cancellations', items: ['Orders cannot be cancelled once submitted.', 'Products are non-refundable unless faulty.'] },
   { title: '7. Liability', items: ['Losses caused by incorrect artwork', 'Delays in delivery', 'Damage caused by misuse, improper installation, or weather conditions', 'Indirect or consequential losses'], paragraphs: ['To the fullest extent permitted by law, Ali Baba Signs is not liable for the losses listed above.'] },
   { title: '8. Governing Law', paragraphs: ['These Terms are governed by the laws of Western Australia.'] },
-  { title: '9. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 33 88 55 79', 'www.alibabasigns.com.au'] },
+  { title: '9. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 78 23 09 45', 'www.alibabasigns.com.au'] },
 ]} /> }
 
 export function RefundReturnsContent() { return <PolicyContent title="Refund & Returns Policy" intro="Ali Baba Signs produces custom signage products made specifically to your order. As such, refunds and returns are limited under Australian Consumer Law (ACL)." sections={[
@@ -58,7 +58,7 @@ export function RefundReturnsContent() { return <PolicyContent title="Refund & R
   { title: '3. Shipping Damage', items: ['Please take photographs/videos before opening the package, as evidence.', "If packaging is damaged, please don't accept it.", 'If your product is damaged inside the undamaged packaging, please contact us within 48 hours.', 'Provide photos of the packaging and product.', 'We will lodge a claim with the courier and assist with a replacement.'] },
   { title: '4. Incorrect Orders', paragraphs: ['If we make an error, we will replace or correct the product at no cost to you.'] },
   { title: '5. Non-Returnable Items', items: ['Custom printed products', 'Items damaged by misuse or improper installation', 'Products exposed to extreme weather beyond normal conditions'] },
-  { title: '6. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 33 88 55 79', 'www.alibabasigns.com.au'] },
+  { title: '6. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 78 23 09 45', 'www.alibabasigns.com.au'] },
 ]} /> }
 
 export function ShippingContent() { return <PolicyContent title="Shipping Policy" intro="Delivery and pickup information for Ali Baba Signs orders." sections={[
@@ -69,7 +69,7 @@ export function ShippingContent() { return <PolicyContent title="Shipping Policy
   { title: '5. Delays', paragraphs: ['Ali Baba Signs is not responsible for courier delays caused by:'], items: ['Weather', 'Peak periods', 'Remote locations', 'Operational issues within courier networks'] },
   { title: '6. Lost or Missing Parcels', items: ['We will lodge an investigation with the courier', 'Replacement will be issued once confirmed lost'] },
   { title: '7. Local Pickup', paragraphs: ['Pickup is available from our Perth location by appointment only.'] },
-  { title: '8. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 33 88 55 79', 'www.alibabasigns.com.au'] },
+  { title: '8. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 78 23 09 45', 'www.alibabasigns.com.au'] },
 ]} /> }
 
 export function WarrantyContent() { return <PolicyContent title="Warranty Disclaimer" intro="Ali Baba Signs provides a limited warranty on manufacturing defects for a period of 28 days from delivery." sections={[
@@ -78,7 +78,7 @@ export function WarrantyContent() { return <PolicyContent title="Warranty Discla
   { title: '3. Customer Responsibilities', items: ['Install products correctly', 'Use products for their intended purpose', 'Store items safely when not in use'] },
   { title: '4. Remedies', items: ['Repair the product, or', 'Replace the product (if non-repairable), or', 'Offer a partial refund (if repair or replacement is not possible)'] },
   { title: '5. Limitation of Liability', paragraphs: ['To the extent permitted by law, Ali Baba Signs is not liable for:'], items: ['Loss of business or income', 'Consequential or indirect damages', 'Costs associated with installation or removal'] },
-  { title: '6. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 33 88 55 79'] },
+  { title: '6. Contact Us', items: ['Email: sales@alibabasigns.com.au', 'Phone: 04 78 23 09 45'] },
 ]} /> }
 
 export function CookieContent(){return <ContentPage eyebrow="Legal" title="Cookie Policy" intro="Cookies and local storage keep essential site features working and help us understand service performance."><ContentSection title="Essential storage"><p>Authentication cookies keep signed-in sessions secure. Local storage keeps cart selections on the current device.</p></ContentSection></ContentPage>}

@@ -46,7 +46,7 @@ export interface StoreSettingsValues {
 export const DEFAULT_STORE_SETTINGS: StoreSettingsValues = {
   storeName: 'Ali Baba Signs',
   storeEmail: 'sales@alibabasigns.com.au',
-  storePhone: '04 33 88 55 79',
+  storePhone: '04 78 23 09 45',
   secondaryEmail: '',
   secondaryPhone: '',
   address: 'Perth, Western Australia',
