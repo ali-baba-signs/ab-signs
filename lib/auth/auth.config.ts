@@ -4,7 +4,7 @@ import { pool } from '@/lib/db/client'
 import { getAuthBaseURL, getTrustedOrigins } from '@/lib/auth/origins'
 import { sendAccountVerificationEmail, sendLoginVerificationCode, sendPasswordResetEmail } from '@/lib/contact/mailer'
 import { captureAuthEmailDeliveryFailure, type AuthEmailKind } from '@/lib/auth/email-delivery'
-import { isLocalAuthBypass } from '@/lib/auth/dev-bypass'
+// import { isLocalAuthBypass } from '@/lib/auth/dev-bypass'
 
 const authBaseURL = getAuthBaseURL()
 // export const localMfaBypass = isLocalAuthBypass()
@@ -88,5 +88,4 @@ export const auth = betterAuth({
   //       storeOTP: 'hashed',
   //       sendOTP: async ({ user, otp }) => deliverAuthenticationEmail('login-code', () => sendLoginVerificationCode({ email: user.email, name: user.name, code: otp })),
   //     },
-  //   }),
-  // ],
+    })
