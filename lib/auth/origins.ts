@@ -1,4 +1,4 @@
-const LOCAL_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://www.alibabasigns.com.au/']
+const LOCAL_ORIGINS = ['https://www.alibabasigns.com.au/']
 
 function normalizeOrigin(value: string | undefined) {
   if (!value) return undefined
