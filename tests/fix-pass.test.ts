@@ -26,8 +26,8 @@ test('production CMYK export embeds a true four-channel DeviceCMYK image', () =>
 
 test('banner shipping follows total printed area and ignores free-shipping products', () => {
   assert.equal(printedAreaM2({ width: 1000, height: 2000, unit: 'mm', quantity: 1, isBanner: true }), 2)
-  assert.equal(bannerShippingForArea(2), 15)
-  assert.equal(bannerShippingForArea(2.1), 20)
+  assert.equal(bannerShippingForArea(2), 0)
+  assert.equal(bannerShippingForArea(2.1), 0)
   assert.equal(bannerShippingForArea(5.1), 28)
   assert.equal(bannerShippingForArea(10.1), 40)
   assert.equal(bannerShippingForArea(20.1), 55)

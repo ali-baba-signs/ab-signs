@@ -13,8 +13,8 @@ export interface ShippingLine {
 }
 
 export const DEFAULT_BANNER_SHIPPING_BANDS: ShippingBand[] = [
-  { maxAreaM2: 2, price: 15 },
-  { maxAreaM2: 5, price: 20 },
+  { maxAreaM2: 2, price: 0 },
+  { maxAreaM2: 5, price: 0},
   { maxAreaM2: 10, price: 28 },
   { maxAreaM2: 20, price: 40 },
   { maxAreaM2: null, price: 55 },
