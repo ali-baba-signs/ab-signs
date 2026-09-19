@@ -1,15 +1,17 @@
 import type { DesignTemplate } from './types'
 
 export async function listDesignTemplates() {
-  const productId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('productId') : null
-  const response = await fetch(productId ? `/api/templates?productId=${encodeURIComponent(productId)}` : '/api/templates', { cache: 'no-store' })
+  const selection = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams()
+  const params = new URLSearchParams()
+  for (const key of ['productId', 'sizeId', 'designType']) { const value = selection.get(key); if (value) params.set(key, value) }
+  const response = await fetch(`/api/templates?${params}`, { cache: 'no-store' })
   const payload = await response.json()
   if (!response.ok) throw new Error(payload.error?.message || 'Design Online templates could not be loaded.')
   return (payload.data.templates as Array<Record<string, unknown>>).map((row) => {
     const products = Array.isArray(row.products) ? row.products as Array<Record<string, unknown>> : []
     const sizes = Array.isArray(row.sizes) ? row.sizes as Array<Record<string, unknown>> : []
     const product = products[0]
-    const size = sizes.find((item) => item.isDefault) || sizes[0]
+    const size = sizes.find((item) => item.id === selection.get('sizeId')) || sizes.find((item) => item.isDefault) || sizes[0]
     return {
       id: String(row.id), name: String(row.name), category: String(row.category || 'Templates'), productType: 'signage',
       thumbnail: String(row.previewUrl), jsonFile: '', width: Number(row.logicalCanvasWidth || 1200), height: Number(row.logicalCanvasHeight || 600),
@@ -47,3 +49,4 @@ export async function fetchTemplate(template: DesignTemplate) {
     } : null,
   }
 }
+

@@ -1,10 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
+import { GET as getTemplate } from '../route'
 
-// Keep the heavyweight canonical Fabric JSON on a purpose-specific URL.
+// Serve editor data directly: reverse proxies may expose an internal HTTP origin.
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params
-  const destination = new URL(`/api/templates/${id}`, request.url)
-  destination.search = request.nextUrl.search
+  const destination = new URL(request.url)
   destination.searchParams.set('editor', '1')
-  return NextResponse.redirect(destination)
+  return getTemplate(new NextRequest(destination, { headers: request.headers }), context)
 }

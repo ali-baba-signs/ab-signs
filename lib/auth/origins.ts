@@ -1,4 +1,4 @@
-const LOCAL_ORIGINS = ['https://www.alibabasigns.com.au/']
+
 
 function normalizeOrigin(value: string | undefined) {
   if (!value) return undefined
@@ -18,7 +18,7 @@ function normalizeOrigin(value: string | undefined) {
 
 function configuredOrigins() {
   return [
-    ...LOCAL_ORIGINS,
+
     normalizeOrigin(process.env.BETTER_AUTH_URL),
     normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL),
     normalizeOrigin(process.env.V0_RUNTIME_URL),
@@ -59,3 +59,4 @@ export function getTrustedOrigins(request?: Request) {
   if (origin) origins.add(origin)
   return [...origins]
 }
+

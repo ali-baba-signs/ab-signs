@@ -36,7 +36,9 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
+    ".next-*/**",
     "node_modules",
     "Get-Content proxy.ts"
   ]
 }
+

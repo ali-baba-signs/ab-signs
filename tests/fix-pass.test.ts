@@ -67,3 +67,7 @@ test('all public R2 asset URLs use the canonical custom domain without changing 
   assert.equal(canonicalStoredAssetUrl('https://example.com/external.png'), 'https://example.com/external.png')
   assert.equal(canonicalStoredAssetUrl('https://legacy-bucket.r2.dev/wrong.png', 'products/right.png'), 'https://assets.alibabasigns.com.au/products/right.png')
 })
+
+test('legacy localhost media is served through the production asset domain', () => {
+  assert.equal(canonicalStoredAssetUrl('http://localhost:3000/products/a.png'), 'https://assets.alibabasigns.com.au/products/a.png')
+})

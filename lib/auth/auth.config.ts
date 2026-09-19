@@ -4,12 +4,8 @@ import { pool } from '@/lib/db/client'
 import { getAuthBaseURL, getTrustedOrigins } from '@/lib/auth/origins'
 import { sendAccountVerificationEmail, sendLoginVerificationCode, sendPasswordResetEmail } from '@/lib/contact/mailer'
 import { captureAuthEmailDeliveryFailure, type AuthEmailKind } from '@/lib/auth/email-delivery'
-// import { isLocalAuthBypass } from '@/lib/auth/dev-bypass'
 
 const authBaseURL = getAuthBaseURL()
-// export const localMfaBypass = isLocalAuthBypass()
-
-// if (localMfaBypass) console.warn('Local MFA bypass enabled. Password and registration email verification are still required.')
 
 async function deliverAuthenticationEmail(kind: AuthEmailKind, delivery: () => Promise<void>) {
   try {
@@ -75,17 +71,17 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24, // 1 day
   },
   trustedOrigins: getTrustedOrigins,
-  // plugins: localMfaBypass ? [] : [
-  //   twoFactor({
-  //     twoFactorTable: 'two_factors',
-  //     twoFactorCookieMaxAge: 10 * 60,
-  //     accountLockout: { enabled: true, maxFailedAttempts: 10, durationSeconds: 15 * 60 },
-  //     totpOptions: { disable: true },
-  //     otpOptions: {
-  //       period: 5,
-  //       digits: 6,
-  //       allowedAttempts: 5,
-  //       storeOTP: 'hashed',
-  //       sendOTP: async ({ user, otp }) => deliverAuthenticationEmail('login-code', () => sendLoginVerificationCode({ email: user.email, name: user.name, code: otp })),
-  //     },
-    })
+  plugins: [twoFactor({
+    twoFactorTable: 'two_factors',
+    twoFactorCookieMaxAge: 10 * 60,
+    accountLockout: { enabled: true, maxFailedAttempts: 10, durationSeconds: 15 * 60 },
+    totpOptions: { disable: true },
+    otpOptions: {
+      period: 5,
+      digits: 6,
+      allowedAttempts: 5,
+      storeOTP: 'hashed',
+      sendOTP: async ({ user, otp }) => deliverAuthenticationEmail('login-code', () => sendLoginVerificationCode({ email: user.email, name: user.name, code: otp })),
+    },
+  })],
+})

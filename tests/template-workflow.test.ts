@@ -164,3 +164,11 @@ test('server receipt generator emits a valid PDF structure', () => {
   assert.match(pdf.toString('binary'), /startxref/)
   assert.match(pdf.toString('binary'), /ABS-TEST/)
 })
+
+test('unassigned and disabled design options never expose unrelated templates', () => {
+  assert.equal(isTemplateCompatibleWithSize('unrelated', { enabled: true }), false)
+  assert.equal(isTemplateCompatibleWithSize('single', { enabled: false, frontTemplateId: 'single' }), false)
+  assert.equal(isTemplateCompatibleWithSize('single', { enabled: true, designConfigurations: [{ designType: 'single_side', enabled: false, singleTemplateId: 'single' }] }), false)
+  assert.equal(isTemplateCompatibleWithSize('front', { enabled: true, sideMode: 'double', frontTemplateId: 'front', backTemplateId: 'back' }, 'double_side'), true)
+  assert.equal(isTemplateCompatibleWithSize('front', { enabled: true, sideMode: 'double', frontTemplateId: 'front', backTemplateId: 'back' }, 'single_side'), false)
+})

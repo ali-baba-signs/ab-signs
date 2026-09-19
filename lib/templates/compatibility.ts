@@ -3,15 +3,16 @@ import { designConfigurationsForSize, type DesignType } from '@/lib/products/des
 export type TemplateCompatibleSize = {
   id?: string
   enabled: boolean
+  sideMode?: string | null
   frontTemplateId?: string | null
   backTemplateId?: string | null
   designConfigurations?: unknown
 }
 
 /**
- * Product sizes are the production authority. A template-product link makes a
- * template available to a product; assigning a template directly to a size
- * narrows that availability to that size (and side).
+ * Product sizes are the production authority. Only explicit, enabled size
+ * assignments make a template available. Product-level links alone never
+ * authorize an unrelated size or design option.
  */
 export function isTemplateCompatibleWithSize(templateId: string, size: TemplateCompatibleSize, designType?: DesignType) {
   if (!size.enabled) return false
@@ -19,9 +20,10 @@ export function isTemplateCompatibleWithSize(templateId: string, size: TemplateC
   const explicitTemplates = configurations.flatMap((configuration) => configuration.designType === 'single_side'
     ? [configuration.singleTemplateId]
     : [configuration.frontTemplateId, configuration.backTemplateId]).filter((value): value is string => Boolean(value))
-  return explicitTemplates.length === 0 || explicitTemplates.includes(templateId)
+  return explicitTemplates.includes(templateId)
 }
 
 export function compatibleSizesForTemplate<T extends TemplateCompatibleSize>(templateId: string, sizes: T[]) {
   return sizes.filter((size) => isTemplateCompatibleWithSize(templateId, size))
 }
+

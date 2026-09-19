@@ -17,7 +17,7 @@ export async function getProductsWithDetails(productId?: string, includeInactive
     db.select().from(productImages).where(inArray(productImages.productId, ids)).orderBy(asc(productImages.order)),
     db.select().from(productSizes).where(inArray(productSizes.productId, ids)).orderBy(asc(productSizes.order)),
     db.select().from(productCategories),
-    db.select({ id: templates.id, productId: templates.productId, name: templates.name, status: templates.status, conversionStatus: templates.conversionStatus, previewImageUrl: templates.previewImageUrl, previewImageKey: templates.previewImageKey, templateSide: templates.templateSide }).from(templates),
+    db.select({ id: templates.id, logicalCanvasWidth: templates.logicalCanvasWidth, logicalCanvasHeight: templates.logicalCanvasHeight, productId: templates.productId, name: templates.name, status: templates.status, conversionStatus: templates.conversionStatus, previewImageUrl: templates.previewImageUrl, previewImageKey: templates.previewImageKey, templateSide: templates.templateSide }).from(templates),
     db.select().from(templateProducts).where(inArray(templateProducts.productId, ids)),
     db.select({ productId: productReviews.productId, averageRating: sql<number>`coalesce(avg(${productReviews.overall}), 0)`, reviewCount: sql<number>`count(*)::int` }).from(productReviews).where(and(inArray(productReviews.productId, ids), eq(productReviews.moderationStatus, 'published'))).groupBy(productReviews.productId),
     db.select({ productId: orderItems.productId, soldQuantity: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int` }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(inArray(orderItems.productId, ids), eq(orders.paymentStatus, 'paid'), notInArray(orders.status, ['cancelled', 'refunded']))).groupBy(orderItems.productId),
@@ -55,3 +55,4 @@ export async function getPopularProducts(limit = 3) {
     .sort((left, right) => right.socialProof.soldQuantity - left.socialProof.soldQuantity || Number(Boolean(right.featured)) - Number(Boolean(left.featured)) || left.name.localeCompare(right.name))
     .slice(0, Math.max(0, limit))
 }
+

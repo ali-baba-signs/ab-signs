@@ -54,8 +54,8 @@ test('trusted origins contain local, configured, and current request origins onl
   withEnvironment({ NEXT_PUBLIC_SITE_URL: 'https://deployment.example.test' }, () => {
     const origins = getTrustedOrigins(new Request('https://request.example.test/api/auth/sign-in'))
     assert.deepEqual(origins, [
-      'http://localhost:3000',
-      'https://www.alibabasigns.com.au/',
+      'https://deployment.example.test',
+      'https://request.example.test',
   
     ])
     assert.ok(!origins.some((origin) => origin.includes('alibabasigns.com.au')))
@@ -67,3 +67,4 @@ test('invalid or non-http environment URLs are ignored', () => {
     assert.equal(getAuthBaseURL(), 'https://safe.example.test')
   })
 })
+

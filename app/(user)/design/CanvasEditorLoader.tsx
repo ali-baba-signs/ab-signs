@@ -1,6 +1,8 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useSearchParams } from 'next/navigation'
+import DesignSelection from './DesignSelection'
 
 const CanvasEditor = dynamic(
   () => import('@/components/editor/canvas-editor').then((module) => module.CanvasEditor),
@@ -11,5 +13,8 @@ const CanvasEditor = dynamic(
 )
 
 export default function CanvasEditorLoader() {
-  return <CanvasEditor />
+  const params = useSearchParams()
+  if (!params.get('templateId') || !params.get('productId') || !params.get('sizeId')) return <DesignSelection />
+  return <CanvasEditor key={params.toString()} />
 }
+

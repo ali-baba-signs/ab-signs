@@ -1,3 +1,4 @@
+import { canonicalStoredAssetUrl } from '@/lib/storage/r2-public-url'
 import { sanitizeRichText, richTextToPlainText } from '@/lib/content/sanitize-html'
 import { parseMeasurement } from '@/lib/measurements'
 import { FLAG_PRINT_PRESETS, FLAG_SIZE_GROUPS, FLAG_TYPES, PRODUCT_SIZE_MODES, SIDE_MODES, type ProductSizeMode } from './size-presets'
@@ -87,7 +88,7 @@ export function validateProductInput(value: unknown): ValidProductInput {
     const image = raw as ProductImageInput
     if (!image.id && (!image.key || image.url?.startsWith('blob:'))) throw new Error(`Image ${order + 1} has not finished uploading.`)
     if (image.assetId && !uuid.test(image.assetId)) throw new Error(`Image ${order + 1} has an invalid asset reference.`)
-    return { id: image.id, key: image.key, assetId: image.assetId, url: image.url, alt: (image.alt || name).trim().slice(0, 255), isPrimary: Boolean(image.isPrimary), order }
+    return { id: image.id, key: image.key, assetId: image.assetId, url: canonicalStoredAssetUrl(image.url, image.key) || undefined, alt: (image.alt || name).trim().slice(0, 255), isPrimary: Boolean(image.isPrimary), order }
   }) : []
   if (new Set(images.flatMap((image) => image.key ? [image.key] : [])).size !== images.filter((image) => image.key).length) throw new Error('The same uploaded image cannot be added twice.')
   if (images.length === 0) throw new Error('Add at least one product image.')
@@ -138,3 +139,4 @@ export function validateProductInput(value: unknown): ValidProductInput {
   if (enabledDefaults.length !== 1) sizes.forEach((size, index) => { size.isDefault = size.enabled && index === sizes.findIndex((candidate) => candidate.enabled) })
   return { sku, name, description, designMode, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, freeShipping: input.freeShipping === true, featured: Boolean(input.featured), active: input.active !== false, images, sizes }
 }
+

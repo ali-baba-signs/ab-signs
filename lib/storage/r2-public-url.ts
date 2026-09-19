@@ -23,7 +23,7 @@ export function canonicalStoredAssetUrl(url: string | null | undefined, objectKe
   if (!url) return url ?? null
   try {
     const parsed = new URL(url)
-    if (parsed.hostname === 'assets.alibabasigns.com.au' || parsed.hostname.endsWith('.r2.dev')) {
+    if (parsed.hostname === 'assets.alibabasigns.com.au' || parsed.hostname.endsWith('.r2.dev') || ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
       return getStoredAssetUrl(parsed.pathname)
     }
   } catch {
@@ -31,3 +31,4 @@ export function canonicalStoredAssetUrl(url: string | null | undefined, objectKe
   }
   return url
 }
+
