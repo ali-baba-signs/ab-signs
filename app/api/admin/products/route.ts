@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       }
       const [product] = await tx.insert(products).values({
         sku: resolvedSku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2),
-        categoryId: input!.categoryId, templateId: input!.templateId, designMode: input!.designMode, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, featured: input!.featured, active: input!.active,
+        categoryId: input!.categoryId, templateId: input!.templateId, designMode: input!.designMode, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, customShippingAmount: input!.customShippingAmount, featured: input!.featured, active: input!.active,
       }).returning()
       await tx.insert(productImages).values(input!.images.map((image) => ({
         productId: product.id, url: image.key ? getStoredAssetUrl(image.key) : image.url!, storageKey: image.key, assetId: image.assetId, alt: image.alt, isPrimary: image.isPrimary, order: image.order,
@@ -84,3 +84,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: { code: 'PRODUCT_CREATE_FAILED', message } }, { status: 400 })
   }
 }
+

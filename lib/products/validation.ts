@@ -50,6 +50,7 @@ export interface ValidProductInput {
   sizeMode: ProductSizeMode
   allowCustomDimensions: boolean
   freeShipping: boolean
+  customShippingAmount: string | null
   images: ProductImageInput[]
   sizes: Array<Omit<ProductSizeInput, 'width' | 'height' | 'unitPrice' | 'safeMargin' | 'bleed' | 'designConfigurations'> & { width: string | null; height: string | null; unitPrice: number; variantType: typeof FLAG_TYPES[number] | null; sizeGroup: typeof FLAG_SIZE_GROUPS[number] | null; sideMode: typeof SIDE_MODES[number]; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean; designConfigurations: SizeDesignConfiguration[] }>
 }
@@ -137,6 +138,7 @@ export function validateProductInput(value: unknown): ValidProductInput {
   const designMode = sizes.some((size) => size.designConfigurations.some((configuration) => configuration.enabled && configuration.designType === 'double_side')) ? 'double_side' : 'single_side'
   const enabledDefaults = sizes.filter((size) => size.enabled && size.isDefault)
   if (enabledDefaults.length !== 1) sizes.forEach((size, index) => { size.isDefault = size.enabled && index === sizes.findIndex((candidate) => candidate.enabled) })
-  return { sku, name, description, designMode, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, freeShipping: input.freeShipping === true, featured: Boolean(input.featured), active: input.active !== false, images, sizes }
+  return { sku, name, description, designMode, basePrice: money(input.basePrice, 'Base price'), categoryId, templateId, sizeMode, allowCustomDimensions: ['preset_sizes','custom_dimensions'].includes(sizeMode) && input.allowCustomDimensions === true, freeShipping: input.freeShipping === true, customShippingAmount: input.freeShipping === true || input.customShippingAmount == null || input.customShippingAmount === '' ? null : money(input.customShippingAmount, 'Custom shipping amount').toFixed(2), featured: Boolean(input.featured), active: input.active !== false, images, sizes }
 }
+
 

@@ -2,157 +2,193 @@ TAP version 13
 # Subtest: admin order SKU appends SS or DS from the actual order design type
 ok 1 - admin order SKU appends SS or DS from the actual order design type
   ---
-  duration_ms: 2.9258
+  duration_ms: 3.2085
   type: 'test'
   ...
 # Subtest: order snapshot design type and SKU take precedence over legacy values and current product SKU
 ok 2 - order snapshot design type and SKU take precedence over legacy values and current product SKU
   ---
-  duration_ms: 0.6942
+  duration_ms: 3.0919
   type: 'test'
   ...
 # Subtest: admin SKU supports explicit legacy order design and selected-size snapshots
 ok 3 - admin SKU supports explicit legacy order design and selected-size snapshots
   ---
-  duration_ms: 0.9696
+  duration_ms: 0.7076
   type: 'test'
   ...
 # Subtest: historical orders without a known design type keep their original SKU
 ok 4 - historical orders without a known design type keep their original SKU
   ---
-  duration_ms: 1.1557
+  duration_ms: 0.8792
   type: 'test'
   ...
 # Subtest: mixed single and double items with the same product SKU remain distinct in the SKU column
 ok 5 - mixed single and double items with the same product SKU remain distinct in the SKU column
   ---
-  duration_ms: 0.9499
+  duration_ms: 0.7436
   type: 'test'
   ...
 # Subtest: SMTP authentication failures produce a useful safe client error
 ok 6 - SMTP authentication failures produce a useful safe client error
   ---
-  duration_ms: 4.3229
+  duration_ms: 4.1127
   type: 'test'
   ...
 # Subtest: verification delivery failures remain attached to the current auth request only
 ok 7 - verification delivery failures remain attached to the current auth request only
   ---
-  duration_ms: 1.8545
+  duration_ms: 1.9697
   type: 'test'
   ...
 # Subtest: auth base URL prioritizes BETTER_AUTH_URL over every deployment URL
 ok 8 - auth base URL prioritizes BETTER_AUTH_URL over every deployment URL
   ---
-  duration_ms: 4.7602
+  duration_ms: 3.6536
   type: 'test'
   ...
 # Subtest: auth base URL uses NEXT_PUBLIC_SITE_URL when BETTER_AUTH_URL is absent
 ok 9 - auth base URL uses NEXT_PUBLIC_SITE_URL when BETTER_AUTH_URL is absent
   ---
-  duration_ms: 1.232
+  duration_ms: 1.0307
   type: 'test'
   ...
 # Subtest: auth base URL falls back to the incoming request origin
 ok 10 - auth base URL falls back to the incoming request origin
   ---
-  duration_ms: 65.9026
+  duration_ms: 82.5744
   type: 'test'
   ...
 # Subtest: trusted origins contain local, configured, and current request origins only
 ok 11 - trusted origins contain local, configured, and current request origins only
   ---
-  duration_ms: 4.1388
+  duration_ms: 4.0301
   type: 'test'
   ...
 # Subtest: invalid or non-http environment URLs are ignored
 ok 12 - invalid or non-http environment URLs are ignored
   ---
-  duration_ms: 1.2822
+  duration_ms: 0.8371
   type: 'test'
   ...
 # Subtest: 10 MB uploads stay same-origin and split into five bounded parts before completion
 ok 13 - 10 MB uploads stay same-origin and split into five bounded parts before completion
   ---
-  duration_ms: 142.7311
+  duration_ms: 155.3577
   type: 'test'
   ...
 # Subtest: small image uploads need one request, and interrupted chunks never finalize
 ok 14 - small image uploads need one request, and interrupted chunks never finalize
   ---
-  duration_ms: 7.4961
+  duration_ms: 6.9795
   type: 'test'
   ...
 # Subtest: chunk manifests reject invalid identifiers, oversized totals, types, and part indexes
 ok 15 - chunk manifests reject invalid identifiers, oversized totals, types, and part indexes
   ---
-  duration_ms: 1.6023
+  duration_ms: 3.4219
   type: 'test'
   ...
 # Subtest: cleanup ownership excludes other users, standalone artwork, and non-session files
 ok 16 - cleanup ownership excludes other users, standalone artwork, and non-session files
   ---
-  duration_ms: 1.2422
+  duration_ms: 0.8579
   type: 'test'
   ...
 # Subtest: cleanup preserves both sides, historical/order references, and failed deletions
 ok 17 - cleanup preserves both sides, historical/order references, and failed deletions
   ---
-  duration_ms: 2.1249
+  duration_ms: 2.1496
+  type: 'test'
+  ...
+# Subtest: banner tiers preserve defaults and boundary coverage without decimal gaps
+ok 18 - banner tiers preserve defaults and boundary coverage without decimal gaps
+  ---
+  duration_ms: 6.8238
+  type: 'test'
+  ...
+# Subtest: tier changes flow through the existing shipping calculation
+ok 19 - tier changes flow through the existing shipping calculation
+  ---
+  duration_ms: 1.3001
+  type: 'test'
+  ...
+# Subtest: tier validation rejects gaps, overlaps, negative fees, and missing final coverage
+ok 20 - tier validation rejects gaps, overlaps, negative fees, and missing final coverage
+  ---
+  duration_ms: 1.1705
+  type: 'test'
+  ...
+# Subtest: free products, custom product fees, mixed carts and pickup retain clear precedence
+ok 21 - free products, custom product fees, mixed carts and pickup retain clear precedence
+  ---
+  duration_ms: 1.136
+  type: 'test'
+  ...
+# Subtest: tax follows product-only discount and shipping, responds to rate changes and disable
+ok 22 - tax follows product-only discount and shipping, responds to rate changes and disable
+  ---
+  duration_ms: 0.8758
+  type: 'test'
+  ...
+# Subtest: product shipping persists global, free and custom options with validated money
+ok 23 - product shipping persists global, free and custom options with validated money
+  ---
+  duration_ms: 8.0052
   type: 'test'
   ...
 # Subtest: rich text sanitization removes scripts, event handlers, and unsafe links
-ok 18 - rich text sanitization removes scripts, event handlers, and unsafe links
+ok 24 - rich text sanitization removes scripts, event handlers, and unsafe links
   ---
-  duration_ms: 17.3023
+  duration_ms: 5.6883
   type: 'test'
   ...
 # Subtest: product description bullet lists survive validation and storage sanitization
-ok 19 - product description bullet lists survive validation and storage sanitization
+ok 25 - product description bullet lists survive validation and storage sanitization
   ---
-  duration_ms: 5.192
+  duration_ms: 7.4328
   type: 'test'
   ...
 # Subtest: product validation requires a persisted image and an enabled size
-ok 20 - product validation requires a persisted image and an enabled size
+ok 26 - product validation requires a persisted image and an enabled size
   ---
-  duration_ms: 4.3515
+  duration_ms: 2.4655
   type: 'test'
   ...
 # Subtest: product validation normalizes prices and limits primary image to one
-ok 21 - product validation normalizes prices and limits primary image to one
+ok 27 - product validation normalizes prices and limits primary image to one
   ---
-  duration_ms: 1.2078
+  duration_ms: 1.5896
   type: 'test'
   ...
 # Subtest: authoritative payment totals reject drift and map Stripe outcomes explicitly
-ok 22 - authoritative payment totals reject drift and map Stripe outcomes explicitly
+ok 28 - authoritative payment totals reject drift and map Stripe outcomes explicitly
   ---
-  duration_ms: 1.104
+  duration_ms: 1.1013
   type: 'test'
   ...
 # Subtest: verified checkout removes only purchased cart quantities
-ok 23 - verified checkout removes only purchased cart quantities
+ok 29 - verified checkout removes only purchased cart quantities
   ---
-  duration_ms: 3.0181
+  duration_ms: 19.5313
   type: 'test'
   ...
 # Subtest: coupon manager produces deterministic server markup
-ok 24 - coupon manager produces deterministic server markup
+ok 30 - coupon manager produces deterministic server markup
   ---
-  duration_ms: 100.4993
+  duration_ms: 99.4362
   type: 'test'
   ...
 # Subtest: Australian phone validation rejects text and normalizes local and country formats
-ok 25 - Australian phone validation rejects text and normalizes local and country formats
+ok 31 - Australian phone validation rejects text and normalizes local and country formats
   ---
-  duration_ms: 3.9556
+  duration_ms: 4.9832
   type: 'test'
   ...
 # Subtest: plain text cleaning removes control characters and enforces storage bounds
-ok 26 - plain text cleaning removes control characters and enforces storage bounds
+ok 32 - plain text cleaning removes control characters and enforces storage bounds
   ---
-  duration_ms: 0.6554
+  duration_ms: 0.5386
   type: 'test'
   ...
 # Generated SVG rejected before upload GeneratedSvgError: Fabric generated an incomplete SVG document.
@@ -164,213 +200,245 @@ ok 26 - plain text cleaning removes control characters and enforces storage boun
 #     at async Test.run (node:internal/test_runner/test:1054:7)
 #     at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
 # Subtest: generated previews and production files upload in bounded same-origin authenticated chunks
-ok 27 - generated previews and production files upload in bounded same-origin authenticated chunks
+ok 33 - generated previews and production files upload in bounded same-origin authenticated chunks
   ---
-  duration_ms: 159.7325
+  duration_ms: 118.8387
   type: 'test'
   ...
 # Subtest: browser network failures no longer surface as bare Failed to fetch
-ok 28 - browser network failures no longer surface as bare Failed to fetch
+ok 34 - browser network failures no longer surface as bare Failed to fetch
   ---
-  duration_ms: 3.5258
+  duration_ms: 5.0851
   type: 'test'
   ...
 # Subtest: production upload validation allows large generated PDFs but retains the 100 MB limit
-ok 29 - production upload validation allows large generated PDFs but retains the 100 MB limit
+ok 35 - production upload validation allows large generated PDFs but retains the 100 MB limit
   ---
-  duration_ms: 0.9537
+  duration_ms: 1.2566
   type: 'test'
   ...
 # Subtest: generated SVG must be a complete, explicitly sized document before upload
-ok 30 - generated SVG must be a complete, explicitly sized document before upload
+ok 36 - generated SVG must be a complete, explicitly sized document before upload
   ---
-  duration_ms: 13.0354
+  duration_ms: 23.2963
   type: 'test'
   ...
 # Subtest: Fabric export embeds blob and network image sources while retaining transforms and sides
-ok 31 - Fabric export embeds blob and network image sources while retaining transforms and sides
+ok 37 - Fabric export embeds blob and network image sources while retaining transforms and sides
   ---
-  duration_ms: 8.9831
+  duration_ms: 20.4274
   type: 'test'
   ...
 # Subtest: print-ready export is a real PDF with physical metadata, bleed, and crop marks
-ok 32 - print-ready export is a real PDF with physical metadata, bleed, and crop marks
+ok 38 - print-ready export is a real PDF with physical metadata, bleed, and crop marks
   ---
-  duration_ms: 6.0157
+  duration_ms: 27.7895
   type: 'test'
   ...
 # Subtest: production CMYK export embeds a true four-channel DeviceCMYK image
-ok 33 - production CMYK export embeds a true four-channel DeviceCMYK image
+ok 39 - production CMYK export embeds a true four-channel DeviceCMYK image
   ---
-  duration_ms: 1.4166
+  duration_ms: 1.6634
   type: 'test'
   ...
 # Subtest: banner shipping follows total printed area and ignores free-shipping products
-ok 34 - banner shipping follows total printed area and ignores free-shipping products
+not ok 40 - banner shipping follows total printed area and ignores free-shipping products
   ---
-  duration_ms: 1.2915
+  duration_ms: 8.8356
   type: 'test'
+  location: 'E:\\Ali baba\\ab-signs-clean\\tests\\fix-pass.test.ts:2:2418'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    15 !== 0.1
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0.1
+  actual: 15
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (E:\Ali baba\ab-signs-clean\tests\fix-pass.test.ts:29:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
   ...
 # Subtest: Australian address validation enforces state/postcode consistency
-ok 35 - Australian address validation enforces state/postcode consistency
+ok 41 - Australian address validation enforces state/postcode consistency
   ---
-  duration_ms: 16.5561
+  duration_ms: 7.7915
   type: 'test'
   ...
 # Subtest: production PDF uploads use a private print path and strict PDF type
-ok 36 - production PDF uploads use a private print path and strict PDF type
+ok 42 - production PDF uploads use a private print path and strict PDF type
   ---
-  duration_ms: 4.0916
+  duration_ms: 2.1814
   type: 'test'
   ...
 # Subtest: flag production specs use the admin-configured curved-guide offsets
-ok 37 - flag production specs use the admin-configured curved-guide offsets
+ok 43 - flag production specs use the admin-configured curved-guide offsets
   ---
-  duration_ms: 1.2527
+  duration_ms: 0.9855
   type: 'test'
   ...
 # Subtest: all public R2 asset URLs use the canonical custom domain without changing stored values
-ok 38 - all public R2 asset URLs use the canonical custom domain without changing stored values
+ok 44 - all public R2 asset URLs use the canonical custom domain without changing stored values
   ---
-  duration_ms: 1.0675
+  duration_ms: 0.9147
+  type: 'test'
+  ...
+# Subtest: legacy localhost media is served through the production asset domain
+ok 45 - legacy localhost media is served through the production asset domain
+  ---
+  duration_ms: 0.5868
   type: 'test'
   ...
 # Subtest: canonical Fabric JSON exports as standalone SVG without a native canvas
-ok 39 - canonical Fabric JSON exports as standalone SVG without a native canvas
+ok 46 - canonical Fabric JSON exports as standalone SVG without a native canvas
   ---
-  duration_ms: 8.7475
+  duration_ms: 6.4784
   type: 'test'
   ...
 # Subtest: flag SVG production uses the fixed curved silhouette for bleed and cut while safety remains editor-only
-ok 40 - flag SVG production uses the fixed curved silhouette for bleed and cut while safety remains editor-only
+ok 47 - flag SVG production uses the fixed curved silhouette for bleed and cut while safety remains editor-only
   ---
-  duration_ms: 1.5165
+  duration_ms: 1.6059
   type: 'test'
   ...
 # Subtest: double-sided canonical data selects the requested side
-ok 41 - double-sided canonical data selects the requested side
+ok 48 - double-sided canonical data selects the requested side
   ---
-  duration_ms: 0.6747
+  duration_ms: 0.7796
   type: 'test'
   ...
 # Subtest: new product SKUs are short, readable, and sequential
-ok 42 - new product SKUs are short, readable, and sequential
+ok 49 - new product SKUs are short, readable, and sequential
   ---
-  duration_ms: 10.7904
+  duration_ms: 1.5942
   type: 'test'
   ...
 # Subtest: product write errors distinguish SKU collisions from other validation failures
-ok 43 - product write errors distinguish SKU collisions from other validation failures
+ok 50 - product write errors distinguish SKU collisions from other validation failures
   ---
-  duration_ms: 1.9716
+  duration_ms: 6.1181
   type: 'test'
   ...
 # Subtest: customer design formats are strict and return the required message
-ok 44 - customer design formats are strict and return the required message
+ok 51 - customer design formats are strict and return the required message
   ---
-  duration_ms: 2.9636
+  duration_ms: 5.0185
   type: 'test'
   ...
 # Subtest: canvas image uploads accept only matching image formats up to 10 MB
-ok 45 - canvas image uploads accept only matching image formats up to 10 MB
+ok 52 - canvas image uploads accept only matching image formats up to 10 MB
   ---
-  duration_ms: 1.2557
+  duration_ms: 1.387
   type: 'test'
   ...
 # Subtest: canvas upload session helpers deduplicate files, preserve used keys, and hide fetch errors
-ok 46 - canvas upload session helpers deduplicate files, preserve used keys, and hide fetch errors
+ok 53 - canvas upload session helpers deduplicate files, preserve used keys, and hide fetch errors
   ---
-  duration_ms: 4.2073
+  duration_ms: 5.8208
   type: 'test'
   ...
 # Subtest: canvas image signatures reject renamed files and accept PNG, JPEG, and WEBP headers
-ok 47 - canvas image signatures reject renamed files and accept PNG, JPEG, and WEBP headers
+ok 54 - canvas image signatures reject renamed files and accept PNG, JPEG, and WEBP headers
   ---
-  duration_ms: 5.9586
+  duration_ms: 2.0849
   type: 'test'
   ...
 # Subtest: legacy operational statuses collapse into five customer milestones plus attention
-ok 48 - legacy operational statuses collapse into five customer milestones plus attention
+ok 55 - legacy operational statuses collapse into five customer milestones plus attention
   ---
-  duration_ms: 6.0219
+  duration_ms: 2.56
   type: 'test'
   ...
 # Subtest: integer and decimal physical dimensions normalize without artificial .01 offsets
-ok 49 - integer and decimal physical dimensions normalize without artificial .01 offsets
+ok 56 - integer and decimal physical dimensions normalize without artificial .01 offsets
   ---
-  duration_ms: 7.3248
+  duration_ms: 8.2682
   type: 'test'
   ...
 # Subtest: fixed flag presets start with production dimensions but remain admin-editable
-ok 50 - fixed flag presets start with production dimensions but remain admin-editable
+ok 57 - fixed flag presets start with production dimensions but remain admin-editable
   ---
-  duration_ms: 13.7639
+  duration_ms: 9.7502
   type: 'test'
   ...
 # Subtest: template canvas mapping preserves physical aspect ratio without print-sized browser canvases
-ok 51 - template canvas mapping preserves physical aspect ratio without print-sized browser canvases
+ok 58 - template canvas mapping preserves physical aspect ratio without print-sized browser canvases
   ---
-  duration_ms: 1.8611
+  duration_ms: 1.0918
   type: 'test'
   ...
 # Subtest: SVG and Fabric validation reject executable, external, and empty template data
-ok 52 - SVG and Fabric validation reject executable, external, and empty template data
+ok 59 - SVG and Fabric validation reject executable, external, and empty template data
   ---
-  duration_ms: 8.841
+  duration_ms: 8.0562
   type: 'test'
   ...
 # Subtest: products own sizes and template input links category to product without duplicate sizes
-ok 53 - products own sizes and template input links category to product without duplicate sizes
+ok 60 - products own sizes and template input links category to product without duplicate sizes
   ---
-  duration_ms: 2.3615
+  duration_ms: 5.5406
   type: 'test'
   ...
 # Subtest: template validation separates fixed flag shapes from editable artwork
-ok 54 - template validation separates fixed flag shapes from editable artwork
+ok 61 - template validation separates fixed flag shapes from editable artwork
   ---
-  duration_ms: 1.2692
+  duration_ms: 3.13
   type: 'test'
   ...
 # Subtest: template roles keep double-sided front and back assignments distinct
-ok 55 - template roles keep double-sided front and back assignments distinct
+ok 62 - template roles keep double-sided front and back assignments distinct
   ---
-  duration_ms: 2.2359
+  duration_ms: 2.5044
   type: 'test'
   ...
 # Subtest: one production size can expose independent single and double design configurations
-ok 56 - one production size can expose independent single and double design configurations
+ok 63 - one production size can expose independent single and double design configurations
   ---
-  duration_ms: 4.5008
+  duration_ms: 3.7311
   type: 'test'
   ...
 # Subtest: legacy duplicate side rows appear as one production size with both customer options
-ok 57 - legacy duplicate side rows appear as one production size with both customer options
+ok 64 - legacy duplicate side rows appear as one production size with both customer options
   ---
-  duration_ms: 1.9131
+  duration_ms: 1.9378
   type: 'test'
   ...
 # Subtest: order workflow accepts only configured transitions and computes the six-hour deadline
-ok 58 - order workflow accepts only configured transitions and computes the six-hour deadline
+ok 65 - order workflow accepts only configured transitions and computes the six-hour deadline
   ---
-  duration_ms: 5.2953
+  duration_ms: 4.3778
   type: 'test'
   ...
 # Subtest: private design drafts and order PDFs use validated scoped R2 keys
-ok 59 - private design drafts and order PDFs use validated scoped R2 keys
+ok 66 - private design drafts and order PDFs use validated scoped R2 keys
   ---
-  duration_ms: 2.6422
+  duration_ms: 2.2181
   type: 'test'
   ...
 # Subtest: server receipt generator emits a valid PDF structure
-ok 60 - server receipt generator emits a valid PDF structure
+ok 67 - server receipt generator emits a valid PDF structure
   ---
-  duration_ms: 3.37
+  duration_ms: 3.8063
+  type: 'test'
+  ...
+# Subtest: unassigned and disabled design options never expose unrelated templates
+ok 68 - unassigned and disabled design options never expose unrelated templates
+  ---
+  duration_ms: 0.5502
   type: 'test'
   ...
 # Subtest: temporary custom quote catalogue contains only the requested nine products
-not ok 61 - temporary custom quote catalogue contains only the requested nine products
+not ok 69 - temporary custom quote catalogue contains only the requested nine products
   ---
-  duration_ms: 10.1523
+  duration_ms: 9.9335
   type: 'test'
   location: 'E:\\Ali baba\\ab-signs-clean\\tests\\temporary-custom-quotes.test.ts:2:1057'
   failureType: 'testCodeFailure'
@@ -419,17 +487,17 @@ not ok 61 - temporary custom quote catalogue contains only the requested nine pr
     startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
   ...
 # Subtest: custom quotation artwork uses the existing format and 100 MB validation
-ok 62 - custom quotation artwork uses the existing format and 100 MB validation
+ok 70 - custom quotation artwork uses the existing format and 100 MB validation
   ---
-  duration_ms: 3.3993
+  duration_ms: 3.2801
   type: 'test'
   ...
-1..62
-# tests 62
+1..70
+# tests 70
 # suites 0
-# pass 61
-# fail 1
+# pass 68
+# fail 2
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 7851.8472
+# duration_ms 4461.5718

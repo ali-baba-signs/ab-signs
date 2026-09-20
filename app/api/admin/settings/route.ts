@@ -38,6 +38,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ data: { settings: reloaded, configuration: publicConfigurationStatus(reloaded), changedFields } })
   } catch (error) {
     console.error('Settings update failed', error)
-    return NextResponse.json({ error: { code: 'SETTINGS_UPDATE_FAILED', message: error instanceof Error && /required|invalid|between|Currency|valid web address|email|URL|social|location/i.test(error.message) ? error.message : 'Settings could not be saved.' } }, { status: 400 })
+    return NextResponse.json({ error: { code: 'SETTINGS_UPDATE_FAILED', message: error instanceof Error && /shipping|tier|fee|required|invalid|between|Currency|valid web address|email|URL|social|location/i.test(error.message) ? error.message : 'Settings could not be saved.' } }, { status: 400 })
   }
 }
+

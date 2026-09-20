@@ -2,12 +2,12 @@
 - Environments: .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 61s
+✓ Compiled successfully in 27.5s
   Running TypeScript ...
-  Finished TypeScript in 87s ...
+  Finished TypeScript in 49s ...
   Collecting page data using 11 workers ...
   Generating static pages using 11 workers (0/84) ...
-(node:26892) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:11148) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -17,7 +17,7 @@ To prepare for this change:
 See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
 (Use `node --trace-warnings ...` to show where the warning was created)
   Generating static pages using 11 workers (21/84) 
-(node:18704) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:860) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -28,7 +28,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
 (Use `node --trace-warnings ...` to show where the warning was created)
   Generating static pages using 11 workers (42/84) 
   Generating static pages using 11 workers (63/84) 
-✓ Generating static pages using 11 workers (84/84) in 3.4s
+✓ Generating static pages using 11 workers (84/84) in 2.4s
   Finalizing page optimization ...
 
 Route (app)

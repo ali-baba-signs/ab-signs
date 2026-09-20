@@ -3,7 +3,7 @@ E:\Ali baba\ab-signs-clean\app\(user)\cart\page.tsx
   12:473  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
 
 E:\Ali baba\ab-signs-clean\app\(user)\checkout\page.tsx
-  120:207  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  146:207  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
 
 E:\Ali baba\ab-signs-clean\app\(user)\design\DesignSelection.tsx
   46:36  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
@@ -28,24 +28,6 @@ E:\Ali baba\ab-signs-clean\app\admin\homepage\page.tsx
 
 E:\Ali baba\ab-signs-clean\app\admin\homepage\promotions\page.tsx
   13:5063  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
-
-E:\Ali baba\ab-signs-clean\app\admin\live-chat\page.tsx
-  15:26  error  Error: Calling setState synchronously within an effect can trigger cascading renders
-
-Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
-* Update external systems with the latest state from React.
-* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
-
-Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
-
-E:\Ali baba\ab-signs-clean\app\admin\live-chat\page.tsx:15:26
-  13 |   async function loadSessions() { const response = await fetch('/api/admin/live-chat', { cache: 'no-store' }); const payload = await response.json(); if (!response.ok) { setError(payload.error?.message || 'Unable to load support chat.'); return }; setSessions(payload.data.sessions || []) }
-  14 |   async function open(session: Session) { setSelected(session); const response = await fetch(`/api/admin/live-chat?sessionId=${session.sessionId}`, { cache: 'no-store' }); const payload = await response.json(); if (response.ok) setMessages(payload.data.messages || []) }
-> 15 |   useEffect(() => { void loadSessions() }, [])
-     |                          ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
-  16 |   async function send() { if (!selected || !reply.trim()) return; const response = await fetch('/api/admin/live-chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: selected.sessionId, message: reply }) }); const payload = await response.json(); if (!response.ok) { setError(payload.error?.message || 'Reply could not be sent.'); return }; setReply(''); await open(selected); await loadSessions() }
-  17 |   return <main className="min-h-screen bg-background p-6"><Link href={adminPath()} className="text-sm font-semibold">← Dashboard</Link><h1 className="mt-2 text-3xl font-black">Support Chat</h1>{error && <p role="alert" className="mt-4 text-red-700">{error}</p>}<div className="mt-6 grid gap-5 lg:grid-cols-[320px_1fr]"><aside className="rounded-xl border bg-card"><h2 className="border-b p-4 font-bold">Conversations</h2>{sessions.map((session) => <button key={session.sessionId} onClick={() => void open(session)} className="block w-full border-b p-4 text-left hover:bg-secondary"><p className="font-semibold">{session.userName || session.userEmail || 'Customer'}</p><p className="truncate text-sm text-muted-foreground">{session.message}</p><time className="text-xs text-muted-foreground">{new Date(session.createdAt).toLocaleString()}</time></button>)}</aside><section className="flex min-h-[500px] flex-col rounded-xl border bg-card"><div className="border-b p-4 font-bold">{selected ? selected.userName || selected.userEmail || 'Customer conversation' : 'Select a conversation'}</div><div className="flex-1 space-y-3 overflow-auto p-4">{messages.map((message) => <div key={message.id} className={message.isAdminMessage ? 'text-right' : ''}><p className={`inline-block max-w-[80%] rounded-lg p-3 text-sm ${message.isAdminMessage ? 'bg-primary text-white' : 'bg-secondary'}`}>{message.message}</p><time className="block text-xs text-muted-foreground">{new Date(message.createdAt).toLocaleString()}</time></div>)}</div>{selected && <div className="flex gap-2 border-t p-4"><Input value={reply} maxLength={2000} onChange={(event) => setReply(event.target.value)} placeholder="Reply to customer" /><Button type="button" onClick={() => void send()}>Send</Button></div>}</section></div></main>
-  18 | }  react-hooks/set-state-in-effect
 
 E:\Ali baba\ab-signs-clean\app\admin\orders\[id]\page.tsx
   64:1434  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
@@ -72,7 +54,7 @@ E:\Ali baba\ab-signs-clean\components\admin\image-crop-upload.tsx
   173:312  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
 
 E:\Ali baba\ab-signs-clean\components\admin\product-form.tsx
-  261:15  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  263:15  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
 
 E:\Ali baba\ab-signs-clean\components\design-editor\panels\EditorPanels.tsx
   167:15  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
@@ -83,5 +65,5 @@ E:\Ali baba\ab-signs-clean\components\products\artwork-upload-card.tsx
 E:\Ali baba\ab-signs-clean\components\products\product-card.tsx
   38:13  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
 
-✖ 27 problems (1 error, 26 warnings)
+✖ 26 problems (0 errors, 26 warnings)
 

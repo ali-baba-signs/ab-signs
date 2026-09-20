@@ -26,12 +26,12 @@ test('production CMYK export embeds a true four-channel DeviceCMYK image', () =>
 
 test('banner shipping follows total printed area and ignores free-shipping products', () => {
   assert.equal(printedAreaM2({ width: 1000, height: 2000, unit: 'mm', quantity: 1, isBanner: true }), 2)
-  assert.equal(bannerShippingForArea(2), 0)
-  assert.equal(bannerShippingForArea(2.1), 0)
+  assert.equal(bannerShippingForArea(2), 15)
+  assert.equal(bannerShippingForArea(2.1), 20)
   assert.equal(bannerShippingForArea(5.1), 28)
   assert.equal(bannerShippingForArea(10.1), 40)
   assert.equal(bannerShippingForArea(20.1), 55)
-  const result = calculateShipping({ deliveryType: 'delivery', productSubtotal: 10, standardShippingCost: 12, freeShippingThreshold: 50, lines: [
+  const result = calculateShipping({ deliveryType: 'delivery', productSubtotal: 10, standardShippingCost: 0, freeShippingThreshold: 50, lines: [
     { width: 1000, height: 2000, unit: 'mm', quantity: 1, isBanner: true },
     { width: 5000, height: 5000, unit: 'mm', quantity: 1, isBanner: true, freeShipping: true },
   ] })
@@ -71,3 +71,4 @@ test('all public R2 asset URLs use the canonical custom domain without changing 
 test('legacy localhost media is served through the production asset domain', () => {
   assert.equal(canonicalStoredAssetUrl('http://localhost:3000/products/a.png'), 'https://assets.alibabasigns.com.au/products/a.png')
 })
+

@@ -44,7 +44,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
     await db.transaction(async (tx) => {
       const [product] = await tx.update(products).set({
         sku: existingProduct.sku, name: input!.name, description: input!.description, basePrice: input!.basePrice.toFixed(2), categoryId: input!.categoryId,
-        templateId: input!.templateId, designMode: input!.designMode, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, featured: input!.featured, active: input!.active, updatedAt: new Date(),
+        templateId: input!.templateId, designMode: input!.designMode, sizeMode: input!.sizeMode, allowCustomDimensions: input!.allowCustomDimensions, freeShipping: input!.freeShipping, customShippingAmount: input!.customShippingAmount, featured: input!.featured, active: input!.active, updatedAt: new Date(),
       }).where(eq(products.id, id)).returning()
       if (!product) throw new Error('Product not found.')
       if (removedImages.length) await tx.delete(productImages).where(inArray(productImages.id, removedImages.map((image) => image.id)))
@@ -101,3 +101,4 @@ export async function DELETE(_: NextRequest, context: { params: Promise<{ id: st
     return NextResponse.json({ error: { code: 'PRODUCT_DELETE_FAILED', message: error instanceof Error && error.message.includes('not found') ? error.message : 'The product could not be deleted. It may be referenced by an existing order.' } }, { status: 409 })
   }
 }
+

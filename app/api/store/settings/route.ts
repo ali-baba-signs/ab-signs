@@ -15,6 +15,8 @@ export async function GET() {
       locations: settings.locations.filter((location) => location.enabled).sort((a, b) => a.displayOrder - b.displayOrder),
       socialLinks: settings.socialLinks.filter((link) => link.enabled).sort((a, b) => a.displayOrder - b.displayOrder),
       currency: settings.currency,
+      taxEnabled: settings.taxEnabled,
+      taxName: settings.taxName,
       taxRate: settings.taxRate,
       shippingCost: settings.shippingCost,
       freeShippingThreshold: settings.freeShippingThreshold,
@@ -23,9 +25,10 @@ export async function GET() {
       paymentTestMode: settings.paymentTestMode,
       termsUrl: settings.termsUrl,
       privacyUrl: settings.privacyUrl,
-    } })
+    } }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     console.error('Public store settings load failed', error)
     return NextResponse.json({ error: { code: 'SETTINGS_UNAVAILABLE', message: 'Checkout settings are temporarily unavailable.' } }, { status: 503 })
   }
 }
+

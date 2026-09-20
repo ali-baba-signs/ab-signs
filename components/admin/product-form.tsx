@@ -21,7 +21,7 @@ interface ImageRow { clientId: string; id?: string; assetId?: string; key?: stri
 interface ApiImage { id: string; assetId?: string; storageKey?: string; key?: string; url: string; alt: string; isPrimary: boolean }
 interface SizeRow { id?: string; label: string; width: string; height: string; unit: string; unitPrice: string; enabled: boolean; variantType: string; sizeGroup: string; assembledHeightDescription: string; fitMode: 'contain' | 'cover' | 'stretch'; safeMargin: string; bleed: string; trimMarks: boolean; isDefault: boolean; designConfigurations: SizeDesignConfiguration[] }
 interface TemplateOption { id: string; name: string; status: string; conversionStatus: string; templateSide: 'single' | 'front' | 'back' }
-interface ProductData { id: string; sku: string; name: string; description: string; basePrice: string; categoryId: string; sizeMode: ProductSizeMode; allowCustomDimensions: boolean; freeShipping: boolean; featured: boolean; active: boolean; images: ApiImage[]; sizes: Array<SizeRow & { id: string }> }
+interface ProductData { id: string; sku: string; name: string; description: string; basePrice: string; categoryId: string; sizeMode: ProductSizeMode; allowCustomDimensions: boolean; freeShipping: boolean; customShippingAmount: string | null; featured: boolean; active: boolean; images: ApiImage[]; sizes: Array<SizeRow & { id: string }> }
 
 const blankSize = (): SizeRow => ({ label: '500 × 1000 mm', height: '500', width: '1000', unit: 'mm', unitPrice: '0', enabled: true, variantType: '', sizeGroup: '', assembledHeightDescription: '', fitMode: 'contain', safeMargin: '0', bleed: '3', trimMarks: true, isDefault: true, designConfigurations: [{ designType: 'single_side', enabled: true, singleTemplateId: null }] })
 
@@ -29,7 +29,7 @@ export function ProductForm({ productId }: { productId?: string }) {
   const router = useRouter()
   const [categories, setCategories] = useState<Category[]>([])
   const [templates, setTemplates] = useState<TemplateOption[]>([])
-  const [form, setForm] = useState({ sku: '', name: '', description: '', basePrice: '', categoryId: '', sizeMode: 'preset_sizes' as ProductSizeMode, allowCustomDimensions: false, freeShipping: false, featured: false, active: true })
+  const [form, setForm] = useState({ sku: '', name: '', description: '', basePrice: '', categoryId: '', sizeMode: 'preset_sizes' as ProductSizeMode, allowCustomDimensions: false, freeShipping: false, customShippingAmount: null as string | null, featured: false, active: true })
   const [images, setImages] = useState<ImageRow[]>([])
   const [sizes, setSizes] = useState<SizeRow[]>([blankSize()])
   const [loading, setLoading] = useState(true)
@@ -51,7 +51,7 @@ export function ProductForm({ productId }: { productId?: string }) {
         if (productId) {
           const product = payload.data.products.find((item: ProductData) => item.id === productId) as ProductData | undefined
           if (!product) throw new Error('Product not found.')
-          setForm({ sku: product.sku, name: product.name, description: product.description || '', basePrice: product.basePrice, categoryId: product.categoryId, sizeMode: product.sizeMode === 'fixed_variants' ? 'fixed_variants' : product.sizeMode === 'custom_dimensions' ? 'custom_dimensions' : 'preset_sizes', allowCustomDimensions: Boolean(product.allowCustomDimensions), freeShipping: Boolean(product.freeShipping), featured: Boolean(product.featured), active: product.active !== false })
+          setForm({ sku: product.sku, name: product.name, description: product.description || '', basePrice: product.basePrice, categoryId: product.categoryId, sizeMode: product.sizeMode === 'fixed_variants' ? 'fixed_variants' : product.sizeMode === 'custom_dimensions' ? 'custom_dimensions' : 'preset_sizes', allowCustomDimensions: Boolean(product.allowCustomDimensions), freeShipping: Boolean(product.freeShipping), customShippingAmount: product.customShippingAmount ?? null, featured: Boolean(product.featured), active: product.active !== false })
           setImages(product.images.map((image) => ({ clientId: `existing:${image.id}`, id: image.id, assetId: image.assetId, key: image.storageKey || image.key, url: image.url, alt: image.alt || product.name, isPrimary: Boolean(image.isPrimary), status: 'uploaded' })))
           setSizes(product.sizes.map((size) => ({ id: size.id, label: size.label, width: String(size.width || ''), height: String(size.height || ''), unit: size.unit, unitPrice: String(size.unitPrice), enabled: Boolean(size.enabled), variantType: size.variantType || '', sizeGroup: size.sizeGroup || '', assembledHeightDescription: size.assembledHeightDescription || '', fitMode: size.fitMode || 'contain', safeMargin: String(size.safeMargin || '0'), bleed: String(size.bleed || '3'), trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), designConfigurations: designConfigurationsForSize(size) })))
         } else if (payload.data.categories[0]) setForm((current) => ({ ...current, categoryId: payload.data.categories[0].id }))
@@ -228,9 +228,11 @@ export function ProductForm({ productId }: { productId?: string }) {
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /> Active
           </label>
-          <label className="flex items-center gap-2 text-sm font-semibold">
-            <input type="checkbox" checked={form.freeShipping} onChange={(event) => setForm({ ...form, freeShipping: event.target.checked })} /> Free shipping
-          </label>
+          <div className="w-full space-y-2">
+            <label className="block text-sm font-semibold">Shipping<select className="mt-2 h-11 w-full rounded-md border bg-background px-3" value={form.freeShipping ? 'free' : form.customShippingAmount !== null ? 'custom' : 'global'} onChange={(event) => setForm({ ...form, freeShipping: event.target.value === 'free', customShippingAmount: event.target.value === 'custom' ? '0.00' : null })}><option value="global">Use global shipping rules</option><option value="free">Free shipping</option><option value="custom">Custom shipping amount</option></select></label>
+            {form.customShippingAmount !== null && <label className="block text-sm font-semibold">Custom shipping amount ($)<Input required type="number" min="0" step="0.01" value={form.customShippingAmount} onChange={(event) => setForm({ ...form, customShippingAmount: event.target.value })} /></label>}
+            <p className="text-xs text-muted-foreground">{form.freeShipping ? 'No shipping fee or billable banner area for this product. Other products may still incur shipping.' : form.customShippingAmount !== null ? 'Charged once per product per order, regardless of quantity. Added to other shipping fees; pickup is free.' : 'Uses the banner area tiers or standard shipping and threshold in Checkout & Fulfilment settings.'}</p>
+          </div>
         </div>
       </div>
       <div className="mt-5">
@@ -502,3 +504,4 @@ export function ProductForm({ productId }: { productId?: string }) {
   </form>
 </main>
 }
+

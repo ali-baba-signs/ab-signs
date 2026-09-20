@@ -1,4 +1,5 @@
 import 'server-only'
+import { DEFAULT_BANNER_SHIPPING_BANDS, validateShippingBands, type ShippingBand } from '@/lib/shipping/bands'
 
 export interface StoreLocation {
   id: string
@@ -31,10 +32,12 @@ export interface StoreSettingsValues {
   locations: StoreLocation[]
   socialLinks: StoreSocialLink[]
   currency: string
+  taxEnabled: boolean
+  taxName: string
   taxRate: number
   shippingCost: number
   freeShippingThreshold: number
-  bannerShippingBands: Array<{ maxAreaM2: number | null; price: number }>
+  bannerShippingBands: ShippingBand[]
   turnaroundDays: string
   footerText: string
   termsUrl: string
@@ -54,16 +57,12 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsValues = {
   locations: [],
   socialLinks: [],
   currency: 'AUD',
+  taxEnabled: true,
+  taxName: 'GST',
   taxRate: 10,
   shippingCost: 0,
   freeShippingThreshold: 50,
-  bannerShippingBands: [
-    { maxAreaM2: 2, price: 15 },
-    { maxAreaM2: 5, price: 20 },
-    { maxAreaM2: 10, price: 28 },
-    { maxAreaM2: 20, price: 40 },
-    { maxAreaM2: null, price: 55 },
-  ],
+  bannerShippingBands: DEFAULT_BANNER_SHIPPING_BANDS,
   turnaroundDays: '3-5',
   footerText: 'Custom print and signage for Australia.',
   termsUrl: '/terms-of-service',
@@ -134,15 +133,7 @@ export function validateStoreSettings(value: unknown): StoreSettingsValues {
       displayOrder: Number.isFinite(Number(row.displayOrder)) ? Math.round(Number(row.displayOrder)) : index,
     }
   }).filter((link) => link.url) : []
-  const bannerShippingBands = Array.isArray(input.bannerShippingBands) && input.bannerShippingBands.length
-    ? input.bannerShippingBands.slice(0, 10).map((item, index) => {
-        const row = (item || {}) as Record<string, unknown>
-        return {
-          maxAreaM2: row.maxAreaM2 === null || row.maxAreaM2 === '' ? null : numberBetween(row.maxAreaM2, 0.01, 100000, `Banner band ${index + 1} area`),
-          price: numberBetween(row.price, 0, 100000, `Banner band ${index + 1} price`),
-        }
-      })
-    : DEFAULT_STORE_SETTINGS.bannerShippingBands
+  const bannerShippingBands = validateShippingBands(input.bannerShippingBands ?? DEFAULT_BANNER_SHIPPING_BANDS)
   return {
     storeName: text('storeName', 255, true),
     storeEmail: email,
@@ -154,6 +145,8 @@ export function validateStoreSettings(value: unknown): StoreSettingsValues {
     locations,
     socialLinks,
     currency,
+    taxEnabled: input.taxEnabled !== false,
+    taxName: input.taxName === undefined ? 'GST' : text('taxName', 40, true),
     taxRate: numberBetween(input.taxRate, 0, 100, 'Tax rate'),
     shippingCost: numberBetween(input.shippingCost, 0, 100000, 'Shipping cost'),
     freeShippingThreshold: numberBetween(input.freeShippingThreshold, 0, 1000000, 'Free shipping threshold'),
@@ -180,3 +173,5 @@ export function publicConfigurationStatus(settings: StoreSettingsValues) {
     },
   }
 }
+
+

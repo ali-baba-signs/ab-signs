@@ -1,3 +1,4 @@
+import { checkoutTaxCents } from '@/lib/cart/tax'
 import { NextRequest, NextResponse } from 'next/server'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
@@ -149,11 +150,9 @@ export async function POST(request: NextRequest) {
     const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null
     const discountCents = coupon?.discountCents || 0
     const discountedSubtotalCents = Math.max(0, subtotalCents - discountCents)
-    const shipping = calculateShipping({ deliveryType, productSubtotal: subtotalCents / 100, standardShippingCost: settings.shippingCost, freeShippingThreshold: settings.freeShippingThreshold, bannerBands: settings.bannerShippingBands, lines: calculatedItems.map((item) => ({ quantity: item.quantity, width: Number(item.size.width), height: Number(item.size.height), unit: item.size.unit, freeShipping: item.product.freeShipping, isBanner: ['custom_banners','mesh_banners','vinyl_banners'].includes(item.category?.category || '') })) })
+    const shipping = calculateShipping({ deliveryType, productSubtotal: discountedSubtotalCents / 100, standardShippingCost: settings.shippingCost, freeShippingThreshold: settings.freeShippingThreshold, bannerBands: settings.bannerShippingBands, lines: calculatedItems.map((item) => ({ quantity: item.quantity, width: Number(item.size.width), height: Number(item.size.height), unit: item.size.unit, freeShipping: item.product.freeShipping, productId: item.product.id, customShippingAmount: item.product.customShippingAmount === null ? null : Number(item.product.customShippingAmount), isBanner: ['custom_banners','mesh_banners','vinyl_banners'].includes(item.category?.category || '') })) })
     const shippingCents = cents(shipping.amount)
-    // GST is calculated from the undiscounted product subtotal. A voucher only
-    // reduces product price; it never reduces the tax or shipping calculation.
-    const taxCents = Math.round(subtotalCents * settings.taxRate / 100)
+    const taxCents = checkoutTaxCents(discountedSubtotalCents, shippingCents, settings.taxEnabled, settings.taxRate)
     const totalCents = discountedSubtotalCents + shippingCents + taxCents
     const orderNumber = `ABS-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
     const reservationExpiresAt = coupon ? couponReservationExpiry() : null
@@ -176,7 +175,7 @@ export async function POST(request: NextRequest) {
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
         orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, designType: item.designType, designMode: item.designType, sideMode: item.designType === 'double_side' ? 'double' : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, shippingCategory: item.category?.category || null },
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, designType: item.designType, designMode: item.designType, sideMode: item.designType === 'double_side' ? 'double' : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, customShippingAmount: item.product.customShippingAmount, taxName: settings.taxName, taxRate: settings.taxEnabled ? settings.taxRate : 0, shippingCategory: item.category?.category || null },
       })))
       if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
       await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })

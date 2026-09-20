@@ -145,6 +145,7 @@ export const products = pgTable('products', {
   sizeMode: varchar('size_mode', { length: 30 }).default('preset_sizes').notNull(),
   allowCustomDimensions: boolean('allow_custom_dimensions').default(false).notNull(),
   freeShipping: boolean('free_shipping').default(false).notNull(),
+  customShippingAmount: decimal('custom_shipping_amount', { precision: 12, scale: 2 }),
   materials: json('materials'),
   printTypes: json('print_types'),
   featured: boolean('featured').default(false),
@@ -718,3 +719,4 @@ export const orderRelations = relations(orders, ({ one, many }) => ({
   items: many(orderItems),
   statusHistory: many(orderStatusHistory),
 }))
+

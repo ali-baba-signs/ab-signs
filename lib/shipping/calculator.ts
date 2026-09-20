@@ -1,7 +1,5 @@
-export interface ShippingBand {
-  maxAreaM2: number | null
-  price: number
-}
+import { DEFAULT_BANNER_SHIPPING_BANDS, type ShippingBand } from './bands'
+export { DEFAULT_BANNER_SHIPPING_BANDS, type ShippingBand } from './bands'
 
 export interface ShippingLine {
   quantity: number
@@ -10,15 +8,9 @@ export interface ShippingLine {
   unit: string
   isBanner: boolean
   freeShipping?: boolean
+  productId?: string
+  customShippingAmount?: number | null
 }
-
-export const DEFAULT_BANNER_SHIPPING_BANDS: ShippingBand[] = [
-  { maxAreaM2: 2, price: 0 },
-  { maxAreaM2: 5, price: 0},
-  { maxAreaM2: 10, price: 28 },
-  { maxAreaM2: 20, price: 40 },
-  { maxAreaM2: null, price: 55 },
-]
 
 const METRES_PER_UNIT: Record<string, number> = { mm: 0.001, cm: 0.01, m: 1, in: 0.0254, ft: 0.3048 }
 
@@ -48,13 +40,18 @@ export function calculateShipping(input: {
   if (input.deliveryType === 'pickup') return { amount: 0, bannerAreaM2: 0, reason: 'pickup' as const }
   const billable = input.lines.filter((line) => !line.freeShipping)
   if (!billable.length) return { amount: 0, bannerAreaM2: 0, reason: 'product_free_shipping' as const }
-  const bannerAreaM2 = billable.filter((line) => line.isBanner).reduce((sum, line) => sum + printedAreaM2(line), 0)
+  const customProducts = new Map<string, number>()
+  billable.forEach((line, index) => { if (line.customShippingAmount != null) customProducts.set(line.productId || String(index), Math.max(0, line.customShippingAmount)) })
+  const customAmount = [...customProducts.values()].reduce((sum, amount) => sum + amount, 0)
+  const globalLines = billable.filter((line) => line.customShippingAmount == null)
+  const bannerAreaM2 = globalLines.filter((line) => line.isBanner).reduce((sum, line) => sum + printedAreaM2(line), 0)
   const bannerAmount = bannerShippingForArea(bannerAreaM2, input.bannerBands)
-  const hasStandardProducts = billable.some((line) => !line.isBanner)
+  const hasStandardProducts = globalLines.some((line) => !line.isBanner)
   const standardAmount = hasStandardProducts && input.productSubtotal < input.freeShippingThreshold ? Math.max(0, input.standardShippingCost) : 0
   return {
-    amount: Math.max(bannerAmount, standardAmount),
+    amount: Math.round((Math.max(bannerAmount, standardAmount) + customAmount) * 100) / 100,
     bannerAreaM2: Math.round(bannerAreaM2 * 1000) / 1000,
-    reason: bannerAreaM2 > 0 ? 'banner_area' as const : standardAmount > 0 ? 'standard' as const : 'threshold' as const,
+    reason: customProducts.size ? 'custom' as const : bannerAreaM2 > 0 ? 'banner_area' as const : standardAmount > 0 ? 'standard' as const : 'threshold' as const,
   }
 }
+
