@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, ExternalLink, ImageOff } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { orderMilestoneLabel } from "@/lib/orders/workflow";
 
@@ -39,8 +39,7 @@ interface Order {
     product?: { name: string };
     artworkUrl?: string;
     designUrl?: string;
-    previewUrl?: string;
-    productionUrl?: string;
+    productionUrl?: string; // <-- Added here
   }>;
   history: Array<{
     id: string;
@@ -48,37 +47,6 @@ interface Order {
     customerVisibleNote: string | null;
     changedAt: string;
   }>;
-}
-
-function ItemThumbnail({
-  src,
-  alt,
-}: {
-  src?: string | null;
-  alt: string;
-}) {
-  const [hasError, setHasError] = useState(false);
-
-  if (!src || hasError) {
-    return (
-      <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded border bg-muted/40 text-muted-foreground">
-        <ImageOff className="h-5 w-5 opacity-60" />
-        <span className="mt-1 text-[10px]">No preview</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted/20">
-      <img
-        src={src}
-        alt={alt}
-        className="h-full w-full object-contain p-1"
-        loading="lazy"
-        onError={() => setHasError(true)}
-      />
-    </div>
-  );
 }
 
 export default function CustomerOrderDetail({
@@ -89,7 +57,6 @@ export default function CustomerOrderDetail({
   const { id } = use(params);
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState("");
-
   useEffect(() => {
     const controller = new AbortController();
     void fetch(`/api/orders/${id}`, {
@@ -98,11 +65,10 @@ export default function CustomerOrderDetail({
     })
       .then(async (response) => {
         const payload = await response.json();
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(
-            payload.error?.message || "Order could not be loaded."
+            payload.error?.message || "Order could not be loaded.",
           );
-        }
         setOrder(payload.data.order);
       })
       .catch((caught) => {
@@ -110,28 +76,23 @@ export default function CustomerOrderDetail({
       });
     return () => controller.abort();
   }, [id]);
-
-  if (!order) {
+  if (!order)
     return (
       <div className="grid min-h-[70vh] place-items-center">
         {error || "Loading order..."}
       </div>
     );
-  }
-
   const subtotal =
     Number(order.totalAmount) -
     Number(order.taxAmount) -
     Number(order.shippingAmount);
   const label = orderMilestoneLabel;
-
   return (
     <main className="min-h-screen bg-background px-4 py-8">
       <div className="mx-auto max-w-5xl">
-        <Link href="/account/orders" className="inline-flex items-center gap-2 text-sm">
-          <ArrowLeft className="h-4 w-4" /> My orders
+        <Link href="/account/orders" className="inline-flex gap-2">
+          <ArrowLeft /> My orders
         </Link>
-
         <div className="mt-3 flex flex-wrap justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black">{order.orderNumber}</h1>
@@ -146,14 +107,9 @@ export default function CustomerOrderDetail({
             </p>
           </div>
         </div>
-
         {order.designConfirmationDeadline && (
           <div
-            className={`mt-5 rounded p-3 text-sm ${
-              order.deadline.delayed
-                ? "bg-red-50 text-red-800"
-                : "bg-green-50 text-green-800"
-            }`}
+            className={`mt-5 rounded p-3 ${order.deadline.delayed ? "bg-red-50 text-red-800" : "bg-green-50 text-green-800"}`}
           >
             Design confirmation target:{" "}
             {new Date(order.designConfirmationDeadline).toLocaleString()}
@@ -162,75 +118,58 @@ export default function CustomerOrderDetail({
               : ""}
           </div>
         )}
-
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
           <div className="space-y-5">
             <section className="rounded-xl border bg-card p-5">
               <h2 className="font-bold">Products and artwork</h2>
-              <div className="mt-3 space-y-3">
-                {order.items.map((item) => {
-                  const previewUrl = item.previewUrl || item.artworkUrl;
+              {order.items.map((item) => (
+                <article key={item.id} className="mt-3 rounded border p-3">
+                  <p className="font-semibold">
+                    {item.product?.name || "Product"} × {item.quantity}
+                  </p>
+                  <p className="text-sm">
+                    {item.specifications?.sizeLabel || "Standard size"} ·{" "}
+                    {item.designSource.replaceAll("_", " ")}
+                  </p>
+                  <p>
+                    {order.currency} ${Number(item.totalPrice).toFixed(2)}
+                  </p>
+                  <div className="flex flex-wrap gap-4">
+                    {item.artworkUrl && (
+                      <a
+                        href={item.artworkUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex gap-1 text-primary"
+                      >
+                        <Download className="h-4 w-4" /> View uploaded artwork
+                      </a>
+                    )}
 
-                  return (
-                    <article key={item.id} className="rounded border p-3">
-                      <div className="flex items-start gap-4">
-                        <ItemThumbnail
-                          src={previewUrl}
-                          alt={item.product?.name || "Artwork Preview"}
-                        />
-
-                        <div className="flex-1 space-y-1">
-                          <p className="font-semibold">
-                            {item.product?.name || "Product"} × {item.quantity}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {item.specifications?.sizeLabel || "Standard size"} ·{" "}
-                            {item.designSource.replaceAll("_", " ")}
-                          </p>
-                          <p className="font-medium">
-                            {order.currency} ${Number(item.totalPrice).toFixed(2)}
-                          </p>
-
-                          <div className="flex flex-wrap gap-3 pt-1 text-xs">
-                            {previewUrl && (
-                              <a
-                                href={previewUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" /> Open preview in new tab
-                              </a>
-                            )}
-                            {item.artworkUrl && item.artworkUrl !== previewUrl && (
-                              <a
-                                href={item.artworkUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" /> Original upload
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {["delivered", "completed"].includes(order.status) && (
-                        <div className="mt-3">
-                          <Link href={`/account/orders/${order.id}/review?itemId=${item.id}`}>
-                            <Button variant="outline" size="sm">
-                              Review this item
-                            </Button>
-                          </Link>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
+                    {/* {(item.productionUrl || item.designUrl) && (
+                      <a
+                        href={item.productionUrl || item.designUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                        className="mt-2 inline-flex gap-1 text-primary"
+                      >
+                        <Download className="h-4 w-4" /> Download saved design
+                      </a>
+                    )} */}
+                  </div>
+                  {["delivered", "completed"].includes(order.status) && (
+                    <Link
+                      href={`/account/orders/${order.id}/review?itemId=${item.id}`}
+                    >
+                      <Button className="mt-3" variant="outline">
+                        Review this item
+                      </Button>
+                    </Link>
+                  )}
+                </article>
+              ))}
             </section>
-
             <section className="rounded-xl border bg-card p-5">
               <h2 className="font-bold">Order timeline</h2>
               <ol className="mt-4 border-l-2 border-primary/30 pl-5">
@@ -249,19 +188,18 @@ export default function CustomerOrderDetail({
                 ))}
               </ol>
             </section>
-
             <section className="rounded-xl border bg-card p-5">
               <h2 className="font-bold">
                 {order.deliveryType === "pickup" ? "Pickup" : "Delivery"}
               </h2>
-              <p className="text-sm">
+              <p>
                 Expected printing:{" "}
                 {order.expectedPrintingAt
                   ? new Date(order.expectedPrintingAt).toLocaleString()
                   : "Not scheduled"}
               </p>
               {order.deliveryType === "pickup" ? (
-                <div className="space-y-1 text-sm">
+                <>
                   <p>
                     Expected pickup:{" "}
                     {order.expectedPickupAt
@@ -280,9 +218,9 @@ export default function CustomerOrderDetail({
                       {new Date(order.pickupCompletedAt).toLocaleString()}
                     </p>
                   )}
-                </div>
+                </>
               ) : (
-                <div className="space-y-1 text-sm">
+                <>
                   <p>
                     Expected delivery:{" "}
                     {order.expectedDeliveryAt
@@ -304,14 +242,13 @@ export default function CustomerOrderDetail({
                       Delivered: {new Date(order.deliveredAt).toLocaleString()}
                     </p>
                   )}
-                </div>
+                </>
               )}
               {order.customerNotes && (
                 <p className="mt-2 text-sm">{order.customerNotes}</p>
               )}
             </section>
           </div>
-
           <aside className="h-fit rounded-xl border bg-card p-5">
             <h2 className="font-bold">Billing summary</h2>
             <div className="mt-3 space-y-2 text-sm">

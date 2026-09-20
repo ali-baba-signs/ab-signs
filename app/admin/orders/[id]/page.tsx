@@ -1,84 +1,615 @@
-'use client'
+"use client";
 
-import { use, useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
-import { ArrowLeft, Download, Save } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { adminPath } from '@/lib/auth/admin-path'
-import { allowedTransitions, ORDER_STATUS_LABELS, orderMilestoneLabel, type OrderWorkflowStatus } from '@/lib/orders/workflow'
-import { uploadAdminFile } from '@/lib/storage/upload-client'
-import { adminOrderSku } from '@/lib/orders/admin-sku'
+import { use, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Download, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { adminPath } from "@/lib/auth/admin-path";
+import {
+  allowedTransitions,
+  ORDER_STATUS_LABELS,
+  orderMilestoneLabel,
+  type OrderWorkflowStatus,
+} from "@/lib/orders/workflow";
+import { uploadAdminFile } from "@/lib/storage/upload-client";
+import { adminOrderSku } from "@/lib/orders/admin-sku";
 
 interface OrderDetail {
-  id: string; orderNumber: string; customerEmail: string; status: string; paymentStatus: string; currency: string; totalAmount: string
-  designConfirmationDeadline: string | null; designDelayReason: string | null; deadline: { delayed: boolean; remainingMs: number | null }
-  expectedPrintingAt: string | null; expectedDeliveryAt: string | null; courierName: string | null; trackingNumber: string | null
-  deliveryType: 'delivery'|'pickup'; expectedPickupAt:string|null; dispatchedAt:string|null; deliveredAt:string|null; readyForPickupAt:string|null; pickupCompletedAt:string|null
-  internalNotes: string | null; customerNotes: string | null
-  receiptAssetId: string | null
-  items: Array<{ id: string; quantity: number; designSource: string; totalPrice: string; specifications: Record<string, string> | null; product?: { name: string; sku: string }; template?: { name: string } | null; artwork?: { originalFilename: string; contentType: string; fileSize: number; notes: string | null; sourceWidthPx: number | null; sourceHeightPx: number | null; originalUrl: string; previewUrl: string | null; dimensionWarning: string | null }; designUrl?: string; productionPreviewUrl?: string; productionUrl?: string; productionSvgUrl?: string; backProductionPreviewUrl?: string; backProductionUrl?: string; backProductionSvgUrl?: string }>
-  history: Array<{ id: string; newStatus: string; customerVisibleNote: string | null; changedAt: string }>
+  id: string;
+  orderNumber: string;
+  customerEmail: string;
+  status: string;
+  paymentStatus: string;
+  currency: string;
+  totalAmount: string;
+  designConfirmationDeadline: string | null;
+  designDelayReason: string | null;
+  deadline: { delayed: boolean; remainingMs: number | null };
+  expectedPrintingAt: string | null;
+  expectedDeliveryAt: string | null;
+  courierName: string | null;
+  trackingNumber: string | null;
+  deliveryType: "delivery" | "pickup";
+  expectedPickupAt: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  readyForPickupAt: string | null;
+  pickupCompletedAt: string | null;
+  internalNotes: string | null;
+  customerNotes: string | null;
+  receiptAssetId: string | null;
+  items: Array<{
+    id: string;
+    quantity: number;
+    designSource: string;
+    totalPrice: string;
+    specifications: Record<string, string> | null;
+    product?: { name: string; sku: string };
+    template?: { name: string } | null;
+    artwork?: {
+      originalFilename: string;
+      contentType: string;
+      fileSize: number;
+      notes: string | null;
+      sourceWidthPx: number | null;
+      sourceHeightPx: number | null;
+      originalUrl: string;
+      previewUrl: string | null;
+      dimensionWarning: string | null;
+    };
+    designUrl?: string;
+    productionPreviewUrl?: string;
+    productionUrl?: string;
+    productionSvgUrl?: string;
+    backProductionPreviewUrl?: string;
+    backProductionUrl?: string;
+    backProductionSvgUrl?: string;
+  }>;
+  history: Array<{
+    id: string;
+    newStatus: string;
+    customerVisibleNote: string | null;
+    changedAt: string;
+  }>;
 }
 
-const emptyForm = { status: '', paymentStatus: '', deliveryType:'delivery' as 'delivery'|'pickup', expectedPrintingAt: '', expectedDeliveryAt: '', expectedPickupAt:'', courierName: '', trackingNumber: '', internalNote: '', customerNote: '', delayReason: '', receiptAssetId: '' }
+const emptyForm = {
+  status: "",
+  paymentStatus: "",
+  deliveryType: "delivery" as "delivery" | "pickup",
+  expectedPrintingAt: "",
+  expectedDeliveryAt: "",
+  expectedPickupAt: "",
+  courierName: "",
+  trackingNumber: "",
+  internalNote: "",
+  customerNote: "",
+  delayReason: "",
+  receiptAssetId: "",
+};
 
-export default function AdminOrderDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
-  const [order, setOrder] = useState<OrderDetail | null>(null)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState(emptyForm)
+export default function AdminOrderDetail({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
+  const [order, setOrder] = useState<OrderDetail | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
   const load = useCallback(async () => {
-    const response = await fetch(`/api/admin/orders/${id}`, { cache: 'no-store' })
-    const payload = await response.json()
-    if (!response.ok) throw new Error(payload.error?.message || 'Order could not be loaded.')
-    const row = payload.data.order as OrderDetail
-    setOrder(row)
-    setForm({ status: row.status, paymentStatus: row.paymentStatus, deliveryType:row.deliveryType||'delivery', expectedPrintingAt: row.expectedPrintingAt?.slice(0, 16) || '', expectedDeliveryAt: row.expectedDeliveryAt?.slice(0, 16) || '', expectedPickupAt:row.expectedPickupAt?.slice(0,16)||'', courierName: row.courierName || '', trackingNumber: row.trackingNumber || '', internalNote: row.internalNotes || '', customerNote: row.customerNotes || '', delayReason: row.designDelayReason || '', receiptAssetId: row.receiptAssetId || '' })
-  }, [id])
+    const response = await fetch(`/api/admin/orders/${id}`, {
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (!response.ok)
+      throw new Error(payload.error?.message || "Order could not be loaded.");
+    const row = payload.data.order as OrderDetail;
+    setOrder(row);
+    setForm({
+      status: row.status,
+      paymentStatus: row.paymentStatus,
+      deliveryType: row.deliveryType || "delivery",
+      expectedPrintingAt: row.expectedPrintingAt?.slice(0, 16) || "",
+      expectedDeliveryAt: row.expectedDeliveryAt?.slice(0, 16) || "",
+      expectedPickupAt: row.expectedPickupAt?.slice(0, 16) || "",
+      courierName: row.courierName || "",
+      trackingNumber: row.trackingNumber || "",
+      internalNote: row.internalNotes || "",
+      customerNote: row.customerNotes || "",
+      delayReason: row.designDelayReason || "",
+      receiptAssetId: row.receiptAssetId || "",
+    });
+  }, [id]);
 
-  useEffect(() => { const timer = window.setTimeout(() => void load().catch((caught) => setError(caught.message)), 0); return () => window.clearTimeout(timer) }, [load])
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => void load().catch((caught) => setError(caught.message)),
+      0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   async function save() {
-    setSaving(true); setError('')
+    setSaving(true);
+    setError("");
     try {
-      const response = await fetch(`/api/admin/orders/${id}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error?.message || 'Update failed.')
-      await load()
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Update failed.') } finally { setSaving(false) }
+      const response = await fetch(`/api/admin/orders/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const payload = await response.json();
+      if (!response.ok)
+        throw new Error(payload.error?.message || "Update failed.");
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Update failed.");
+    } finally {
+      setSaving(false);
+    }
   }
-  async function uploadReceipt(file: File) { try { const asset = await uploadAdminFile(file, 'order-document', id); setForm((current) => ({ ...current, receiptAssetId: asset.id })); setError('Receipt uploaded. Save the order to attach it.') } catch (caught) { setError(caught instanceof Error ? caught.message : 'Receipt upload failed.') } }
+  async function uploadReceipt(file: File) {
+    try {
+      const asset = await uploadAdminFile(file, "order-document", id);
+      setForm((current) => ({ ...current, receiptAssetId: asset.id }));
+      setError("Receipt uploaded. Save the order to attach it.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Receipt upload failed.",
+      );
+    }
+  }
 
-  if (!order) return <div className="grid min-h-screen place-items-center">{error || 'Loading order...'}</div>
-  const choices = [order.status, ...allowedTransitions(order.status)]
-  const label = (status: string) => ORDER_STATUS_LABELS[status as OrderWorkflowStatus] || status.replaceAll('_', ' ')
-  return <main className="min-h-screen bg-background px-4 py-8"><div className="mx-auto max-w-6xl">
-    <Link href={adminPath('/orders')} className="inline-flex items-center gap-2"><ArrowLeft /> Orders</Link>
-    <div className="mt-3 flex flex-wrap justify-between gap-3"><div><h1 className="text-3xl font-black">{order.orderNumber}</h1><p>{order.customerEmail}</p><p className="mt-1 text-sm font-bold text-primary">Milestone: {orderMilestoneLabel(order.status)} <span className="font-normal text-muted-foreground">· {label(order.status)}</span></p></div><div className={order.deadline.delayed ? 'text-red-700' : 'text-green-700'}>{order.designConfirmationDeadline ? `Design target: ${new Date(order.designConfirmationDeadline).toLocaleString()}${order.deadline.delayed ? ' (delayed)' : ''}` : 'No design deadline'}</div></div>
-    {error && <p className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>}
-    <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
-      <div className="space-y-5">
-        <section className="rounded-xl border bg-card p-5"><h2 className="font-bold">Items and printable artwork</h2>{order.items.map((item) => { const specs=item.specifications||{}; return <article key={item.id} className="mt-4 rounded-lg border p-4"><div className="flex flex-wrap justify-between gap-2"><div><p className="font-semibold">{specs.productName || item.product?.name || 'Historical product'} × {item.quantity}</p><p className="text-xs font-bold uppercase tracking-wide text-primary">SKU: {adminOrderSku(item) || 'Unavailable'}</p><p className="text-sm font-semibold">Line total: {order.currency} {Number(item.totalPrice).toFixed(2)}</p><p className="text-sm text-muted-foreground">{specs.variant || specs.sizeLabel || 'Standard'} · {specs.height && specs.width ? `${specs.width} × ${specs.height} ${specs.unit}` : 'Dimensions unavailable'} · {specs.sideMode === 'double' ? 'Double-sided' : 'Single-sided'}</p>{item.template?.name && <p className="text-sm">Template: <b>{item.template.name}</b></p>}</div><span className="h-fit rounded-full bg-secondary px-3 py-1 text-xs font-bold">{item.designSource === 'online_editor' ? 'Online Editor' : item.designSource === 'customer_upload' ? 'Customer Upload' : 'Design Assistance'}</span></div>{item.designSource === 'online_editor' && <div className="mt-4 grid gap-4 md:grid-cols-2"><div><h3 className="text-sm font-bold">Front design preview</h3>{item.productionPreviewUrl ? <img src={item.productionPreviewUrl} alt="Front customer design preview" className="mt-2 max-h-72 w-full rounded border object-contain" /> : <div className="mt-2 grid h-40 place-items-center rounded border border-dashed text-center text-sm text-amber-700">Persisted preview unavailable for this historical order.<br/>The saved design remains downloadable.</div>}
-        {/* <div className="mt-2 flex flex-wrap gap-3">{item.productionUrl && <a className="inline-flex items-center gap-1 font-semibold text-primary" href={item.productionUrl}><Download/> Printable production PDF</a>}{item.designUrl && <a className="inline-flex items-center gap-1 text-sm text-primary" href={item.designUrl}><Download/> Canonical design JSON</a>}</div> */}
-        </div>{specs.sideMode === 'double' && <div><h3 className="text-sm font-bold">Back design preview</h3>{item.backProductionPreviewUrl ? <img src={item.backProductionPreviewUrl} alt="Back customer design preview" className="mt-2 max-h-72 w-full rounded border object-contain" /> : <div className="mt-2 grid h-40 place-items-center rounded border border-dashed text-sm text-amber-700">Back preview unavailable</div>}</div>}</div>}{item.designSource === 'customer_upload' && item.artwork && <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px]"><div><p className="font-semibold">Original customer file: {item.artwork.originalFilename}</p><p className="text-sm text-muted-foreground">{item.artwork.contentType} · {(item.artwork.fileSize/1024/1024).toFixed(2)} MB{item.artwork.sourceWidthPx ? ` · ${item.artwork.sourceWidthPx} × ${item.artwork.sourceHeightPx} px` : ''}</p>{item.artwork.notes && <p className="mt-2 text-sm">Customer notes: {item.artwork.notes}</p>}<p className="mt-2 text-xs text-amber-700">Original authorized file — no bleed, resizing, cropping, or cut marks have been applied.</p><a className="mt-3 inline-flex items-center gap-1 font-semibold text-primary" href={item.artwork.originalUrl}><Download/> Download original production file</a></div>{item.artwork.previewUrl ? item.artwork.contentType === 'application/pdf' ? <object data={`${item.artwork.previewUrl}#page=1&view=FitH`} type="application/pdf" className="h-64 w-full rounded border" aria-label="Customer PDF preview"/> : <img src={item.artwork.previewUrl} alt="Customer artwork preview" className="max-h-64 w-full rounded border object-contain"/> : <div className="grid h-40 place-items-center rounded border border-dashed text-center text-sm">EPS preview unavailable<br/>Filename, format, size, ordered dimensions, and original download are available.</div>}</div>}{item.designSource === 'customer_upload' && !item.artwork && <div className="mt-4 rounded border border-dashed p-4 text-sm text-amber-700">The historical upload reference is unavailable. Contact the customer before production.</div>}<p className="mt-3 text-sm">Artwork status: <b>Ready for production review</b></p></article>})}</section>
-        <section className="rounded-xl border bg-card p-5"><h2 className="font-bold">Vector production exports</h2><div className="mt-3 space-y-2">{order.items.filter((item) => item.designSource === 'online_editor').map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded border p-3"><span className="text-sm font-semibold">{item.product?.name || 'Online editor artwork'}</span><div className="flex flex-wrap gap-3">{item.productionUrl && <a className="inline-flex items-center gap-1 font-semibold text-primary" href={item.productionUrl}><Download/> PDF</a>}{item.productionSvgUrl && <a className="inline-flex items-center gap-1 font-semibold text-primary" href={item.productionSvgUrl}><Download/> SVG</a>}{item.backProductionUrl && <a className="inline-flex items-center gap-1 font-semibold text-primary" href={item.backProductionUrl}><Download/> Back PDF</a>}{item.backProductionSvgUrl && <a className="inline-flex items-center gap-1 font-semibold text-primary" href={item.backProductionSvgUrl}><Download/> Back SVG</a>}</div></div>)}</div></section>
-        <section className="rounded-xl border bg-card p-5"><h2 className="font-bold">Milestone history</h2><ol className="mt-4 border-l-2 pl-4">{order.history.map((item) => <li key={item.id} className="mb-4"><p className="font-semibold">{orderMilestoneLabel(item.newStatus)} <span className="font-normal text-muted-foreground">· {label(item.newStatus)}</span></p>{item.customerVisibleNote && <p className="text-sm text-muted-foreground">{item.customerVisibleNote}</p>}<time className="text-xs">{new Date(item.changedAt).toLocaleString()}</time></li>)}</ol></section>
+  if (!order)
+    return (
+      <div className="grid min-h-screen place-items-center">
+        {error || "Loading order..."}
       </div>
-      <aside className="h-fit space-y-3 rounded-xl border bg-card p-5"><h2 className="font-bold">Update order</h2>
-        <label className="block text-sm">Status<select className="mt-1 h-10 w-full rounded border px-2" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>{choices.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
-        <label className="block text-sm">Payment status<select className="mt-1 h-10 w-full rounded border px-2" value={form.paymentStatus} onChange={(event) => setForm({ ...form, paymentStatus: event.target.value })}>{['awaiting_payment', 'paid', 'payment_failed', 'cancelled', 'refunded'].map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label className="block text-sm">Delivery type<select className="mt-1 h-10 w-full rounded border px-2" value={form.deliveryType} onChange={(event)=>setForm({...form,deliveryType:event.target.value as 'delivery'|'pickup'})}><option value="delivery">Delivery</option><option value="pickup">Pickup</option></select></label>
-        <label className="block text-sm">Expected printing<Input type="datetime-local" value={form.expectedPrintingAt} onChange={(event) => setForm({ ...form, expectedPrintingAt: event.target.value })} /></label>
-        {form.deliveryType==='delivery'?<><label className="block text-sm">Expected delivery<Input type="datetime-local" value={form.expectedDeliveryAt} onChange={(event) => setForm({ ...form, expectedDeliveryAt: event.target.value })} /></label><label className="block text-sm">Courier<Input value={form.courierName} onChange={(event) => setForm({ ...form, courierName: event.target.value })} /></label><label className="block text-sm">Tracking<Input value={form.trackingNumber} onChange={(event) => setForm({ ...form, trackingNumber: event.target.value })} /></label></>:<label className="block text-sm">Expected pickup<Input type="datetime-local" value={form.expectedPickupAt} onChange={(event)=>setForm({...form,expectedPickupAt:event.target.value})}/></label>}
-        <label className="block text-sm">Payment receipt / invoice PDF<Input type="file" accept="application/pdf,.pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadReceipt(file) }} />{form.receiptAssetId && <span className="mt-1 block text-xs text-green-700">A receipt PDF is ready to attach.</span>}</label>
-        <label className="block text-sm">Customer note<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.customerNote} onChange={(event) => setForm({ ...form, customerNote: event.target.value })} /></label>
-        <label className="block text-sm">Internal note<textarea className="mt-1 min-h-20 w-full rounded border p-2" value={form.internalNote} onChange={(event) => setForm({ ...form, internalNote: event.target.value })} /></label>
-        {order.deadline.delayed && <label className="block text-sm">Delay explanation<textarea className="mt-1 min-h-16 w-full rounded border p-2" value={form.delayReason} onChange={(event) => setForm({ ...form, delayReason: event.target.value })} /></label>}
-        <Button className="w-full" onClick={() => void save()} disabled={saving}><Save /> {saving ? 'Saving...' : 'Save milestone'}</Button>
-      </aside>
-    </div>
-  </div></main>
+    );
+  const choices = [order.status, ...allowedTransitions(order.status)];
+  const label = (status: string) =>
+    ORDER_STATUS_LABELS[status as OrderWorkflowStatus] ||
+    status.replaceAll("_", " ");
+  return (
+    <main className="min-h-screen bg-background px-4 py-8">
+      <div className="mx-auto max-w-6xl">
+        <Link
+          href={adminPath("/orders")}
+          className="inline-flex items-center gap-2"
+        >
+          <ArrowLeft /> Orders
+        </Link>
+        <div className="mt-3 flex flex-wrap justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-black">{order.orderNumber}</h1>
+            <p>{order.customerEmail}</p>
+            <p className="mt-1 text-sm font-bold text-primary">
+              Milestone: {orderMilestoneLabel(order.status)}{" "}
+              <span className="font-normal text-muted-foreground">
+                · {label(order.status)}
+              </span>
+            </p>
+          </div>
+          <div
+            className={
+              order.deadline.delayed ? "text-red-700" : "text-green-700"
+            }
+          >
+            {order.designConfirmationDeadline
+              ? `Design target: ${new Date(order.designConfirmationDeadline).toLocaleString()}${order.deadline.delayed ? " (delayed)" : ""}`
+              : "No design deadline"}
+          </div>
+        </div>
+        {error && (
+          <p className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>
+        )}
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
+          <div className="space-y-5">
+            <section className="rounded-xl border bg-card p-5">
+              <h2 className="font-bold">Items and printable artwork</h2>
+              {order.items.map((item) => {
+                const specs = item.specifications || {};
+                return (
+                  <article key={item.id} className="mt-4 rounded-lg border p-4">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">
+                          {specs.productName ||
+                            item.product?.name ||
+                            "Historical product"}{" "}
+                          × {item.quantity}
+                        </p>
+                        <p className="text-xs font-bold uppercase tracking-wide text-primary">
+                          SKU: {adminOrderSku(item) || "Unavailable"}
+                        </p>
+                        <p className="text-sm font-semibold">
+                          Line total: {order.currency}{" "}
+                          {Number(item.totalPrice).toFixed(2)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {specs.variant || specs.sizeLabel || "Standard"} ·{" "}
+                          {specs.height && specs.width
+                            ? `${specs.width} × ${specs.height} ${specs.unit}`
+                            : "Dimensions unavailable"}{" "}
+                          ·{" "}
+                          {specs.sideMode === "double"
+                            ? "Double-sided"
+                            : "Single-sided"}
+                        </p>
+                        {item.template?.name && (
+                          <p className="text-sm">
+                            Template: <b>{item.template.name}</b>
+                          </p>
+                        )}
+                      </div>
+                      <span className="h-fit rounded-full bg-secondary px-3 py-1 text-xs font-bold">
+                        {item.designSource === "online_editor"
+                          ? "Online Editor"
+                          : item.designSource === "customer_upload"
+                            ? "Customer Upload"
+                            : "Design Assistance"}
+                      </span>
+                    </div>
+                    {item.designSource === "online_editor" && (
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <div>
+                          <h3 className="text-sm font-bold">
+                            Front design preview
+                          </h3>
+                          {item.productionPreviewUrl ? (
+                            <img
+                              src={item.productionPreviewUrl}
+                              alt="Front customer design preview"
+                              className="mt-2 max-h-72 w-full rounded border object-contain"
+                            />
+                          ) : (
+                            <div className="mt-2 grid h-40 place-items-center rounded border border-dashed text-center text-sm text-amber-700">
+                              Persisted preview unavailable for this historical
+                              order.
+                              <br />
+                              The saved design remains downloadable.
+                            </div>
+                          )}
+                          {/* <div className="mt-2 flex flex-wrap gap-3">{item.productionUrl && <a className="inline-flex items-center gap-1 font-semibold text-primary" href={item.productionUrl}><Download/> Printable production PDF</a>}{item.designUrl && <a className="inline-flex items-center gap-1 text-sm text-primary" href={item.designUrl}><Download/> Canonical design JSON</a>}</div> */}
+                        </div>
+                        {specs.sideMode === "double" && (
+                          <div>
+                            <h3 className="text-sm font-bold">
+                              Back design preview
+                            </h3>
+                            {item.backProductionPreviewUrl ? (
+                              <img
+                                src={item.backProductionPreviewUrl}
+                                alt="Back customer design preview"
+                                className="mt-2 max-h-72 w-full rounded border object-contain"
+                              />
+                            ) : (
+                              <div className="mt-2 grid h-40 place-items-center rounded border border-dashed text-sm text-amber-700">
+                                Back preview unavailable
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {item.designSource === "customer_upload" &&
+                      item.artwork && (
+                        <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_260px]">
+                          <div>
+                            <p className="font-semibold">
+                              Original customer file:{" "}
+                              {item.artwork.originalFilename}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {item.artwork.contentType} ·{" "}
+                              {(item.artwork.fileSize / 1024 / 1024).toFixed(2)}{" "}
+                              MB
+                              {item.artwork.sourceWidthPx
+                                ? ` · ${item.artwork.sourceWidthPx} × ${item.artwork.sourceHeightPx} px`
+                                : ""}
+                            </p>
+                            {item.artwork.notes && (
+                              <p className="mt-2 text-sm">
+                                Customer notes: {item.artwork.notes}
+                              </p>
+                            )}
+                            <p className="mt-2 text-xs text-amber-700">
+                              Original authorized file — no bleed, resizing,
+                              cropping, or cut marks have been applied.
+                            </p>
+                            <a
+                              className="mt-3 inline-flex items-center gap-1 font-semibold text-primary"
+                              href={item.artwork.originalUrl}
+                            >
+                              <Download /> Download original production file
+                            </a>
+                          </div>
+                          {item.artwork.previewUrl ? (
+                            item.artwork.contentType === "application/pdf" ? (
+                              <object
+                                data={`${item.artwork.previewUrl}#page=1&view=FitH`}
+                                type="application/pdf"
+                                className="h-64 w-full rounded border"
+                                aria-label="Customer PDF preview"
+                              />
+                            ) : (
+                              <img
+                                src={item.artwork.previewUrl}
+                                alt="Customer artwork preview"
+                                className="max-h-64 w-full rounded border object-contain"
+                              />
+                            )
+                          ) : (
+                            <div className="grid h-40 place-items-center rounded border border-dashed text-center text-sm">
+                              EPS preview unavailable
+                              <br />
+                              Filename, format, size, ordered dimensions, and
+                              original download are available.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    {item.designSource === "customer_upload" &&
+                      !item.artwork && (
+                        <div className="mt-4 rounded border border-dashed p-4 text-sm text-amber-700">
+                          The historical upload reference is unavailable.
+                          Contact the customer before production.
+                        </div>
+                      )}
+                    <p className="mt-3 text-sm">
+                      Artwork status: <b>Ready for production review</b>
+                    </p>
+                  </article>
+                );
+              })}
+            </section>
+            <section className="rounded-xl border bg-card p-5">
+              <h2 className="font-bold">Vector production exports</h2>
+              <div className="mt-3 space-y-2">
+                {order.items
+                  .filter((item) => item.designSource === "online_editor")
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded border p-3"
+                    >
+                      <span className="text-sm font-semibold">
+                        {item.product?.name || "Online editor artwork"}
+                      </span>
+                      <div className="flex flex-wrap gap-3">
+                        {item.productionUrl && (
+                          <a
+                            className="inline-flex items-center gap-1 font-semibold text-primary"
+                            href={item.productionUrl}
+                          >
+                            <Download /> PDF
+                          </a>
+                        )}
+                        {item.productionSvgUrl && (
+                          <a
+                            className="inline-flex items-center gap-1 font-semibold text-primary"
+                            href={item.productionSvgUrl}
+                          >
+                            <Download /> SVG
+                          </a>
+                        )}
+                        {item.backProductionUrl && (
+                          <a
+                            className="inline-flex items-center gap-1 font-semibold text-primary"
+                            href={item.backProductionUrl}
+                          >
+                            <Download /> Back PDF
+                          </a>
+                        )}
+                        {item.backProductionSvgUrl && (
+                          <a
+                            className="inline-flex items-center gap-1 font-semibold text-primary"
+                            href={item.backProductionSvgUrl}
+                          >
+                            <Download /> Back SVG
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </section>
+            <section className="rounded-xl border bg-card p-5">
+              <h2 className="font-bold">Milestone history</h2>
+              <ol className="mt-4 border-l-2 pl-4">
+                {order.history.map((item) => (
+                  <li key={item.id} className="mb-4">
+                    <p className="font-semibold">
+                      {orderMilestoneLabel(item.newStatus)}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        · {label(item.newStatus)}
+                      </span>
+                    </p>
+                    {item.customerVisibleNote && (
+                      <p className="text-sm text-muted-foreground">
+                        {item.customerVisibleNote}
+                      </p>
+                    )}
+                    <time className="text-xs">
+                      {new Date(item.changedAt).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </div>
+          <aside className="h-fit space-y-3 rounded-xl border bg-card p-5">
+            <h2 className="font-bold">Update order</h2>
+            <label className="block text-sm">
+              Status
+              <select
+                className="mt-1 h-10 w-full rounded border px-2"
+                value={form.status}
+                onChange={(event) =>
+                  setForm({ ...form, status: event.target.value })
+                }
+              >
+                {choices.map((value) => (
+                  <option key={value} value={value}>
+                    {label(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              Payment status
+              <select
+                className="mt-1 h-10 w-full rounded border px-2"
+                value={form.paymentStatus}
+                onChange={(event) =>
+                  setForm({ ...form, paymentStatus: event.target.value })
+                }
+              >
+                {[
+                  "awaiting_payment",
+                  "paid",
+                  "payment_failed",
+                  "cancelled",
+                  "refunded",
+                ].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              Delivery type
+              <select
+                className="mt-1 h-10 w-full rounded border px-2"
+                value={form.deliveryType}
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    deliveryType: event.target.value as "delivery" | "pickup",
+                  })
+                }
+              >
+                <option value="delivery">Delivery</option>
+                <option value="pickup">Pickup</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              Expected printing
+              <Input
+                type="datetime-local"
+                value={form.expectedPrintingAt}
+                onChange={(event) =>
+                  setForm({ ...form, expectedPrintingAt: event.target.value })
+                }
+              />
+            </label>
+            {form.deliveryType === "delivery" ? (
+              <>
+                <label className="block text-sm">
+                  Expected delivery
+                  <Input
+                    type="datetime-local"
+                    value={form.expectedDeliveryAt}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        expectedDeliveryAt: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="block text-sm">
+                  Courier
+                  <Input
+                    value={form.courierName}
+                    onChange={(event) =>
+                      setForm({ ...form, courierName: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="block text-sm">
+                  Tracking
+                  <Input
+                    value={form.trackingNumber}
+                    onChange={(event) =>
+                      setForm({ ...form, trackingNumber: event.target.value })
+                    }
+                  />
+                </label>
+              </>
+            ) : (
+              <label className="block text-sm">
+                Expected pickup
+                <Input
+                  type="datetime-local"
+                  value={form.expectedPickupAt}
+                  onChange={(event) =>
+                    setForm({ ...form, expectedPickupAt: event.target.value })
+                  }
+                />
+              </label>
+            )}
+            <label className="block text-sm">
+              Payment receipt / invoice PDF
+              <Input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void uploadReceipt(file);
+                }}
+              />
+              {form.receiptAssetId && (
+                <span className="mt-1 block text-xs text-green-700">
+                  A receipt PDF is ready to attach.
+                </span>
+              )}
+            </label>
+            <label className="block text-sm">
+              Customer note
+              <textarea
+                className="mt-1 min-h-20 w-full rounded border p-2"
+                value={form.customerNote}
+                onChange={(event) =>
+                  setForm({ ...form, customerNote: event.target.value })
+                }
+              />
+            </label>
+            <label className="block text-sm">
+              Internal note
+              <textarea
+                className="mt-1 min-h-20 w-full rounded border p-2"
+                value={form.internalNote}
+                onChange={(event) =>
+                  setForm({ ...form, internalNote: event.target.value })
+                }
+              />
+            </label>
+            {order.deadline.delayed && (
+              <label className="block text-sm">
+                Delay explanation
+                <textarea
+                  className="mt-1 min-h-16 w-full rounded border p-2"
+                  value={form.delayReason}
+                  onChange={(event) =>
+                    setForm({ ...form, delayReason: event.target.value })
+                  }
+                />
+              </label>
+            )}
+            <Button
+              className="w-full"
+              onClick={() => void save()}
+              disabled={saving}
+            >
+              <Save /> {saving ? "Saving..." : "Save milestone"}
+            </Button>
+          </aside>
+        </div>
+      </div>
+    </main>
+  );
 }
