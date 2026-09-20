@@ -8,6 +8,7 @@ export function authoritativeTotalCents(input: { itemTotals: unknown[]; discount
   return total
 }
 
+
 export function stripeEventPaymentStatus(type: string) {
   if (type === 'payment_intent.succeeded') return 'paid' as const
   if (type === 'payment_intent.canceled') return 'cancelled' as const
