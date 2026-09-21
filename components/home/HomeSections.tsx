@@ -31,7 +31,7 @@ function Heading({ eyebrow, title, link }: { eyebrow: string; title: string; lin
 export function CategoryGrid({ categories }: { categories: Array<{ id: string; name: string; description: string; href: string; image: string }> }) {
   if (!categories.length) return null
   return <section className="mx-auto max-w-[1440px] px-4 py-16 sm:px-8 lg:py-24">
-    <Heading eyebrow="Find your format" title="Shop by category" link="/products" />
+    <Heading eyebrow="Find your format" title="Shop By Category" link="/products" />
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 lg:gap-6">
       {categories.map((category) => <Link key={category.id} href={category.href} className="group flex h-full flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white transition hover:-translate-y-1 hover:border-[#ed1b68] hover:shadow-xl">
         <div className="relative aspect-[4/3] overflow-hidden bg-zinc-100"><Image src={category.image} alt={category.name} fill sizes="(max-width: 768px) 50vw, 33vw" className="object-cover transition duration-500 group-hover:scale-105" /></div>
@@ -71,18 +71,18 @@ export function PromotionGrid({ promotions }: { promotions: Array<{ id:string; h
 export function DesignOnlineSection() {
   const steps = ['Choose your product and size', 'Pick a template or start blank', 'Add text, logos and graphics', 'Save your draft and continue to order']
   return <section className="overflow-hidden bg-[#111] text-white"><div className="mx-auto grid max-w-[1440px] items-center gap-12 px-4 py-16 sm:px-8 lg:grid-cols-2 lg:py-24">
-    <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff4b91]">Design online</p><h2 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">Professional signage starts with a clear idea.</h2><p className="mt-5 max-w-xl leading-7 text-white/65">Use editable templates or build your artwork from scratch with the Alibaba Signs canvas editor.</p><Link href="/design" className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-md bg-[#ed1b68] px-6 text-sm font-bold hover:bg-[#c91556]">Start designing <WandSparkles className="h-4 w-4" /></Link></div>
+    <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff4b91]">Design Online</p><h2 className="mt-3 text-4xl font-black leading-tight sm:text-5xl">Professional signage starts with a clear idea.</h2><p className="mt-5 max-w-xl leading-7 text-white/65">Use editable templates or build your artwork from scratch with the Alibaba Signs canvas editor.</p><Link href="/design" className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-md bg-[#ed1b68] px-6 text-sm font-bold hover:bg-[#c91556]">Start designing <WandSparkles className="h-4 w-4" /></Link></div>
     <ol className="grid gap-3 sm:grid-cols-2">{steps.map((step, index) => <li key={step} className="rounded-xl border border-white/10 bg-white/5 p-5"><span className="text-xs font-black text-[#ff4b91]">0{index + 1}</span><p className="mt-2 font-bold">{step}</p></li>)}</ol>
   </div></section>
 }
 
 export function ArtworkOptions() {
   const options = [
-    { icon: WandSparkles, title: 'Design online', text: 'Use the live editor now.', href: '/design', enabled: true },
-    { icon: Upload, title: 'Upload artwork', text: 'Choose a product and confirm a print-ready PDF, PNG, SVG, or EPS.', href: '/upload-artwork', enabled: true },
-    { icon: PenTool, title: 'Design assistance', text: 'A managed assistance workflow is being prepared.', href: '', enabled: false },
+    { icon: WandSparkles, title: 'Design Online', text: 'Use the live editor now.', href: '/design', enabled: true },
+    { icon: Upload, title: 'Upload Artwork', text: 'Choose a product and confirm a print-ready PDF, PNG, SVG, or EPS.', href: '/upload-artwork', enabled: true },
+    { icon: PenTool, title: 'Design Assistance', text: 'A managed assistance workflow is being prepared.', href: '', enabled: false },
   ]
-  return <section className="mx-auto max-w-[1440px] px-4 py-16 sm:px-8 lg:py-24"><Heading eyebrow="Choose your artwork path" title="Bring your design to print" /><div className="grid gap-4 md:grid-cols-3">{options.map(({ icon: Icon, ...option }) => <article key={option.title} className="rounded-xl border border-zinc-200 p-7"><Icon className="h-7 w-7 text-[#ed1b68]" /><h3 className="mt-5 text-xl font-black">{option.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-500">{option.text}</p>{option.enabled ? <Link href={option.href} className="mt-5 inline-flex items-center gap-1 text-sm font-bold text-[#ed1b68]">Get started <ArrowRight className="h-4 w-4" /></Link> : <span className="mt-5 inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-500">Coming later</span>}</article>)}</div></section>
+  return <section className="mx-auto max-w-[1440px] px-4 py-16 sm:px-8 lg:py-24"><Heading eyebrow="Choose your artwork path" title="Bring Your Design To Print" /><div className="grid gap-4 md:grid-cols-3">{options.map(({ icon: Icon, ...option }) => <article key={option.title} className="rounded-xl border border-zinc-200 p-7"><Icon className="h-7 w-7 text-[#ed1b68]" /><h3 className="mt-5 text-xl font-black">{option.title}</h3><p className="mt-2 text-sm leading-6 text-zinc-500">{option.text}</p>{option.enabled ? <Link href={option.href} className="mt-5 inline-flex items-center gap-1 text-sm font-bold text-[#ed1b68]">Get Started <ArrowRight className="h-4 w-4" /></Link> : <span className="mt-5 inline-block rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-500">Coming Later</span>}</article>)}</div></section>
 }
 
 export function SeoContent() {

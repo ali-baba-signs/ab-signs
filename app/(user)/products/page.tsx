@@ -88,7 +88,7 @@ function ProductsContent() {
         <aside>
           <label className="text-sm font-semibold">
             Search
-            <Input className="mt-2" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…" />
+            <Input className="mt-2" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search Products…" />
           </label>
 
           <div className="mt-6">

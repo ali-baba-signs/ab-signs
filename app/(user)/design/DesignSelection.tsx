@@ -34,7 +34,7 @@ export default function DesignSelection() {
     return template ? [{ template, size, configuration }] : []
   })
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:py-12">
-    <h1 className="text-3xl font-bold">Design your signage</h1>
+    <h1 className="text-3xl font-bold">Design Your Signage</h1>
     <p className="mt-3 text-muted-foreground">Choose a product and production size to see its available designs.</p>
     {state && <p role="status" className="mt-4">{state}</p>}
     <div className="my-8 grid gap-4 sm:grid-cols-2">

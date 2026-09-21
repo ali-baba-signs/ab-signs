@@ -30,10 +30,10 @@ export interface HomepageCategory {
 }
 
 export const promoMessages = [
-  'Australia-wide delivery',
-  'Professional print production',
-  'Custom sizes available',
-  'Design online',
+  'Australia-wide Delivery',
+  'Professional Print Production',
+  'Custom Sizes Available',
+  'Design Online',
 ]
 
 export const productNavigation = [

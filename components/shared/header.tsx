@@ -44,12 +44,12 @@ export function Header() {
 
           <form action="/products" className="relative order-3 col-span-2 w-full min-w-0 sm:order-none sm:col-span-1 sm:max-w-2xl sm:justify-self-center">
             <label htmlFor="site-search" className="sr-only">Search Products</label>
-            <input id="site-search" name="search" type="search" placeholder="Search products" className="h-11 w-full min-w-0 rounded-md border border-zinc-300 bg-zinc-50 px-3 pr-11 text-sm outline-none transition focus:border-[#ed1b68] focus:bg-white focus:ring-2 focus:ring-[#ed1b68]/15 lg:h-12 lg:px-4 lg:pr-12" />
+            <input id="site-search" name="search" type="search" placeholder="Search Products" className="h-11 w-full min-w-0 rounded-md border border-zinc-300 bg-zinc-50 px-3 pr-11 text-sm outline-none transition focus:border-[#ed1b68] focus:bg-white focus:ring-2 focus:ring-[#ed1b68]/15 lg:h-12 lg:px-4 lg:pr-12" />
             <button aria-label="Search" className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded text-[#ed1b68]"><Search className="h-5 w-5" /></button>
           </form>
 
           <div className="flex min-w-0 items-center justify-self-end">
-            <Link href="/contact" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need help?</span>Contact us</Link>
+            <Link href="/contact" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need Help?</span>Contact us</Link>
             <div className="relative">
               <button type="button" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-label={session?.user ? 'Open account menu' : 'Sign in or create an account'} className="flex min-h-11 min-w-0 items-center gap-1 rounded-md px-1.5 hover:bg-zinc-100 sm:gap-2 sm:px-2">
                 <UserRound className="h-5 w-5 shrink-0" /><span className="max-w-16 truncate text-xs font-bold sm:max-w-24 sm:text-sm">{isPending ? 'Account' : session?.user?.name?.split(' ')[0] || 'Sign in'}</span>
@@ -85,7 +85,7 @@ export function Header() {
               {category.children.map((child) => <Link key={child.id} href={child.href} onClick={() => setMenuOpen(false)} className="block rounded px-4 py-2.5 text-sm text-zinc-600 hover:bg-zinc-50 hover:text-[#ed1b68]">{child.name}</Link>)}
             </div>
           </div>)}
-          <Link href="/design" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-black text-[#ed1b68] lg:ml-auto">Design online</Link>
+          <Link href="/design" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-black text-[#ed1b68] lg:ml-auto">Design Online</Link>
         </div>
       </nav>
     </header>

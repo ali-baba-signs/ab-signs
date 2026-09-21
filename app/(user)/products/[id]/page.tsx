@@ -174,7 +174,7 @@ return (
             {/* Template Editor Link */}
             {selectedSize && selectedTemplate && (
               <div className="rounded-lg bg-secondary p-4">
-                <p className="font-semibold">Design online</p>
+                <p className="font-semibold">Design Online</p>
                  <p className="text-sm text-muted-foreground">The correct production template is loaded automatically for this size and design option.</p>
                 <Link
                   href={`/design?templateId=${selectedTemplate.id}&productId=${product.id}&sizeId=${selectedSize.id}&designType=${designType}`}

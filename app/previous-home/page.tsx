@@ -35,7 +35,7 @@ export default function HomePage() {
           </Link>
 
           <label className="relative hidden flex-1 lg:block">
-            <span className="sr-only">Search products</span>
+            <span className="sr-only">Search Products</span>
             <Search className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2" />
             <input
               className="h-12 w-full rounded-md border border-[#bdbdbd] bg-white px-5 pr-12 text-sm outline-none transition focus:border-[#ed1b68] focus:ring-2 focus:ring-[#ed1b68]/20"
