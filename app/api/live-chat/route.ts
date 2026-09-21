@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     // Route request to n8n Webhook
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-message'
-    const webhookSecret = process.env.ALIBABA_WEBHOOK_SECRET
+    const webhookSecret = process.env.SUPPORT_WEBHOOK_SECRET
 
     if (!webhookSecret) {
       throw new SupportError(
