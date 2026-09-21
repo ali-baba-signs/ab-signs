@@ -49,7 +49,7 @@ export function Header() {
           </form>
 
           <div className="flex min-w-0 items-center justify-self-end">
-            <Link href="/contact" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need Help?</span>Contact us</Link>
+            <Link href="/contact" className="hidden px-3 py-2 text-xs font-bold hover:text-[#ed1b68] xl:block"><span className="block text-[10px] font-medium text-zinc-500">Need Help?</span>Contact Us</Link>
             <div className="relative">
               <button type="button" onClick={() => setAccountOpen(!accountOpen)} aria-expanded={accountOpen} aria-label={session?.user ? 'Open account menu' : 'Sign in or create an account'} className="flex min-h-11 min-w-0 items-center gap-1 rounded-md px-1.5 hover:bg-zinc-100 sm:gap-2 sm:px-2">
                 <UserRound className="h-5 w-5 shrink-0" /><span className="max-w-16 truncate text-xs font-bold sm:max-w-24 sm:text-sm">{isPending ? 'Account' : session?.user?.name?.split(' ')[0] || 'Sign in'}</span>
@@ -57,13 +57,13 @@ export function Header() {
               {accountOpen && <div className="absolute right-0 top-full mt-2 w-52 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl">
                 {session?.user ? <>
                   <p className="truncate px-3 py-2 text-xs text-zinc-500">{session.user.email}</p>
-                  <Link href="/account/profile" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My profile</Link>
-                  <Link href="/account/orders" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My orders</Link>
-                  <Link href="/account/offers" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">My offers</Link>
-                  <button onClick={logout} className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Sign out</button>
+                  <Link href="/account/profile" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">Profile</Link>
+                  <Link href="/account/orders" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">Orders</Link>
+                  <Link href="/account/offers" onClick={() => setAccountOpen(false)} className="block rounded px-3 py-2 text-sm font-medium hover:bg-zinc-100">Offers</Link>
+                  <button onClick={logout} className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50">Sign Out</button>
                 </> : <>
-                  <Link href="/sign-in" onClick={() => setAccountOpen(false)} className="block rounded bg-[#ed1b68] px-3 py-2 text-center text-sm font-bold text-white">Sign in</Link>
-                  <Link href="/sign-up" onClick={() => setAccountOpen(false)} className="mt-1 block rounded px-3 py-2 text-center text-sm font-medium hover:bg-zinc-100">Create account</Link>
+                  <Link href="/sign-in" onClick={() => setAccountOpen(false)} className="block rounded bg-[#ed1b68] px-3 py-2 text-center text-sm font-bold text-white">Sign In</Link>
+                  <Link href="/sign-up" onClick={() => setAccountOpen(false)} className="mt-1 block rounded px-3 py-2 text-center text-sm font-medium hover:bg-zinc-100">Create Account</Link>
                 </>}
               </div>}
             </div>

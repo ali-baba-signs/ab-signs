@@ -91,7 +91,7 @@ export default function CustomerOrderDetail({
     <main className="min-h-screen bg-background px-4 py-8">
       <div className="mx-auto max-w-5xl">
         <Link href="/account/orders" className="inline-flex gap-2">
-          <ArrowLeft /> My orders
+          <ArrowLeft /> My Orders
         </Link>
         <div className="mt-3 flex flex-wrap justify-between gap-4">
           <div>

@@ -48,7 +48,7 @@ export function CategoryGrid({ categories }: { categories: Array<{ id: string; n
 export function ProductHighlights({ products }: { products: Array<{ id: string; name: string; description: string; image: string; basePrice: string; soldQuantity: number }> }) {
   if (!products.length) return null
   return <section className="bg-zinc-50 py-16 lg:py-24"><div className="mx-auto max-w-[1440px] px-4 sm:px-8">
-    <Heading eyebrow="Existing catalogue" title="Popular print formats" link="/products" />
+    <Heading eyebrow="Existing catalogue" title="Popular Print Formats" link="/products" />
     <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3">
       {products.map((product) => <article key={product.id} className="group flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-white p-2 shadow-sm sm:p-3">
         <Link href={`/products/${product.id}`}><div className="relative aspect-square overflow-hidden rounded-lg bg-zinc-100 md:aspect-[4/3]"><Image src={product.image} alt={product.name} fill sizes="(max-width: 767px) 50vw, 33vw" className="object-cover transition duration-500 group-hover:scale-105" /></div></Link>
