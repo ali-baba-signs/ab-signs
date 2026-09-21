@@ -79,7 +79,7 @@ export function ChatWidget() {
     ))}
   </div>
 )}
-      {reply?.intent==='products'&&<Link className="mt-3 block text-sm underline" href="/products">Browse products</Link>}
+      {reply?.intent==='products'&&<Link className="mt-3 block text-sm underline" href="/products">Browse Products</Link>}
       {reply?.requiresHuman&&<Link className="mt-3 block text-sm underline" href="/contact">{reply.intent==='custom_quote'?'Submit quote details and artwork':'Contact the support team'}</Link>}
     </div>
     <form onSubmit={event=>{event.preventDefault();void send()}} className="space-y-2 border-t bg-card p-3">

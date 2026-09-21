@@ -43,7 +43,7 @@ export function Header() {
           <Link href="/" className="min-w-0 shrink-0"><Image src="/blogo.png" alt="Alibaba Signs" width={210} height={70} priority className="h-9 w-auto max-w-full object-contain object-left lg:h-12" /></Link>
 
           <form action="/products" className="relative order-3 col-span-2 w-full min-w-0 sm:order-none sm:col-span-1 sm:max-w-2xl sm:justify-self-center">
-            <label htmlFor="site-search" className="sr-only">Search products</label>
+            <label htmlFor="site-search" className="sr-only">Search Products</label>
             <input id="site-search" name="search" type="search" placeholder="Search products" className="h-11 w-full min-w-0 rounded-md border border-zinc-300 bg-zinc-50 px-3 pr-11 text-sm outline-none transition focus:border-[#ed1b68] focus:bg-white focus:ring-2 focus:ring-[#ed1b68]/15 lg:h-12 lg:px-4 lg:pr-12" />
             <button aria-label="Search" className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded text-[#ed1b68]"><Search className="h-5 w-5" /></button>
           </form>
@@ -77,7 +77,7 @@ export function Header() {
 
       <nav id="mobile-product-navigation" aria-label="Product categories" className={`absolute left-0 right-0 top-full max-h-[calc(100vh-2rem)] overflow-y-auto border-b border-zinc-200 bg-white shadow-xl transition duration-200 ease-out lg:static lg:max-h-none lg:overflow-visible lg:shadow-none ${menuOpen ? 'visible translate-y-0 opacity-100' : 'pointer-events-none invisible -translate-y-2 opacity-0 lg:pointer-events-auto lg:visible lg:translate-y-0 lg:opacity-100'}`}>
         <div className="mx-auto flex max-w-[1440px] flex-col px-4 lg:h-12 lg:flex-row lg:items-center lg:gap-1 lg:px-8">
-          <Link href="/products" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">All products</Link>
+          <Link href="/products" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">All Products</Link>
           <Link href="/offers" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm font-bold text-[#ed1b68] hover:text-[#ed1b68]">Offers &amp; Vouchers</Link>
           {navigation.map((category) => <div key={category.id} className="group relative">
             <Link href={category.href} onClick={() => setMenuOpen(false)} className="flex items-center justify-between gap-1 px-4 py-3 text-sm font-bold hover:text-[#ed1b68]">{category.name}<ChevronDown className="hidden h-3.5 w-3.5 lg:block" /></Link>
