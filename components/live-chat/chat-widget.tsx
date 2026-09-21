@@ -8,7 +8,13 @@ import { Input } from '@/components/ui/input'
 import { CHAT_ACTIONS, type ChatReply, type SupportIntent } from '@/lib/support/rules'
 
 interface Message { id: string; text: string; sender: 'user'|'support' }
-const policyLinks=['/policies','/privacy-policy','/terms-of-service','/refund-returns-policy','/warranty-disclaimer']
+const policyLinks = [
+  { label: 'Policies Overview', path: '/policies' },
+  { label: 'Privacy Policy', path: '/privacy-policy' },
+  { label: 'Terms of Service', path: '/terms-of-service' },
+  { label: 'Refunds & Returns', path: '/refund-returns-policy' },
+  { label: 'Warranty & Disclaimer', path: '/warranty-disclaimer' },
+]
 export function ChatWidget() {
   const [isOpen,setIsOpen]=useState(false)
   const [messages,setMessages]=useState<Message[]>([])
@@ -60,7 +66,19 @@ export function ChatWidget() {
       <p className="mb-3 text-sm">How can we help?</p>
       <div className="mb-4 flex flex-wrap gap-2">{CHAT_ACTIONS.map(item=><Button key={item.action} variant="outline" size="sm" disabled={busy} onClick={()=>void send(item.action)}>{item.label}</Button>)}</div>
       <div role="log" aria-live="polite" className="space-y-3">{messages.map(message=><p key={message.id} className={`break-words rounded-lg p-3 text-sm whitespace-pre-wrap ${message.sender==='user'?'ml-6 bg-primary text-white':'mr-3 bg-secondary'}`}>{message.text}</p>)}</div>
-      {reply?.intent==='privacy'&&<ul className="mt-3 space-y-2 text-sm">{policyLinks.map(path=><li key={path}><Link className="underline" href={path}>{path}</Link></li>)}</ul>}
+      {reply?.intent === 'privacy' && (
+  <div className="mt-3 flex flex-wrap gap-1.5">
+    {policyLinks.map(item => (
+      <Link
+        key={item.path}
+        href={item.path}
+        className="inline-flex items-center rounded-md border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground shadow-xs"
+      >
+        {item.label}
+      </Link>
+    ))}
+  </div>
+)}
       {reply?.intent==='products'&&<Link className="mt-3 block text-sm underline" href="/products">Browse products</Link>}
       {reply?.requiresHuman&&<Link className="mt-3 block text-sm underline" href="/contact">{reply.intent==='custom_quote'?'Submit quote details and artwork':'Contact the support team'}</Link>}
     </div>

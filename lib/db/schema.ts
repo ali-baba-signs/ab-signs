@@ -681,7 +681,7 @@ export const productionQueue = pgTable('production_queue', {
 export const liveChatMessages = pgTable('live_chat_messages', {
   id: uuid('id').primaryKey().defaultRandom(),
   sessionId: uuid('session_id').notNull(),
-  userId: text('user_id').notNull().references(() => users.id),
+  userId: text('user_id').references(() => users.id),
   message: text('message').notNull(),
   isAdminMessage: boolean('is_admin_message').default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
