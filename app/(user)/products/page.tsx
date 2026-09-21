@@ -79,7 +79,7 @@ function ProductsContent() {
     <div className="min-h-screen bg-background">
       <section className="border-b py-10">
         <div className="mx-auto max-w-7xl px-4">
-          <h1 className="text-4xl font-black">Our products</h1>
+          <h1 className="text-4xl font-black">Our Products</h1>
           <p className="mt-2 text-muted-foreground">Choose a ready-to-order product or request a tailored quote.</p>
         </div>
       </section>
