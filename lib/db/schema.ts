@@ -593,6 +593,7 @@ export const heroSlides = pgTable('hero_slides', {
 }, (table) => [index('hero_slides_display_idx').on(table.featured, table.enabled, table.displayOrder)])
 
 export const contactSubmissions = pgTable('contact_submissions', {
+  supportPayload: json('support_payload'),
   id: uuid('id').primaryKey().defaultRandom(),
   name: varchar('name', { length: 255 }).notNull(),
   email: varchar('email', { length: 255 }).notNull(),
@@ -719,4 +720,3 @@ export const orderRelations = relations(orders, ({ one, many }) => ({
   items: many(orderItems),
   statusHistory: many(orderStatusHistory),
 }))
-

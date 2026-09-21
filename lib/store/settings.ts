@@ -1,4 +1,5 @@
 import 'server-only'
+import { DEFAULT_SUPPORT_SETTINGS, validateSupportSettings, type SupportSettings } from '@/lib/support/settings'
 import { DEFAULT_BANNER_SHIPPING_BANDS, validateShippingBands, type ShippingBand } from '@/lib/shipping/bands'
 
 export interface StoreLocation {
@@ -22,6 +23,7 @@ export interface StoreSocialLink {
 }
 
 export interface StoreSettingsValues {
+  support: SupportSettings
   storeName: string
   storeEmail: string
   storePhone: string
@@ -47,6 +49,7 @@ export interface StoreSettingsValues {
 }
 
 export const DEFAULT_STORE_SETTINGS: StoreSettingsValues = {
+  support: DEFAULT_SUPPORT_SETTINGS,
   storeName: 'Ali Baba Signs',
   storeEmail: 'sales@alibabasigns.com.au',
   storePhone: '04 78 23 09 45',
@@ -135,6 +138,7 @@ export function validateStoreSettings(value: unknown): StoreSettingsValues {
   }).filter((link) => link.url) : []
   const bannerShippingBands = validateShippingBands(input.bannerShippingBands ?? DEFAULT_BANNER_SHIPPING_BANDS)
   return {
+    support: validateSupportSettings(input.support ?? DEFAULT_SUPPORT_SETTINGS),
     storeName: text('storeName', 255, true),
     storeEmail: email,
     storePhone: text('storePhone', 30),
@@ -173,5 +177,3 @@ export function publicConfigurationStatus(settings: StoreSettingsValues) {
     },
   }
 }
-
-

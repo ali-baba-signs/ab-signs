@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: all button actions return the required structured response
+ok 1 - all button actions return the required structured response
+  ---
+  duration_ms: 8.1332
+  type: 'test'
+  ...
+# Subtest: normal FAQs and tracking never trigger customer or team email
+ok 2 - normal FAQs and tracking never trigger customer or team email
+  ---
+  duration_ms: 2.2191
+  type: 'test'
+  ...
+# Subtest: escalation matrix limits customer emails to quotes, payments and humans
+ok 3 - escalation matrix limits customer emails to quotes, payments and humans
+  ---
+  duration_ms: 0.8542
+  type: 'test'
+  ...
+# Subtest: rule classification supports explicit actions and deterministic text fallbacks
+ok 4 - rule classification supports explicit actions and deterministic text fallbacks
+  ---
+  duration_ms: 7.1776
+  type: 'test'
+  ...
+# Subtest: support respects Melbourne opening boundaries, weekends and daylight saving
+ok 5 - support respects Melbourne opening boundaries, weekends and daylight saving
+  ---
+  duration_ms: 62.7487
+  type: 'test'
+  ...
+# Subtest: overnight hours carry through to the following day; disabled hours use normal acknowledgement
+ok 6 - overnight hours carry through to the following day; disabled hours use normal acknowledgement
+  ---
+  duration_ms: 3.6857
+  type: 'test'
+  ...
+# Subtest: admin notification addresses normalize, deduplicate and validate
+ok 7 - admin notification addresses normalize, deduplicate and validate
+  ---
+  duration_ms: 19.6213
+  type: 'test'
+  ...
+# Subtest: support inputs normalize email and strip private URL parameters
+ok 8 - support inputs normalize email and strip private URL parameters
+  ---
+  duration_ms: 6.1258
+  type: 'test'
+  ...
+# Subtest: custom quotes require product, size and quantity with a real calendar date
+ok 9 - custom quotes require product, size and quantity with a real calendar date
+  ---
+  duration_ms: 6.3529
+  type: 'test'
+  ...
+# Subtest: webhooks require an allowlisted HTTPS host and strong exact secret
+ok 10 - webhooks require an allowlisted HTTPS host and strong exact secret
+  ---
+  duration_ms: 2.1919
+  type: 'test'
+  ...
+# Subtest: support request bodies enforce the byte limit even without a content-length header
+ok 11 - support request bodies enforce the byte limit even without a content-length header
+  ---
+  duration_ms: 139.8453
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3052.987

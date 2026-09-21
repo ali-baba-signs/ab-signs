@@ -8,7 +8,9 @@ import { createPresignedDownloadUrl } from '@/lib/storage/r2'
 import { normalizeOrderStatus, ORDER_STATUS_LABELS } from '@/lib/orders/workflow'
 import { getAuthBaseURL } from '@/lib/auth/origins'
 
-export type OrderEmailType = 'order_confirmation' | 'order_completed' | 'order_update'
+export type OrderEmailType = 'order_confirmation' | 'order_completed' | 'order_update' | 'sales_paid_order'
+
+const SALES_EMAIL = 'sales@alibabasigns.com.au'
 
 function escapeHtml(value: unknown) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]!)
@@ -57,6 +59,30 @@ async function sendOrderConfirmation(orderId: string) {
   })
 }
 
+async function sendSalesPaidOrder(orderId: string) {
+  const { order, items } = await emailData(orderId)
+  const address = (order.shippingAddress || {}) as Record<string, string>
+  const customerName = [address.firstName, address.lastName].filter(Boolean).join(' ') || 'Customer'
+  const phone = address.phone || 'Not provided'
+  const shippingAddress = order.deliveryType === 'pickup'
+    ? 'Pickup order'
+    : [address.address, address.addressLine2, address.city || address.suburb, address.state, address.postalCode, address.country].filter(Boolean).join(', ') || 'Not provided'
+  const itemLines = items.map((item) => {
+    const specs = (item.specifications || {}) as Record<string, string>
+    return `${specs.productName || 'Product'}${specs.sku ? ` (SKU ${specs.sku})` : ''} — ${specs.sizeLabel || specs.variant || 'Standard'} × ${item.quantity} — ${money(item.totalPrice, order.currency)}`
+  })
+  const itemRows = items.map((item) => {
+    const specs = (item.specifications || {}) as Record<string, string>
+    return `<tr><td style="padding:8px;border-bottom:1px solid #ddd">${escapeHtml(specs.productName || 'Product')}${specs.sku ? `<br><small>SKU: ${escapeHtml(specs.sku)}</small>` : ''}</td><td style="padding:8px;border-bottom:1px solid #ddd">${escapeHtml(specs.sizeLabel || specs.variant || 'Standard')}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center">${item.quantity}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:right">${escapeHtml(money(item.totalPrice, order.currency))}</td></tr>`
+  }).join('')
+  return sendTransactionalEmail({
+    to: SALES_EMAIL,
+    subject: `New Paid Order - ${order.orderNumber}`,
+    text: `A new paid order is ready for sales review.\n\nCustomer name: ${customerName}\nCustomer email: ${order.customerEmail}\nPhone: ${phone}\nOrder number: ${order.orderNumber}\nPayment status: ${order.paymentStatus}\nShipping address: ${shippingAddress}\n\nProducts / items:\n${itemLines.join('\n')}\n\nTotal amount: ${money(order.totalAmount, order.currency)}`,
+    html: `<h1>New paid order</h1><p><strong>Customer name:</strong> ${escapeHtml(customerName)}<br><strong>Customer email:</strong> ${escapeHtml(order.customerEmail)}<br><strong>Phone:</strong> ${escapeHtml(phone)}<br><strong>Order number:</strong> ${escapeHtml(order.orderNumber)}<br><strong>Payment status:</strong> ${escapeHtml(order.paymentStatus)}<br><strong>Shipping address:</strong> ${escapeHtml(shippingAddress)}</p><h2>Products / items</h2><table style="width:100%;border-collapse:collapse"><thead><tr><th style="padding:8px;text-align:left">Product</th><th style="padding:8px;text-align:left">Size</th><th style="padding:8px;text-align:center">Quantity</th><th style="padding:8px;text-align:right">Amount</th></tr></thead><tbody>${itemRows}</tbody></table><p><strong>Total amount: ${escapeHtml(money(order.totalAmount, order.currency))}</strong></p>`,
+  })
+}
+
 async function sendOrderUpdate(orderId: string, payload: Record<string, unknown>) {
   const { order } = await emailData(orderId)
   const address = (order.shippingAddress || {}) as Record<string, string>
@@ -98,6 +124,7 @@ export async function deliverOrderEmailEvent(eventId: string) {
     if (event.eventType === 'order_confirmation') messageId = await sendOrderConfirmation(event.orderId)
     else if (event.eventType === 'order_completed') messageId = await sendOrderCompleted(event.orderId)
     else if (event.eventType === 'order_update') messageId = await sendOrderUpdate(event.orderId, (event.payload || {}) as Record<string, unknown>)
+    else if (event.eventType === 'sales_paid_order') messageId = await sendSalesPaidOrder(event.orderId)
     else throw new Error('Unknown order email event type.')
     await db.update(orderEmailEvents).set({ status: 'sent', providerMessageId: messageId, sentAt: new Date(), error: null, updatedAt: new Date() }).where(eq(orderEmailEvents.id, event.id))
     return { sent: true, skipped: false }

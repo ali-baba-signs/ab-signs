@@ -1,0 +1,158 @@
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 31.7s
+  Running TypeScript ...
+  Finished TypeScript in 114s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/86) ...
+(node:24012) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23748) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  Generating static pages using 11 workers (21/86) 
+  Generating static pages using 11 workers (42/86) 
+  Generating static pages using 11 workers (64/86) 
+✓ Generating static pages using 11 workers (86/86) in 5.4s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /about-us
+├ ƒ /account
+├ ƒ /account/offers
+├ ƒ /account/orders
+├ ƒ /account/orders/[id]
+├ ƒ /account/orders/[id]/review
+├ ƒ /account/profile
+├ ○ /admin
+├ ○ /admin/analytics
+├ ○ /admin/coupons
+├ ○ /admin/enquiries
+├ ○ /admin/homepage
+├ ○ /admin/homepage/promotions
+├ ○ /admin/live-chat
+├ ƒ /admin/login
+├ ○ /admin/orders
+├ ƒ /admin/orders/[id]
+├ ○ /admin/products
+├ ƒ /admin/products/[id]
+├ ○ /admin/products/new
+├ ○ /admin/reviews
+├ ○ /admin/settings
+├ ○ /admin/templates
+├ ƒ /api/account/addresses
+├ ƒ /api/account/addresses/[id]
+├ ƒ /api/account/profile
+├ ƒ /api/admin-auth/[...auth]
+├ ƒ /api/admin/activity
+├ ƒ /api/admin/analytics
+├ ƒ /api/admin/analytics/export
+├ ƒ /api/admin/categories
+├ ƒ /api/admin/categories/[id]
+├ ƒ /api/admin/coupons
+├ ƒ /api/admin/coupons/[id]
+├ ƒ /api/admin/enquiries
+├ ƒ /api/admin/enquiries/[id]
+├ ƒ /api/admin/enquiries/[id]/retry
+├ ƒ /api/admin/heroes
+├ ƒ /api/admin/heroes/[id]
+├ ƒ /api/admin/live-chat
+├ ƒ /api/admin/offers
+├ ƒ /api/admin/offers/[id]
+├ ƒ /api/admin/orders/[id]
+├ ƒ /api/admin/orders/[id]/items/[itemId]/production
+├ ƒ /api/admin/products
+├ ƒ /api/admin/products/[id]
+├ ƒ /api/admin/promotions
+├ ƒ /api/admin/promotions/[id]
+├ ƒ /api/admin/reviews
+├ ƒ /api/admin/reviews/[id]
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/templates
+├ ƒ /api/admin/templates/[id]
+├ ƒ /api/admin/templates/source
+├ ƒ /api/admin/uploads
+├ ƒ /api/artwork
+├ ƒ /api/artwork/preview
+├ ƒ /api/auth/[...auth]
+├ ƒ /api/contact
+├ ƒ /api/coupons/validate
+├ ƒ /api/cron/canvas-uploads
+├ ƒ /api/cron/coupon-reservations
+├ ƒ /api/designs
+├ ƒ /api/designs/[id]/preview
+├ ƒ /api/designs/draft
+├ ƒ /api/live-chat
+├ ƒ /api/navigation
+├ ƒ /api/offers
+├ ƒ /api/orders
+├ ƒ /api/orders/[id]
+├ ƒ /api/orders/[id]/receipt
+├ ƒ /api/payments/attempt
+├ ƒ /api/payments/intent
+├ ƒ /api/payments/status
+├ ƒ /api/payments/webhook
+├ ƒ /api/products
+├ ƒ /api/products/[id]
+├ ƒ /api/reviews
+├ ƒ /api/store/settings
+├ ƒ /api/support/channels
+├ ƒ /api/support/messages
+├ ƒ /api/templates
+├ ƒ /api/templates/[id]
+├ ƒ /api/templates/[id]/editor-data
+├ ƒ /api/uploads/design-image
+├ ƒ /api/uploads/design-render
+├ ƒ /api/uploads/presign
+├ ƒ /blog
+├ ƒ /cart
+├ ƒ /checkout
+├ ƒ /contact
+├ ƒ /cookie-policy
+├ ƒ /design
+├ ƒ /design/preview
+├ ƒ /faq
+├ ƒ /forgot-password
+├ ƒ /offers
+├ ƒ /offers/[slug]
+├ ƒ /order-success
+├ ƒ /payment
+├ ƒ /policies
+├ ○ /previous-home
+├ ƒ /privacy-policy
+├ ƒ /products
+├ ƒ /products/[id]
+├ ƒ /refund-returns-policy
+├ ƒ /reset-password
+├ ƒ /shipping-policy
+├ ƒ /sign-in
+├ ƒ /sign-up
+├ ƒ /sitemap
+├ ○ /sitemap.xml
+├ ƒ /terms-of-service
+├ ƒ /upload-artwork
+└ ƒ /warranty-disclaimer
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
