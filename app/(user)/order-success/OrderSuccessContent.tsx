@@ -1,23 +1,29 @@
 "use client";
-
+import { useSearchParams } from "next/navigation";
+import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import type { PurchasedCartLine } from "@/lib/cart/checkout-removal";
+import { orderMilestoneLabel } from "@/lib/orders/workflow";
 
 type StoredPayment = {
   orderId: string;
   orderNumber: string;
   checkoutToken: string;
   cartLines?: PurchasedCartLine[];
+  customerName?: string;
+  customerEmail?: string;
 };
 type PaymentSummary = {
   orderNumber: string;
   paymentStatus: string;
   status: string;
   totals: { total: string; currency: string };
+  customerName?: string;
+  customerEmail?: string;
 };
 
 export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
@@ -30,8 +36,9 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
   );
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [retry, setRetry] = useState(0);
-
+  const [orderId, setOrderId] = useState<string | null>(null);
   useEffect(() => {
+    if (!orderNumber) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
@@ -46,6 +53,10 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
           return;
         }
         const stored = JSON.parse(raw) as StoredPayment;
+        if (stored.orderId) {
+          setOrderId(stored.orderId);
+        }
+
         const response = await fetch("/api/payments/status", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -62,6 +73,19 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
         if (stopped) return;
         setSummary(payload.data);
         if (payload.data.paymentStatus === "paid") {
+          fetch("https://automation.alibabasigns.com.au/webhook/new-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: stored.orderId,
+              orderNumber: payload.data.orderNumber || stored.orderNumber || orderNumber,
+              customerName: payload.data.customerName,
+              customerEmail: payload.data.customerEmail,
+              currency: payload.data.totals?.currency || "AUD",
+              total: payload.data.totals?.total,
+              deliveryType: payload.data.deliveryType || "Standard",
+            }),
+          }).catch((err) => console.error("n8n notification failed:", err));
           if (Array.isArray(stored.cartLines))
             removePurchasedItems(stored.cartLines);
           else clearCart();
@@ -119,6 +143,7 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
     ) : (
       <AlertCircle className="mx-auto h-14 w-14 text-amber-600" />
     );
+      const receiptTarget = orderId || number;
   return (
     <main className="grid min-h-[70vh] place-items-center bg-background p-6">
       <section
@@ -154,7 +179,7 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
         <div className="mt-7 flex flex-wrap justify-center gap-3">
           {state === "failed" && (
             <Link href="/payment">
-              <Button>Retry payment</Button>
+              <Button>Retry Payment</Button>
             </Link>
           )}
           {state === "pending" && (
@@ -165,16 +190,30 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
                 setRetry((value) => value + 1);
               }}
             >
-              Check again
+              Check Again
             </Button>
           )}
           <Link href="/account/orders">
-            <Button variant="outline">View my orders</Button>
+            <Button variant="outline">View My Orders</Button>
           </Link>
           {state === "paid" && (
+            <>
+            {receiptTarget && (
+                <a
+                  href={`/api/orders/${receiptTarget}/receipt`}
+                  download
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Download Receipt</span>
+                </a>
+              )}
             <Link href="/products">
               <Button>Continue Shopping</Button>
             </Link>
+          </>
+            
+
           )}
         </div>
       </section>
