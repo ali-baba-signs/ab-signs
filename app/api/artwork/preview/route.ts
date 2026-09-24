@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     if (!['image/png','image/svg+xml','application/pdf'].includes(row.asset.contentType)) return NextResponse.json({ error: { message: 'A safe inline preview is not available for this format.' } }, { status: 415 })
     const source = await getObjectBody(row.asset.objectKey)
     const body = row.asset.contentType === 'image/svg+xml' ? Buffer.from(sanitizeSvgMarkup(source.toString('utf8'))) : source
-    return new NextResponse(body, { headers: { 'content-type': row.asset.contentType, 'content-disposition': `inline; filename="preview.${row.asset.contentType === 'application/pdf' ? 'pdf' : row.asset.contentType === 'image/png' ? 'png' : 'svg'}"`, 'cache-control': 'private, no-store', 'content-security-policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox" } })
+    return new NextResponse(body, { headers: { 'content-type': row.asset.contentType, 'content-disposition': `inline; filename="preview.${row.asset.contentType === 'application/pdf' ? 'pdf' : row.asset.contentType === 'image/png' ? 'png' : 'svg'}"`, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox" } })
   } catch (error) {
     console.error('Artwork preview failed', error)
     return NextResponse.json({ error: { message: 'The artwork preview could not be generated safely.' } }, { status: 500 })

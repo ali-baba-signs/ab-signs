@@ -14,6 +14,7 @@ import { removeAdminUpload, uploadAdminFile } from '@/lib/storage/upload-client'
 import { BANNER_SIZE_PRESETS, FLAG_PRINT_PRESETS, FLAG_SIZE_GROUPS, FLAG_TYPES, PRODUCT_SIZE_MODES, type ProductSizeMode } from '@/lib/products/size-presets'
 import { designConfigurationsForSize, type DesignType, type SizeDesignConfiguration } from '@/lib/products/design-configurations'
 import { FLAG_BLEED_MM, FLAG_SAFETY_MM } from '@/lib/production/production-spec'
+import { PRINT_SETTINGS } from '@/lib/production/print-settings'
 
 interface Category { id: string; name: string }
 type ImageStatus = 'pending' | 'uploading' | 'uploaded' | 'failed'
@@ -23,7 +24,7 @@ interface SizeRow { id?: string; label: string; width: string; height: string; u
 interface TemplateOption { id: string; name: string; status: string; conversionStatus: string; templateSide: 'single' | 'front' | 'back' }
 interface ProductData { id: string; sku: string; name: string; description: string; basePrice: string; categoryId: string; sizeMode: ProductSizeMode; allowCustomDimensions: boolean; freeShipping: boolean; customShippingAmount: string | null; featured: boolean; active: boolean; images: ApiImage[]; sizes: Array<SizeRow & { id: string }> }
 
-const blankSize = (): SizeRow => ({ label: '500 × 1000 mm', height: '500', width: '1000', unit: 'mm', unitPrice: '0', enabled: true, variantType: '', sizeGroup: '', assembledHeightDescription: '', fitMode: 'contain', safeMargin: '0', bleed: '3', trimMarks: true, isDefault: true, designConfigurations: [{ designType: 'single_side', enabled: true, singleTemplateId: null }] })
+const blankSize = (defaults: { bleed: number; safeMargin: number; cropMarks: boolean } = { bleed: PRINT_SETTINGS.bleed, safeMargin: PRINT_SETTINGS.safeMargin, cropMarks: true }): SizeRow => ({ label: '500 × 1000 mm', height: '500', width: '1000', unit: 'mm', unitPrice: '0', enabled: true, variantType: '', sizeGroup: '', assembledHeightDescription: '', fitMode: 'contain', safeMargin: String(defaults.safeMargin), bleed: String(defaults.bleed), trimMarks: defaults.cropMarks, isDefault: true, designConfigurations: [{ designType: 'single_side', enabled: true, singleTemplateId: null }] })
 
 export function ProductForm({ productId }: { productId?: string }) {
   const router = useRouter()
@@ -32,6 +33,7 @@ export function ProductForm({ productId }: { productId?: string }) {
   const [form, setForm] = useState({ sku: '', name: '', description: '', basePrice: '', categoryId: '', sizeMode: 'preset_sizes' as ProductSizeMode, allowCustomDimensions: false, freeShipping: false, customShippingAmount: null as string | null, featured: false, active: true })
   const [images, setImages] = useState<ImageRow[]>([])
   const [sizes, setSizes] = useState<SizeRow[]>([blankSize()])
+  const [printDefaults, setPrintDefaults] = useState({ bleed: PRINT_SETTINGS.bleed as number, safeMargin: PRINT_SETTINGS.safeMargin as number, cropMarks: true })
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [newCategory, setNewCategory] = useState('')
@@ -54,7 +56,17 @@ export function ProductForm({ productId }: { productId?: string }) {
           setForm({ sku: product.sku, name: product.name, description: product.description || '', basePrice: product.basePrice, categoryId: product.categoryId, sizeMode: product.sizeMode === 'fixed_variants' ? 'fixed_variants' : product.sizeMode === 'custom_dimensions' ? 'custom_dimensions' : 'preset_sizes', allowCustomDimensions: Boolean(product.allowCustomDimensions), freeShipping: Boolean(product.freeShipping), customShippingAmount: product.customShippingAmount ?? null, featured: Boolean(product.featured), active: product.active !== false })
           setImages(product.images.map((image) => ({ clientId: `existing:${image.id}`, id: image.id, assetId: image.assetId, key: image.storageKey || image.key, url: image.url, alt: image.alt || product.name, isPrimary: Boolean(image.isPrimary), status: 'uploaded' })))
           setSizes(product.sizes.map((size) => ({ id: size.id, label: size.label, width: String(size.width || ''), height: String(size.height || ''), unit: size.unit, unitPrice: String(size.unitPrice), enabled: Boolean(size.enabled), variantType: size.variantType || '', sizeGroup: size.sizeGroup || '', assembledHeightDescription: size.assembledHeightDescription || '', fitMode: size.fitMode || 'contain', safeMargin: String(size.safeMargin || '0'), bleed: String(size.bleed || '3'), trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), designConfigurations: designConfigurationsForSize(size) })))
-        } else if (payload.data.categories[0]) setForm((current) => ({ ...current, categoryId: payload.data.categories[0].id }))
+        } else {
+          if (payload.data.categories[0]) setForm((current) => ({ ...current, categoryId: payload.data.categories[0].id }))
+          const settingsResponse = await fetch('/api/admin/settings', { cache: 'no-store' })
+          if (settingsResponse.ok) {
+            const settingsPayload = await settingsResponse.json()
+            const saved = settingsPayload.data.settings
+            const defaults = { bleed: Number(saved.printBleedMm ?? PRINT_SETTINGS.bleed), safeMargin: Number(saved.printSafeMarginMm ?? PRINT_SETTINGS.safeMargin), cropMarks: saved.printCropMarks !== false }
+            setPrintDefaults(defaults)
+            setSizes([blankSize(defaults)])
+          }
+        }
       } catch (cause) { setError(cause instanceof Error ? cause.message : 'The form could not be loaded.') }
       finally { setLoading(false) }
     })()
@@ -102,7 +114,7 @@ export function ProductForm({ productId }: { productId?: string }) {
     updateSize(index, { designConfigurations: next })
   }
 
-  function addBannerPreset(height: number, width: number) { if (sizes.some((size) => size.height === String(height) && size.width === String(width) && size.unit === 'mm')) return; setSizes((current) => [...current, { ...blankSize(), height: String(height), width: String(width), label: `${height} × ${width} mm`, unitPrice: form.basePrice || '0', isDefault: current.length === 0 }]) }
+  function addBannerPreset(height: number, width: number) { if (sizes.some((size) => size.height === String(height) && size.width === String(width) && size.unit === 'mm')) return; setSizes((current) => [...current, { ...blankSize(printDefaults), height: String(height), width: String(width), label: `${height} × ${width} mm`, unitPrice: form.basePrice || '0', isDefault: current.length === 0 }]) }
   function addFlagSizes() {
     setForm((current) => ({ ...current, sizeMode: 'fixed_variants', allowCustomDimensions: false }))
     setSizes((Object.entries(FLAG_PRINT_PRESETS) as Array<[keyof typeof FLAG_PRINT_PRESETS, typeof FLAG_PRINT_PRESETS[keyof typeof FLAG_PRINT_PRESETS]]>).map(([sizeGroup, preset], index) => ({ ...blankSize(), label: preset.label, height: String(preset.height), width: String(preset.width), unit: 'cm', variantType: 'feather', sizeGroup, assembledHeightDescription: preset.assembledHeightDescription, fitMode: 'contain', safeMargin: String(FLAG_SAFETY_MM), bleed: String(FLAG_BLEED_MM), trimMarks: true, unitPrice: form.basePrice || '0', isDefault: index === 0 })))
@@ -307,7 +319,7 @@ export function ProductForm({ productId }: { productId?: string }) {
           <p className="text-sm text-muted-foreground">The single source of truth for pricing, print dimensions, and template compatibility.</p>
         </div>
         <div className="flex gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => setSizes((current) => [...current, { ...blankSize(), unitPrice: form.basePrice || '0', label: '', isDefault: current.length === 0 }])}>
+          <Button type="button" size="sm" variant="outline" onClick={() => setSizes((current) => [...current, { ...blankSize(printDefaults), unitPrice: form.basePrice || '0', label: '', isDefault: current.length === 0 }])}>
             <Plus /> Custom size
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={addFlagSizes}>

@@ -16,8 +16,9 @@ test('canonical Fabric JSON exports as standalone SVG without a native canvas', 
     ] },
   })
   assert.match(svg, /viewBox="0 0 822 422"/)
-  assert.match(svg, /id="bleed-boundary"/)
-  assert.match(svg, /id="cut-line"/)
+  assert.match(svg, /id="production-bleed-clip"/)
+  assert.doesNotMatch(svg, /id="bleed-boundary"/)
+  assert.doesNotMatch(svg, /id="cut-line"/)
   assert.doesNotMatch(svg, /id="safety-margin"/)
   assert.doesNotMatch(svg, /production-safety/)
   assert.match(svg, /id="crop-marks"/)
@@ -29,15 +30,16 @@ test('canonical Fabric JSON exports as standalone SVG without a native canvas', 
 test('flag SVG production uses the fixed curved silhouette for bleed and cut while safety remains editor-only', () => {
   const silhouette = { type: 'path', role: 'fixed-product-layer', width: 250, height: 1000, pathOffset: { x: 125, y: 500 }, path: [['M', 125, 0], ['C', 245, 80, 245, 500, 200, 700], ['L', 25, 1000], ['C', 5, 650, 0, 200, 125, 0], ['Z']], fill: '#fff' }
   const svg = designToSvg({
-    productConfig: { widthMm: 500, heightMm: 2000, bleedMm: 3, safeMarginMm: 0, logicalCanvasWidth: 250, logicalCanvasHeight: 1000, productCategory: 'flag' },
+    productConfig: { widthMm: 500, heightMm: 2000, bleedMm: 3, safeMarginMm: 50, trimMarks: false, logicalCanvasWidth: 250, logicalCanvasHeight: 1000, productCategory: 'flag' },
     canvasJson: { objects: [silhouette, { type: 'textbox', left: 60, top: 250, width: 120, height: 100, text: 'FLAG ART', fill: '#ed1b68' }] },
   })
-  assert.match(svg, /width="522mm" height="2022mm"/)
+  assert.match(svg, /width="506mm" height="2006mm"/)
   assert.match(svg, /id="bleed-contour"/)
   assert.match(svg, /id="cut-contour"/)
   assert.doesNotMatch(svg, /id="safety-contour"/)
   assert.match(svg, /mask="url\(#production-flag-mask\)"/)
   assert.doesNotMatch(svg, /id="cut-line"/)
+  assert.doesNotMatch(svg, /id="crop-marks"/)
 })
 
 test('double-sided canonical data selects the requested side', () => {

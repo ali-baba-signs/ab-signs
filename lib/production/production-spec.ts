@@ -1,4 +1,5 @@
 import type { ProductConfig } from '@/lib/editor/types'
+import { PRINT_SETTINGS, printGeometry } from './print-settings'
 
 export const FLAG_BLEED_MM = 20
 export const FLAG_CUT_LINE_MM = 0
@@ -23,8 +24,9 @@ export function productionSpec(config: ProductConfig): ProductionSpec {
   const trimHeightMm = Math.max(0.1, Number(config.heightMm))
   const configuredBleed = Number(config.bleedMm)
   const configuredSafety = Number(config.safeMarginMm)
-  const bleedMm = Number.isFinite(configuredBleed) ? Math.max(0, configuredBleed) : productKind === 'flag' ? FLAG_BLEED_MM : 0
-  const safetyMm = Number.isFinite(configuredSafety) ? Math.max(0, configuredSafety) : productKind === 'flag' ? FLAG_SAFETY_MM : 0
+  const bleedMm = Number.isFinite(configuredBleed) ? Math.max(0, configuredBleed) : PRINT_SETTINGS.bleed
+  const safetyMm = Number.isFinite(configuredSafety) ? Math.max(0, configuredSafety) : PRINT_SETTINGS.safeMargin
+  printGeometry(trimWidthMm, trimHeightMm, bleedMm, safetyMm)
   const cropMarks = config.trimMarks !== false
   const markMarginMm = cropMarks ? Math.max(8, bleedMm + 5) : 0
   return {

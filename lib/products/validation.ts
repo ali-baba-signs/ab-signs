@@ -128,7 +128,7 @@ export function validateProductInput(value: unknown): ValidProductInput {
     const width = optionalDimension(size.width, `${label} width`)
     const height = optionalDimension(size.height, `${label} height`)
     const fitMode = ['contain', 'cover', 'stretch'].includes(String(size.fitMode)) ? size.fitMode as 'contain' | 'cover' | 'stretch' : 'contain'
-    const safeMargin = nonNegativeDimension(size.safeMargin ?? 0, `${label} safe margin`)
+    const safeMargin = nonNegativeDimension(size.safeMargin ?? 5, `${label} safe margin`)
     const bleed = nonNegativeDimension(size.bleed ?? 3, `${label} bleed`)
     return { id: typeof size.id === 'string' && uuid.test(size.id) ? size.id : undefined, label, width, height, unit, unitPrice: money(size.unitPrice, `${label} price`), enabled: Boolean(size.enabled), order, variantType, sizeGroup, sideMode, assembledHeightDescription: typeof size.assembledHeightDescription === 'string' ? size.assembledHeightDescription.trim().slice(0,255) || null : sizeGroup ? FLAG_PRINT_PRESETS[sizeGroup].assembledHeightDescription : null, fitMode, safeMargin, bleed, trimMarks: size.trimMarks !== false, isDefault: Boolean(size.isDefault), frontTemplateId, backTemplateId, designConfigurations }
   })

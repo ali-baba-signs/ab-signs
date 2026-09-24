@@ -4,7 +4,7 @@ export const DEFAULT_PRODUCT_CONFIG: ProductConfig = {
   widthMm: 1828.8,
   heightMm: 914.4,
   bleedMm: 3,
-  safeMarginMm: 25,
+  safeMarginMm: 5,
   logicalCanvasWidth: 1200,
   logicalCanvasHeight: 600,
 }

@@ -6,13 +6,45 @@ export async function GET(request: NextRequest) {
     const category = request.nextUrl.searchParams.get('category')
     const featured = request.nextUrl.searchParams.get('featured')
     const search = request.nextUrl.searchParams.get('search')?.trim().toLowerCase()
+    const includeHidden = request.nextUrl.searchParams.get('include_hidden') === 'true'
     const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get('limit')) || 50, 1), 100)
+
     const rows = (await getProductsWithDetails()).filter((product) => {
-      if (category && category !== 'all' && product.category?.slug !== category && product.category?.category !== category) return false
-      if (featured === 'true' && !product.featured) return false
-      if (search && !`${product.name} ${product.sku}`.toLowerCase().includes(search)) return false
-      return true
-    }).slice(0, limit)
+
+  // Hide internal products
+  if (
+    product.sku?.startsWith("SYSTEM_") ||
+    product.sku === "CUSTOM-ARTWORK-ITEM" ||
+    product.name === "Custom Product"
+  ) {
+    return false;
+  }
+
+
+  if (!includeHidden) {
+    if ('is_hidden' in product && Boolean(product.is_hidden)) return false
+  }
+
+  if (category && category !== 'all' &&
+      product.category?.slug !== category &&
+      product.category?.category !== category) {
+    return false
+  }
+
+  if (featured === 'true' && !product.featured) return false
+
+  if (
+    search &&
+    !`${product.name} ${product.sku}`
+      .toLowerCase()
+      .includes(search)
+  ) {
+    return false
+  }
+
+  return true
+}).slice(0, limit)
+
     return NextResponse.json({ data: { products: rows, total: rows.length } })
   } catch (error) {
     console.error('Public products load failed', error)

@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
         count(*) filter(where status='completed')::int completed_orders,
         count(*) filter(where status='cancelled')::int cancelled_orders,
         coalesce(avg(total_amount) filter(where payment_status='paid' and status not in ('cancelled','refunded')),0) average_order_value,
-        count(*) filter(where status='pending_design_confirmation')::int awaiting_design,
-        count(*) filter(where status='pending_design_confirmation' and design_confirmation_deadline<now())::int delayed_design,
+        count(*) filter(where status in ('pending_design_confirmation','artwork_pending'))::int awaiting_design,
+        count(*) filter(where status in ('pending_design_confirmation','artwork_pending') and design_confirmation_deadline<now())::int delayed_design,
         (select count(*) from products where active)::int total_products,
         (select count(*) from users where role='customer')::int total_customers
         from orders where created_at between ${from} and ${to}`),

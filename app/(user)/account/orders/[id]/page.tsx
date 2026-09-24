@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { orderMilestoneLabel } from "@/lib/orders/workflow";
+import { ORDER_STATUS_LABELS, normalizeOrderStatus } from "@/lib/orders/workflow";
 
 interface Order {
   id: string;
@@ -32,6 +32,7 @@ interface Order {
   pickupCompletedAt: string | null;
   items: Array<{
     id: string;
+    productId: string | null;
     quantity: number;
     totalPrice: string;
     designSource: string;
@@ -86,7 +87,7 @@ export default function CustomerOrderDetail({
     Number(order.totalAmount) -
     Number(order.taxAmount) -
     Number(order.shippingAmount);
-  const label = orderMilestoneLabel;
+  const label = (status: string) => ORDER_STATUS_LABELS[normalizeOrderStatus(status)];
   return (
     <main className="min-h-screen bg-background px-4 py-8">
       <div className="mx-auto max-w-5xl">
@@ -158,7 +159,7 @@ export default function CustomerOrderDetail({
                       </a>
                     )} */}
                   </div>
-                  {["delivered", "completed"].includes(order.status) && (
+                  {item.productId && ["delivered", "completed"].includes(order.status) && (
                     <Link
                       href={`/account/orders/${order.id}/review?itemId=${item.id}`}
                     >

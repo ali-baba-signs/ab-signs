@@ -7,6 +7,7 @@ export const userRoleEnum = pgEnum('user_role', ['admin', 'customer', 'designer'
 export const orderStatusEnum = pgEnum('order_status', [
   'pending', 'confirmed', 'production', 'ready_to_ship', 'shipped',
   'pending_design_confirmation', 'design_revision_required', 'design_confirmed',
+  'artwork_pending',
   'awaiting_payment_confirmation', 'awaiting_payment', 'payment_confirmed', 'order_confirmed',
   'in_production', 'queued_for_printing', 'printing', 'printing_completed',
   'quality_check', 'production_completed', 'print_ready', 'ready_for_pickup',
@@ -157,7 +158,7 @@ export const products = pgTable('products', {
 // Product Variants
 export const productVariants = pgTable('product_variants', {
   id: uuid('id').primaryKey().defaultRandom(),
-  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').references(() => products.id, { onDelete: 'cascade' }),
   name: varchar('name', { length: 255 }).notNull(),
   dimensions: varchar('dimensions', { length: 100 }),
   material: varchar('material', { length: 100 }),
@@ -196,7 +197,7 @@ export const productSizes = pgTable('product_sizes', {
   sideMode: varchar('side_mode', { length: 10 }).default('single').notNull(),
   assembledHeightDescription: varchar('assembled_height_description', { length: 255 }),
   fitMode: varchar('fit_mode', { length: 10 }).default('contain').notNull(),
-  safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('0').notNull(),
+  safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('5').notNull(),
   bleed: decimal('bleed', { precision: 10, scale: 3 }).default('3').notNull(),
   trimMarks: boolean('trim_marks').default(true).notNull(),
   isDefault: boolean('is_default').default(false).notNull(),
@@ -272,7 +273,7 @@ export const templateSizes = pgTable('template_sizes', {
   height: decimal('height', { precision: 12, scale: 3 }).notNull(),
   unit: varchar('unit', { length: 10 }).default('mm').notNull(),
   fitMode: varchar('fit_mode', { length: 10 }).default('contain').notNull(),
-  safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('0').notNull(),
+  safeMargin: decimal('safe_margin', { precision: 10, scale: 3 }).default('5').notNull(),
   bleed: decimal('bleed', { precision: 10, scale: 3 }).default('3').notNull(),
   trimMarks: boolean('trim_marks').default(true).notNull(),
   enabled: boolean('enabled').default(true).notNull(),
@@ -315,7 +316,7 @@ export const designs = pgTable('designs', {
 export const customerArtworks = pgTable('customer_artworks', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'restrict' }),
+  productId: uuid('product_id').references(() => products.id, { onDelete: 'restrict' }),
   templateSizeId: uuid('template_size_id').references(() => templateSizes.id, { onDelete: 'restrict' }),
   productSizeId: uuid('product_size_id').references(() => productSizes.id, { onDelete: 'restrict' }),
   assetId: uuid('asset_id').notNull().references(() => storageAssets.id, { onDelete: 'restrict' }),
@@ -326,6 +327,9 @@ export const customerArtworks = pgTable('customer_artworks', {
   status: varchar('status', { length: 20 }).default('ready').notNull(),
   sourceWidthPx: integer('source_width_px'),
   sourceHeightPx: integer('source_height_px'),
+  customWidth: decimal('custom_width', { precision: 12, scale: 3 }),
+  customHeight: decimal('custom_height', { precision: 12, scale: 3 }),
+  customUnit: varchar('custom_unit', { length: 2 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [index('customer_artworks_user_idx').on(table.userId), index('customer_artworks_product_idx').on(table.productId)])
@@ -389,7 +393,7 @@ export const orders = pgTable('orders', {
 export const orderItems = pgTable('order_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
-  productId: uuid('product_id').notNull().references(() => products.id),
+  productId: uuid('product_id').references(() => products.id),
   variantId: uuid('variant_id').references(() => productVariants.id),
   productSizeId: uuid('product_size_id').references(() => productSizes.id, { onDelete: 'set null' }),
   templateSizeId: uuid('template_size_id').references(() => templateSizes.id, { onDelete: 'set null' }),

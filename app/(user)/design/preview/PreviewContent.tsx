@@ -4,11 +4,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
+import { CUSTOM_PRODUCT_ID, customArtworkPrice, customDimensions } from "@/lib/products/custom-artwork";
+import { PRINT_SETTINGS, millimetres, printGeometry } from "@/lib/production/print-settings";
+import { PrintPreparationGuide } from "@/components/products/print-preparation-guide";
 type Product = {
   id: string;
   name: string;
   freeShipping?: boolean;
   customShippingAmount?: string | null;
+  pricePerSquareMetre?: number;
+  sizeMode?: string;
   category?: { category?: string };
   images: Array<{ url: string; isPrimary: boolean }>;
   sizes: Array<{
@@ -20,7 +25,11 @@ type Product = {
     unitPrice: string;
     enabled: boolean;
     sideMode?: string;
+    bleed?: string;
+    safeMargin?: string;
+    trimMarks?: boolean;
   }>;
+  templateSizes?: Product['sizes'];
   templates?: Array<{
     id: string;
     name: string;
@@ -29,10 +38,16 @@ type Product = {
 };
 type Artwork = {
   id: string;
+  productId: string | null;
+  productSizeId: string | null;
+  templateSizeId: string | null;
   originalFilename: string;
   contentType: string;
   fileSize: number;
   notes: string | null;
+  customWidth: string | null;
+  customHeight: string | null;
+  customUnit: string | null;
   previewUrl: string | null;
 };
 export default function PreviewContent() {
@@ -55,6 +70,7 @@ export default function PreviewContent() {
       : "Preview details are missing. Return to the previous step and save again.";
   const [product, setProduct] = useState<Product | null>(null),
     [artwork, setArtwork] = useState<Artwork | null>(null),
+    [printSettings, setPrintSettings] = useState({ bleed: PRINT_SETTINGS.bleed as number, safeMargin: PRINT_SETTINGS.safeMargin as number, cropMarks: true }),
     [loading, setLoading] = useState(hasPreviewContext),
     [error, setError] = useState(""),
     [continuing, setContinuing] = useState(false),
@@ -74,6 +90,7 @@ export default function PreviewContent() {
               cache: "no-store",
             }),
           );
+        requests.push(fetch('/api/store/settings', { cache: 'no-store' }));
         const responses = await Promise.all(requests),
           payloads = await Promise.all(
             responses.map((response) => response.json()),
@@ -84,6 +101,9 @@ export default function PreviewContent() {
               "The selected product is unavailable.",
           );
         setProduct(payloads[0].data.product);
+        const settingsResponse = responses.at(-1);
+        const settingsPayload = payloads.at(-1);
+        if (settingsResponse?.ok && settingsPayload?.data) setPrintSettings({ bleed: Number(settingsPayload.data.printBleedMm ?? PRINT_SETTINGS.bleed), safeMargin: Number(settingsPayload.data.printSafeMarginMm ?? PRINT_SETTINGS.safeMargin), cropMarks: settingsPayload.data.printCropMarks !== false });
         if (source === "upload") {
           if (!responses[1].ok)
             throw new Error(
@@ -103,24 +123,51 @@ export default function PreviewContent() {
       }
     })();
   }, [artworkId, hasPreviewContext, productId, source]);
-  const size = useMemo(
-    () =>
-      product?.sizes.find((item) => item.id === sizeId && item.enabled) || null,
-    [product, sizeId],
-  );
+  const size = useMemo<Product['sizes'][number] | null>(() => {
+    if (!product) return null;
+    const selected = (product.sizeMode === 'template_sizes' ? product.templateSizes || [] : product.sizes).find((item) => item.id === sizeId && item.enabled);
+    try {
+      if (product.id === CUSTOM_PRODUCT_ID) {
+        if (sizeId !== 'custom' || artwork?.productId !== null || !artwork?.customWidth || !artwork.customHeight || !artwork.customUnit || !product.pricePerSquareMetre) return null;
+        const unitPrice = customArtworkPrice(artwork.customWidth, artwork.customHeight, artwork.customUnit, product.pricePerSquareMetre);
+        if (unitPrice <= 0) return null;
+        return { id: 'custom', label: `${artwork.customWidth} × ${artwork.customHeight} ${artwork.customUnit}`, width: artwork.customWidth, height: artwork.customHeight, unit: artwork.customUnit, unitPrice: unitPrice.toFixed(2), enabled: true };
+      }
+      if (!selected) return null;
+      if (source === 'upload' && (!artwork || artwork.productId !== product.id || (artwork.productSizeId !== selected.id && artwork.templateSizeId !== selected.id))) return null;
+      if (!artwork?.customWidth || !artwork.customHeight || !artwork.customUnit) return selected;
+      const selectedArea = customDimensions(selected.width, selected.height, selected.unit).areaM2;
+      const requestedArea = customDimensions(artwork.customWidth, artwork.customHeight, artwork.customUnit).areaM2;
+      return { ...selected, label: `${artwork.customWidth} × ${artwork.customHeight} ${artwork.customUnit}`, width: artwork.customWidth, height: artwork.customHeight, unit: artwork.customUnit, unitPrice: (Math.round(Number(selected.unitPrice) * requestedArea / selectedArea * 100) / 100).toFixed(2) };
+    } catch {
+      return null;
+    }
+  }, [product, sizeId, artwork, source]);
+  const layout = useMemo(() => {
+    if (!size?.width || !size.height) return null;
+    try {
+      const widthMm = millimetres(size.width, size.unit);
+      const heightMm = millimetres(size.height, size.unit);
+      const custom = product?.id === CUSTOM_PRODUCT_ID;
+      const bleedMm = Number(custom ? printSettings.bleed : size.bleed ?? printSettings.bleed);
+      const safeMarginMm = Number(custom ? printSettings.safeMargin : size.safeMargin ?? printSettings.safeMargin);
+      printGeometry(widthMm, heightMm, bleedMm, safeMarginMm);
+      return { widthMm, heightMm, bleedMm, safeMarginMm, cropMarks: custom ? printSettings.cropMarks : size.trimMarks ?? printSettings.cropMarks };
+    } catch { return null; }
+  }, [size, product, printSettings]);
   if (loading)
     return (
       <main className="grid min-h-[60vh] place-items-center p-6">
         Loading your saved artwork…
       </main>
     );
-  if (missingError || error || !product || !size)
+  if (missingError || error || !product || !size || !layout)
     return (
       <main className="grid min-h-[60vh] place-items-center p-6 text-center">
         <div>
           <h1 className="text-2xl font-bold">Preview Unavailable</h1>
           <p role="alert" className="mt-2 text-red-700">
-            {missingError || error || "The selected size is no longer active."}
+            {missingError || error || "The selected print size or guide settings are invalid."}
           </p>
           <Link href={source === "upload" ? "/upload-artwork" : "/design"}>
             <Button className="mt-5" variant="outline">
@@ -143,7 +190,7 @@ export default function PreviewContent() {
         ? `/api/designs/${encodeURIComponent(designId!)}/preview?side=${previewSide}`
         : artwork?.previewUrl;
   function continueToCheckout() {
-    if (continuing) return;
+    if (continuing || !layout) return;
     setContinuing(true);
     const productImage = (
       product!.images.find((item) => item.isPrimary) || product!.images[0]
@@ -178,6 +225,10 @@ export default function PreviewContent() {
         previewContentType:
           source === "upload" ? artwork?.contentType || "" : "image/png",
         productionNotes: artwork?.notes || "",
+        bleedMm: String(layout.bleedMm),
+        safeMarginMm: String(layout.safeMarginMm),
+        cropMarks: String(layout.cropMarks),
+        ...(artwork?.customWidth && artwork.customHeight && artwork.customUnit ? { customWidth: artwork.customWidth, customHeight: artwork.customHeight, customUnit: artwork.customUnit } : {}),
       },
     });
     router.push("/checkout");
@@ -287,6 +338,7 @@ export default function PreviewContent() {
               </div>
             )}
           </dl>
+          <div className="mt-5"><PrintPreparationGuide {...layout} /></div>
           <Button
             className="mt-6 w-full"
             size="lg"

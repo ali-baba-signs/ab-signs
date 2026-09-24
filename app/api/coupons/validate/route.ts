@@ -4,6 +4,7 @@ import { db } from '@/lib/db/client'
 import { couponCustomers, coupons, productSizes, productTemplateSizePrices, products, templateSizes } from '@/lib/db/schema'
 import { getSession } from '@/lib/auth/middleware'
 import { validateCoupon } from '@/lib/coupons/engine'
+import { CUSTOM_PRODUCT_ID } from '@/lib/products/custom-artwork'
 
 type RequestedItem = { productId?: string; sizeId?: string; quantity?: number }
 
@@ -13,10 +14,14 @@ type RequestedItem = { productId?: string; sizeId?: string; quantity?: number }
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as { code?: string; items?: RequestedItem[] }
-    const requested = Array.isArray(body.items) ? body.items : []
+    const requested = (Array.isArray(body.items) ? body.items : []).filter((item) => item.productId !== CUSTOM_PRODUCT_ID)
     const productIds = [...new Set(requested.map((item) => item.productId).filter((id): id is string => Boolean(id)))]
     const sizeIds = [...new Set(requested.map((item) => item.sizeId).filter((id): id is string => Boolean(id)))]
-    if (!requested.length || !productIds.length || !sizeIds.length) throw new Error('Add an item before applying a coupon.')
+    if (!requested.length) {
+      if (!body.code) return NextResponse.json({ data: { coupons: [] } })
+      throw new Error('Coupons are not available for custom artwork.')
+    }
+    if (!productIds.length || !sizeIds.length) throw new Error('Add an item before applying a coupon.')
 
     const [productRows, productSizeRows, templateSizeRows, priceRows] = await Promise.all([
       db.select({ id: products.id, categoryId: products.categoryId, templateId: products.templateId, sizeMode: products.sizeMode, active: products.active }).from(products).where(inArray(products.id, productIds)),

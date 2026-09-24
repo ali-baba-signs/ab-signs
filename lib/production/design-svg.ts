@@ -1,6 +1,8 @@
 type Json = Record<string, unknown>
 import type { ProductConfig } from '@/lib/editor/types'
 import { productionMetadata, productionSpec } from './production-spec'
+import { cropMarksSvg } from './print-settings'
+import { sanitizeSvgMarkup } from '@/lib/templates/svg-sanitization'
 
 function n(value: unknown, fallback = 0) { const result = Number(value); return Number.isFinite(result) ? result : fallback }
 function xml(value: unknown) { return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!) }
@@ -43,8 +45,9 @@ function renderObject(value: unknown): string {
     const x = anchor === 'middle' ? box.x + box.width / 2 : anchor === 'end' ? box.x + box.width : box.x
     shape = `<text x="${x}" y="${box.y + fontSize}" fill="${color(object.fill, '#000')}" opacity="${Math.max(0, Math.min(1, n(object.opacity, 1)))}" font-family="${xml(object.fontFamily || 'sans-serif')}" font-size="${fontSize}" font-weight="${xml(object.fontWeight || 'normal')}" font-style="${xml(object.fontStyle || 'normal')}" text-anchor="${anchor}">${lines.map((line, index) => `<tspan x="${x}" dy="${index ? lineHeight : 0}">${xml(line)}</tspan>`).join('')}</text>`
   } else if (type === 'image') {
-    const source = typeof object.src === 'string' && /^(https:\/\/|data:image\/(?:png|jpeg|webp);base64,)/i.test(object.src) ? object.src : ''
-    if (source) shape = `<image href="${xml(source)}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="none" opacity="${Math.max(0, Math.min(1, n(object.opacity, 1)))}"/>`
+    const source = typeof object.src === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/i.test(object.src) ? object.src : ''
+    if (!source) throw new Error('The saved design contains an image that is not embedded for production export.')
+    shape = `<image href="${xml(source)}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="none" opacity="${Math.max(0, Math.min(1, n(object.opacity, 1)))}"/>`
   } else if (type === 'group' && Array.isArray(object.objects)) shape = object.objects.map(renderObject).join('')
   return shape ? `<g transform="${transform(object)}">${shape}</g>` : ''
 }
@@ -71,7 +74,7 @@ export function designToSvg(canvasData: unknown, side: 'front' | 'back' = 'front
   if (!body) throw new Error(`The ${side} canvas has no exportable design objects.`)
   const productConfig: ProductConfig = {
     widthMm: Math.max(.1, n(config.widthMm, width)), heightMm: Math.max(.1, n(config.heightMm, height)),
-    bleedMm: Math.max(0, n(config.bleedMm, 3)), safeMarginMm: Math.max(0, n(config.safeMarginMm)),
+    bleedMm: Math.max(0, n(config.bleedMm, 3)), safeMarginMm: Math.max(0, n(config.safeMarginMm, 5)),
     logicalCanvasWidth: width, logicalCanvasHeight: height, trimMarks: config.trimMarks !== false,
     productCategory: config.productCategory === 'flag' ? 'flag' : 'banner',
   }
@@ -82,19 +85,17 @@ export function designToSvg(canvasData: unknown, side: 'front' | 'back' = 'front
   if (spec.productKind === 'flag' && !fixedLayer) throw new Error('The saved flag design has no fixed silhouette contour.')
   const contour = fixedLayer ? renderObject(fixedLayer) : ''
   const guideStyle = `<style>.production-mask *{fill:#fff!important;stroke:none!important}.production-bleed *{fill:none!important;stroke:#ec008c!important;stroke-width:0.25mm!important;stroke-dasharray:4mm 2mm!important;vector-effect:non-scaling-stroke}.production-cut *{fill:none!important;stroke:#111!important;stroke-width:0.25mm!important;vector-effect:non-scaling-stroke}</style>`
-  const translatedArtwork = `<g id="artwork"${spec.productKind === 'flag' ? ' mask="url(#production-flag-mask)"' : ''}><g transform="translate(${trimLeft} ${trimTop})"><rect width="${width}" height="${height}" fill="${background}"/>${body}</g></g>`
+  const bleedX = spec.bleedMm * scaleX, bleedY = spec.bleedMm * scaleY
+  const translatedArtwork = `<g id="artwork" clip-path="url(#production-bleed-clip)"${spec.productKind === 'flag' ? ' mask="url(#production-flag-mask)"' : ''}><g transform="translate(${trimLeft} ${trimTop})"><rect x="${-bleedX}" y="${-bleedY}" width="${width + 2 * bleedX}" height="${height + 2 * bleedY}" fill="${background}"/>${body}</g></g>`
   let guides = ''
   if (spec.productKind === 'flag') {
     const outerX = (spec.trimWidthMm + spec.bleedMm * 2) / spec.trimWidthMm, outerY = (spec.trimHeightMm + spec.bleedMm * 2) / spec.trimHeightMm
     const transformFor = (x: number, y: number) => `translate(${trimLeft} ${trimTop}) translate(${width / 2} ${height / 2}) scale(${x} ${y}) translate(${-width / 2} ${-height / 2})`
     guides = `<g id="bleed-contour" class="production-bleed" transform="${transformFor(outerX, outerY)}">${contour}</g><g id="cut-contour" class="production-cut" transform="${transformFor(1, 1)}">${contour}</g>`
-  } else {
-    const bleedX = spec.markMarginMm * scaleX, bleedY = spec.markMarginMm * scaleY
-    guides = `<g id="bleed-boundary" class="production-bleed"><rect x="${bleedX}" y="${bleedY}" width="${(spec.trimWidthMm + spec.bleedMm * 2) * scaleX}" height="${(spec.trimHeightMm + spec.bleedMm * 2) * scaleY}"/></g><g id="cut-line" class="production-cut"><rect x="${trimLeft}" y="${trimTop}" width="${width}" height="${height}"/></g>`
   }
-  const gapX = 1.5 * scaleX, gapY = 1.5 * scaleY, lengthX = 5 * scaleX, lengthY = 5 * scaleY, right = trimLeft + width, bottom = trimTop + height
-  const crops = spec.cropMarks ? `<g id="crop-marks" fill="none" stroke="#111" stroke-width="0.25mm" vector-effect="non-scaling-stroke"><path d="M${trimLeft-gapX-lengthX} ${trimTop}H${trimLeft-gapX} M${trimLeft} ${trimTop-gapY-lengthY}V${trimTop-gapY} M${right+gapX} ${trimTop}H${right+gapX+lengthX} M${right} ${trimTop-gapY-lengthY}V${trimTop-gapY} M${trimLeft-gapX-lengthX} ${bottom}H${trimLeft-gapX} M${trimLeft} ${bottom+gapY}V${bottom+gapY+lengthY} M${right+gapX} ${bottom}H${right+gapX+lengthX} M${right} ${bottom+gapY}V${bottom+gapY+lengthY}"/></g>` : ''
+  const crops = spec.cropMarks ? cropMarksSvg(trimLeft, trimTop, width, height, bleedX, bleedY, scaleX, scaleY) : ''
   const metadata = xml(JSON.stringify(productionMetadata(productConfig)))
-  const definitions = spec.productKind === 'flag' ? `<defs>${guideStyle}<mask id="production-flag-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${pageWidth}" height="${pageHeight}"><rect width="${pageWidth}" height="${pageHeight}" fill="#000"/><g class="production-mask" transform="translate(${trimLeft} ${trimTop})">${contour}</g></mask></defs>` : `<defs>${guideStyle}</defs>`
-  return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${spec.pageWidthMm}mm" height="${spec.pageHeightMm}mm" viewBox="0 0 ${pageWidth} ${pageHeight}" data-trim-width-mm="${spec.trimWidthMm}" data-trim-height-mm="${spec.trimHeightMm}"><title>Ali Baba Signs production artwork</title><desc>Print-ready artwork with bleed, cut contour, crop marks, and exact physical dimensions. Safety guides are editor-only.</desc><metadata id="alibaba-signs-production">${metadata}</metadata>${definitions}<rect width="100%" height="100%" fill="#fff"/>${translatedArtwork}${guides}${crops}</svg>`
+  const bleedClip = `<clipPath id="production-bleed-clip"><rect x="${spec.markMarginMm * scaleX}" y="${spec.markMarginMm * scaleY}" width="${(spec.trimWidthMm + spec.bleedMm * 2) * scaleX}" height="${(spec.trimHeightMm + spec.bleedMm * 2) * scaleY}"/></clipPath>`
+  const definitions = spec.productKind === 'flag' ? `<defs>${guideStyle}${bleedClip}<mask id="production-flag-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${pageWidth}" height="${pageHeight}"><rect width="${pageWidth}" height="${pageHeight}" fill="#000"/><g class="production-mask" transform="translate(${trimLeft} ${trimTop})">${contour}</g></mask></defs>` : `<defs>${bleedClip}</defs>`
+  return sanitizeSvgMarkup(`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${spec.pageWidthMm}mm" height="${spec.pageHeightMm}mm" viewBox="0 0 ${pageWidth} ${pageHeight}" data-trim-width-mm="${spec.trimWidthMm}" data-trim-height-mm="${spec.trimHeightMm}"><title>Ali Baba Signs production artwork</title><desc>Print-ready artwork with bleed and crop marks outside the bleed. Safety and trim guides are preview-only.</desc><metadata id="alibaba-signs-production">${metadata}</metadata>${definitions}<rect width="100%" height="100%" fill="#fff"/>${translatedArtwork}${guides}${crops}</svg>`)
 }

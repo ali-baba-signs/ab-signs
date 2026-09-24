@@ -293,26 +293,15 @@ export function CanvasEditor() {
     if (!canvas || !guidesEnabledRef.current) return
     const ctx = canvas.getContext()
     const config = configRef.current
+    if (config.productCategory !== 'flag') return
     const zoomValue = canvas.getZoom()
-    const safeX = (config.safeMarginMm / config.widthMm) * config.logicalCanvasWidth
-    const safeY = (config.safeMarginMm / config.heightMm) * config.logicalCanvasHeight
-    const bleedX = Math.max(4, (config.bleedMm / config.widthMm) * config.logicalCanvasWidth)
-    const bleedY = Math.max(4, (config.bleedMm / config.heightMm) * config.logicalCanvasHeight)
     ctx.save()
     ctx.scale(zoomValue, zoomValue)
-    if (config.productCategory === 'flag' && flagGuideRefs.current.length) {
+    if (flagGuideRefs.current.length) {
       for (const guide of flagGuideRefs.current) guide.render(ctx)
       ctx.restore()
       return
     }
-    ctx.setLineDash([8 / zoomValue, 6 / zoomValue])
-    ctx.lineWidth = 1 / zoomValue
-    ctx.strokeStyle = '#ed1b68'
-    ctx.strokeRect(bleedX, bleedY, config.logicalCanvasWidth - bleedX * 2, config.logicalCanvasHeight - bleedY * 2)
-    ctx.strokeStyle = '#0ea5e9'
-    ctx.strokeRect(2, 2, config.logicalCanvasWidth - 4, config.logicalCanvasHeight - 4)
-    ctx.strokeStyle = '#22c55e'
-    ctx.strokeRect(safeX, safeY, config.logicalCanvasWidth - safeX * 2, config.logicalCanvasHeight - safeY * 2)
     ctx.restore()
   }, [])
 

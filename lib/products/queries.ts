@@ -2,7 +2,7 @@ import 'server-only'
 
 import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { orderItems, orders, productCategories, productImages, productReviews, products, productSizes, templateProducts, templates } from '@/lib/db/schema'
+import { orderItems, orders, productCategories, productImages, productReviews, productTemplateSizePrices, products, productSizes, templateProducts, templateSizes, templates } from '@/lib/db/schema'
 import { compatibleSizesForTemplate } from '@/lib/templates/compatibility'
 import { designConfigurationsForSize } from '@/lib/products/design-configurations'
 import { canonicalStoredAssetUrl } from '@/lib/storage/r2-public-url'
@@ -13,7 +13,9 @@ export async function getProductsWithDetails(productId?: string, includeInactive
     .orderBy(desc(products.createdAt))
   if (!rows.length) return []
   const ids = rows.map((product) => product.id)
-  const [images, sizes, categories, templateRows, templateLinks, reviewSummary, soldSummary] = await Promise.all([
+  const templateSizeProductIds = rows.filter((product) => product.sizeMode === 'template_sizes').map((product) => product.id)
+  const templateIds = rows.filter((product) => product.sizeMode === 'template_sizes').map((product) => product.templateId).filter((id): id is string => Boolean(id))
+  const [images, sizes, categories, templateRows, templateLinks, reviewSummary, soldSummary, templateSizeRows, templateSizePrices] = await Promise.all([
     db.select().from(productImages).where(inArray(productImages.productId, ids)).orderBy(asc(productImages.order)),
     db.select().from(productSizes).where(inArray(productSizes.productId, ids)).orderBy(asc(productSizes.order)),
     db.select().from(productCategories),
@@ -21,6 +23,8 @@ export async function getProductsWithDetails(productId?: string, includeInactive
     db.select().from(templateProducts).where(inArray(templateProducts.productId, ids)),
     db.select({ productId: productReviews.productId, averageRating: sql<number>`coalesce(avg(${productReviews.overall}), 0)`, reviewCount: sql<number>`count(*)::int` }).from(productReviews).where(and(inArray(productReviews.productId, ids), eq(productReviews.moderationStatus, 'published'))).groupBy(productReviews.productId),
     db.select({ productId: orderItems.productId, soldQuantity: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int` }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(inArray(orderItems.productId, ids), eq(orders.paymentStatus, 'paid'), notInArray(orders.status, ['cancelled', 'refunded']))).groupBy(orderItems.productId),
+    templateIds.length ? db.select().from(templateSizes).where(inArray(templateSizes.templateId, templateIds)) : Promise.resolve([]),
+    templateSizeProductIds.length ? db.select().from(productTemplateSizePrices).where(inArray(productTemplateSizePrices.productId, templateSizeProductIds)) : Promise.resolve([]),
   ])
   const canonicalTemplates = templateRows.map((template) => ({ ...template, previewImageUrl: canonicalStoredAssetUrl(template.previewImageUrl, template.previewImageKey) }))
   return rows.map((product) => {
@@ -32,6 +36,10 @@ export async function getProductsWithDetails(productId?: string, includeInactive
     ...product,
     images: images.filter((image) => image.productId === product.id).map((image) => ({ ...image, url: canonicalStoredAssetUrl(image.url, image.storageKey) || '' })),
     sizes: productSizeRows,
+    templateSizes: product.templateId ? templateSizeRows.filter((size) => size.templateId === product.templateId).map((size) => {
+      const price = templateSizePrices.find((row) => row.productId === product.id && row.templateSizeId === size.id)
+      return { ...size, unitPrice: price?.unitPrice ?? '0', enabled: size.enabled && Boolean(price?.enabled) }
+    }) : [],
     category: categories.find((category) => category.id === product.categoryId) ?? null,
     socialProof: {
       averageRating: Number(reviewSummary.find((row) => row.productId === product.id)?.averageRating || 0),

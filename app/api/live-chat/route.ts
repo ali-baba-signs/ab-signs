@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     const customerEmail = session?.user?.email || null
     const customerName = session?.user?.name || 'Website Visitor'
 
+     // If hosted on Vercel Pro/serverless
     // Check intent for action labels
     const intent = supportIntent(action, message)
     const userDisplayMsg = action ? (CHAT_ACTIONS.find(item => item.action === action)?.label || action) : message
@@ -73,7 +74,7 @@ const controller = new AbortController()
 
 const timeout = setTimeout(() => {
   controller.abort()
-},10000)
+},30000)
 
 
 const n8nRes = await fetch(n8nWebhookUrl,{

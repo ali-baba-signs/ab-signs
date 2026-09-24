@@ -23,6 +23,10 @@ export async function GET() {
       bannerShippingBands: settings.bannerShippingBands,
       allowGuestCheckout: settings.allowGuestCheckout,
       paymentTestMode: settings.paymentTestMode,
+      printBleedMm: settings.printBleedMm,
+      printSafeMarginMm: settings.printSafeMarginMm,
+      printCropMarks: settings.printCropMarks,
+      customArtworkConfigured: Number(settings.customArtworkPricePerM2) > 0,
       termsUrl: settings.termsUrl,
       privacyUrl: settings.privacyUrl,
     } }, { headers: { 'cache-control': 'no-store' } })

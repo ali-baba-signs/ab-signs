@@ -21,7 +21,8 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     if (asset?.contentType === 'application/pdf') return NextResponse.redirect(await createPresignedDownloadUrl(asset.objectKey))
   }
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, id))
-  const productRows = items.length ? await db.select().from(products).where(inArray(products.id, items.map((item) => item.productId))) : []
+  const productIds = items.map((item) => item.productId).filter((productId): productId is string => Boolean(productId))
+  const productRows = productIds.length ? await db.select().from(products).where(inArray(products.id, productIds)) : []
   const [payment] = await db.select().from(paymentRecords).where(eq(paymentRecords.orderId, id)).limit(1)
   const settings = await loadStoreSettings()
   const shipping = (order.shippingAddress || {}) as Record<string, string>

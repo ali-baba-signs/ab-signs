@@ -18,17 +18,19 @@ function buildPrintPdf(image: Uint8Array, imageDictionary: string, options: Prin
   const imageWidth = renderedPage ? pageWidth : fixed(pt(options.widthMm + bleed * 2) / userUnit), imageHeight = renderedPage ? pageHeight : fixed(pt(options.heightMm + bleed * 2) / userUnit)
   const trimLeft = fixed(pt(markMargin + bleed) / userUnit), trimBottom = fixed(pt(markMargin + bleed) / userUnit)
   const trimRight = fixed(trimLeft + pt(options.widthMm) / userUnit), trimTop = fixed(trimBottom + pt(options.heightMm) / userUnit)
-  const markLength = fixed(pt(5) / userUnit), markGap = fixed(pt(1.5) / userUnit)
-  const marks = options.trimMarks && !renderedPage ? [
+  const bleedLeft = fixed(pt(markMargin) / userUnit), bleedBottom = fixed(pt(markMargin) / userUnit)
+  const bleedRight = fixed(bleedLeft + pt(options.widthMm + bleed * 2) / userUnit), bleedTop = fixed(bleedBottom + pt(options.heightMm + bleed * 2) / userUnit)
+  const markLength = fixed(pt(5) / userUnit), markGap = fixed(pt(bleed + 1.5) / userUnit)
+  const marks = options.trimMarks ? [
     `${fixed(trimLeft-markGap-markLength)} ${trimBottom} m ${fixed(trimLeft-markGap)} ${trimBottom} l`, `${trimLeft} ${fixed(trimBottom-markGap-markLength)} m ${trimLeft} ${fixed(trimBottom-markGap)} l`,
     `${fixed(trimRight+markGap)} ${trimBottom} m ${fixed(trimRight+markGap+markLength)} ${trimBottom} l`, `${trimRight} ${fixed(trimBottom-markGap-markLength)} m ${trimRight} ${fixed(trimBottom-markGap)} l`,
     `${fixed(trimLeft-markGap-markLength)} ${trimTop} m ${fixed(trimLeft-markGap)} ${trimTop} l`, `${trimLeft} ${fixed(trimTop+markGap)} m ${trimLeft} ${fixed(trimTop+markGap+markLength)} l`,
     `${fixed(trimRight+markGap)} ${trimTop} m ${fixed(trimRight+markGap+markLength)} ${trimTop} l`, `${trimRight} ${fixed(trimTop+markGap)} m ${trimRight} ${fixed(trimTop+markGap+markLength)} l`,
   ].join('\n') : ''
-  const content = `q\n${imageWidth} 0 0 ${imageHeight} ${imageX} ${imageY} cm\n/Artwork Do\nQ\n${marks ? `q\n0 G\n${fixed(0.25/userUnit)} w\n${marks}\nS\nQ\n` : ''}`
+  const content = `q\n${bleedLeft} ${bleedBottom} ${fixed(bleedRight-bleedLeft)} ${fixed(bleedTop-bleedBottom)} re W n\n${imageWidth} 0 0 ${imageHeight} ${imageX} ${imageY} cm\n/Artwork Do\nQ\n${marks ? `q\n0 G\n${fixed(pt(0.25)/userUnit)} w\n${marks}\nS\nQ\n` : ''}`
   const objects: Uint8Array[] = [
     ascii('<< /Type /Catalog /Pages 2 0 R >>'), ascii('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
-    ascii(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /UserUnit ${userUnit} /Resources << /XObject << /Artwork 4 0 R >> >> /Contents 5 0 R >>`),
+    ascii(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /TrimBox [${trimLeft} ${trimBottom} ${trimRight} ${trimTop}] /BleedBox [${bleedLeft} ${bleedBottom} ${bleedRight} ${bleedTop}] /UserUnit ${userUnit} /Resources << /XObject << /Artwork 4 0 R >> >> /Contents 5 0 R >>`),
     (() => { const head=ascii(`<< /Type /XObject /Subtype /Image /Width ${options.jpegWidth} /Height ${options.jpegHeight} ${imageDictionary} /Length ${image.length} >>\nstream\n`),tail=ascii('\nendstream'),out=new Uint8Array(head.length+image.length+tail.length);out.set(head);out.set(image,head.length);out.set(tail,head.length+image.length);return out })(),
     ascii(`<< /Length ${ascii(content).length} >>\nstream\n${content}endstream`),
     ascii(`<< /Title (${escapePdf(options.title || 'Ali Baba Signs print-ready artwork')}) /Creator (Ali Baba Signs Design Editor) /Subject (Trim ${options.widthMm} x ${options.heightMm} mm; bleed ${bleed} mm; ${options.productKind || 'rectangle'} contour; crop marks ${options.trimMarks ? 'yes' : 'no'}; safety guides editor-only) >>`),

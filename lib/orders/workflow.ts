@@ -1,5 +1,5 @@
 export const ORDER_STATUSES = [
-  'pending_design_confirmation', 'design_revision_required', 'design_confirmed',
+  'pending_design_confirmation', 'artwork_pending', 'design_revision_required', 'design_confirmed',
   'awaiting_payment', 'payment_confirmed', 'order_confirmed',
   'queued_for_printing', 'printing', 'printing_completed', 'quality_check', 'production_completed',
   'ready_for_pickup', 'ready_for_dispatch', 'dispatched', 'out_for_delivery', 'delivered', 'completed',
@@ -14,7 +14,7 @@ export const ORDER_MILESTONE_LABELS: Record<OrderMilestone, string> = {
 }
 
 const statusMilestones: Record<OrderWorkflowStatus, OrderMilestone> = {
-  pending_design_confirmation: 'pending', design_revision_required: 'pending', awaiting_payment: 'pending',
+  pending_design_confirmation: 'pending', artwork_pending: 'pending', design_revision_required: 'pending', awaiting_payment: 'pending',
   design_confirmed: 'confirmed', payment_confirmed: 'confirmed', order_confirmed: 'confirmed',
   queued_for_printing: 'production', printing: 'production', printing_completed: 'production', quality_check: 'production', production_completed: 'production',
   ready_for_pickup: 'dispatch', ready_for_dispatch: 'dispatch', dispatched: 'dispatch', out_for_delivery: 'dispatch',
@@ -24,6 +24,7 @@ const statusMilestones: Record<OrderWorkflowStatus, OrderMilestone> = {
 
 export const ORDER_STATUS_LABELS: Record<OrderWorkflowStatus, string> = {
   pending_design_confirmation: 'Pending Design Confirmation',
+  artwork_pending: 'Artwork Pending',
   design_revision_required: 'Design Revision Required',
   design_confirmed: 'Design Confirmed',
   awaiting_payment: 'Awaiting Payment',
@@ -47,12 +48,13 @@ export const ORDER_STATUS_LABELS: Record<OrderWorkflowStatus, string> = {
 }
 
 const transitions: Record<OrderWorkflowStatus, OrderWorkflowStatus[]> = {
-  pending_design_confirmation: ['design_confirmed', 'design_revision_required', 'on_hold', 'cancelled'],
-  design_revision_required: ['pending_design_confirmation', 'design_confirmed', 'on_hold', 'cancelled'],
+  pending_design_confirmation: ['artwork_pending', 'design_confirmed', 'design_revision_required', 'on_hold', 'cancelled'],
+  artwork_pending: ['design_confirmed', 'design_revision_required', 'payment_confirmed', 'on_hold', 'cancelled'],
+  design_revision_required: ['pending_design_confirmation', 'artwork_pending', 'design_confirmed', 'on_hold', 'cancelled'],
   design_confirmed: ['awaiting_payment', 'payment_confirmed', 'on_hold', 'cancelled'],
   awaiting_payment: ['payment_confirmed', 'on_hold', 'cancelled'],
-  payment_confirmed: ['order_confirmed', 'refund_requested', 'on_hold'],
-  order_confirmed: ['queued_for_printing', 'on_hold', 'cancelled'],
+  payment_confirmed: ['artwork_pending', 'order_confirmed', 'refund_requested', 'on_hold'],
+  order_confirmed: ['artwork_pending', 'queued_for_printing', 'on_hold', 'cancelled'],
   queued_for_printing: ['printing', 'on_hold'],
   printing: ['printing_completed', 'on_hold'],
   printing_completed: ['quality_check', 'on_hold'],

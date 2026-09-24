@@ -38,7 +38,7 @@ export async function reconcileStripePayment(input: { intent: Stripe.PaymentInte
     if (order.paymentStatus === 'paid' && !successful) return { duplicate: false, emailEventIds: [] as string[] }
     const status = stripeEventPaymentStatus(eventType)
     await tx.update(paymentRecords).set({ status, metadata: { ...((payment.metadata || {}) as Record<string, unknown>), paymentIntentId: intent.id, lastEventId: eventId, ...cardMetadata }, updatedAt: new Date() }).where(eq(paymentRecords.id, payment.id))
-    await tx.update(orders).set({ paymentStatus: status, paymentMethod: 'stripe', ...(successful ? { status: 'payment_confirmed' as const } : {}), updatedAt: new Date() }).where(eq(orders.id, orderId))
+    await tx.update(orders).set({ paymentStatus: status, paymentMethod: 'stripe', ...(successful && order.status !== 'artwork_pending' ? { status: 'payment_confirmed' as const } : {}), updatedAt: new Date() }).where(eq(orders.id, orderId))
     if (successful && order.couponId) {
       const inserted = await tx.insert(couponRedemptions).values({ couponId: order.couponId, userId: order.userId, orderId: order.id, paymentRecordId: payment.id, discountAmount: order.discountAmount, status: 'redeemed' }).onConflictDoNothing().returning({ id: couponRedemptions.id })
       if (inserted.length) {

@@ -7,7 +7,9 @@ import { getSession } from '@/lib/auth/middleware'
 import { getAdminSession } from '@/lib/auth/require-admin'
 import { loadStoreSettings } from '@/lib/store/load-settings'
 import { designDeadline } from '@/lib/orders/workflow'
-import { parseMeasurement } from '@/lib/measurements'
+import { parseMeasurement, sameMeasurement } from '@/lib/measurements'
+import { CUSTOM_PRODUCT_ID, CUSTOM_PRODUCT_NAME, CUSTOM_PRODUCT_SKU, customArtworkPrice, customArtworkRate, customDimensions } from '@/lib/products/custom-artwork'
+import { millimetres, printGeometry } from '@/lib/production/print-settings'
 import { currentPolicyAcceptance } from '@/lib/policies/registry'
 import { validateCoupon } from '@/lib/coupons/engine'
 import { couponReservationExpiry } from '@/lib/coupons/reservations'
@@ -48,11 +50,11 @@ export async function GET() {
       db.select().from(paymentRecords).where(inArray(paymentRecords.orderId, ids)),
       db.select().from(orderStatusHistory).where(inArray(orderStatusHistory.orderId, ids)).orderBy(desc(orderStatusHistory.changedAt)),
     ]) : [[], [], []]
-    const itemProductIds = [...new Set(items.map((item) => item.productId))]
+    const itemProductIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id)))]
     const productRows = itemProductIds.length ? await db.select({ id: products.id, name: products.name, sku: products.sku, categoryId: products.categoryId }).from(products).where(inArray(products.id, itemProductIds)) : []
     const categoryIds = [...new Set(productRows.map((product) => product.categoryId))]
     const categoryRows = categoryIds.length ? await db.select({ id: productCategories.id, name: productCategories.name }).from(productCategories).where(inArray(productCategories.id, categoryIds)) : []
-    return NextResponse.json({ data: { orders: rows.map((order) => ({ ...order, items: items.filter((item) => item.orderId === order.id).map((item) => { const product = productRows.find((row) => row.id === item.productId); return { ...item, product: product ? { ...product, categoryName: categoryRows.find((category) => category.id === product.categoryId)?.name || '' } : null } }), payments: payments.filter((payment) => payment.orderId === order.id), history: history.filter((item) => item.orderId === order.id) })) } })
+    return NextResponse.json({ data: { orders: rows.map((order) => ({ ...order, items: items.filter((item) => item.orderId === order.id).map((item) => { const product = productRows.find((row) => row.id === item.productId); return { ...item, product: product ? { ...product, categoryName: categoryRows.find((category) => category.id === product.categoryId)?.name || '' } : item.productId === null && item.customerArtworkId ? { id: CUSTOM_PRODUCT_ID, name: CUSTOM_PRODUCT_NAME, sku: CUSTOM_PRODUCT_SKU, categoryId: null, categoryName: '' } : null } }), payments: payments.filter((payment) => payment.orderId === order.id), history: history.filter((item) => item.orderId === order.id) })) } })
   } catch (error) {
     console.error('Orders load failed', error)
     return NextResponse.json({ error: { code: 'ORDERS_LOAD_FAILED', message: 'Orders could not be loaded.' } }, { status: 500 })
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest) {
     const shippingAddress = cleanAddress(body.shippingAddress)
     const billingAddress = body.billingSameAsShipping === false ? cleanAddress(body.billingAddress) : shippingAddress
     const settings = await loadStoreSettings()
+    const customRate = items.some((item) => item.productId === CUSTOM_PRODUCT_ID) ? customArtworkRate(settings.customArtworkPricePerM2) : null
     const session = await getSession()
     if (!session?.user && !settings.allowGuestCheckout) return NextResponse.json({ error: { code: 'AUTH_REQUIRED', message: 'Sign in before checking out.' } }, { status: 401 })
 
@@ -87,9 +90,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: { order: existing, duplicate: true, totals: { subtotal: amount(cents(existingItems.reduce((sum, item) => sum + Number(item.totalPrice), 0))), discount: Number(existing.discountAmount).toFixed(2), couponCode: ((existing.couponSnapshot || {}) as Record<string, unknown>).code || null, tax: Number(existing.taxAmount).toFixed(2), shipping: Number(existing.shippingAmount).toFixed(2), total: Number(existing.totalAmount).toFixed(2), currency: existing.currency } } })
     }
 
-    const productIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id)))]
-    const sizeIds = [...new Set(items.map((item) => item.sizeId).filter((id): id is string => Boolean(id)))]
-    if (productIds.length !== new Set(items.map((item) => item.productId)).size || !sizeIds.length) throw new Error('Every cart item needs a valid product and size.')
+    if (items.some((item) => !item.productId || !item.sizeId)) throw new Error('Every cart item needs a valid product and size.')
+    const productIds = [...new Set(items.map((item) => item.productId).filter((id): id is string => Boolean(id) && id !== CUSTOM_PRODUCT_ID))]
+    const sizeIds = [...new Set(items.map((item) => item.sizeId).filter((id): id is string => Boolean(id) && id !== 'custom'))]
     const designIds = [...new Set(items.map((item) => item.designId).filter((id): id is string => Boolean(id)))]
     const artworkIds = [...new Set(items.map((item) => item.artworkId).filter((id): id is string => Boolean(id)))]
     const [productRows, productImageRows, sizeRows, templateSizeRows, priceRows, templateRows, templateLinks, designRows, artworkRows, categoryRows] = await Promise.all([
@@ -105,6 +108,18 @@ export async function POST(request: NextRequest) {
       db.select().from(productCategories),
     ])
     const calculatedItems = items.map((item) => {
+      if (item.productId === CUSTOM_PRODUCT_ID) {
+        const artwork = artworkRows.find((row) => row.id === item.artworkId && row.productId === null && row.userId === session?.user.id)
+        if (!artwork?.customWidth || !artwork.customHeight || !artwork.customUnit || item.sizeId !== 'custom' || item.designSource !== 'customer_upload' || item.designId || item.templateId) throw new Error('The custom artwork selection is unavailable or incomplete.')
+        const quantity = Number(item.quantity)
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) throw new Error('Quantity must be between 1 and 1000.')
+        if (!sameMeasurement(item.specifications?.customWidth, artwork.customWidth) || !sameMeasurement(item.specifications?.customHeight, artwork.customHeight) || item.specifications?.customUnit !== artwork.customUnit) throw new Error('Custom artwork dimensions do not match the uploaded artwork.')
+        const dimensions = customDimensions(artwork.customWidth, artwork.customHeight, artwork.customUnit)
+        printGeometry(millimetres(dimensions.customWidth, dimensions.customUnit), millimetres(dimensions.customHeight, dimensions.customUnit), Number(settings.printBleedMm), Number(settings.printSafeMarginMm))
+        const unitCents = cents(customArtworkPrice(dimensions.customWidth, dimensions.customHeight, dimensions.customUnit, customRate!))
+        if (unitCents <= 0) throw new Error('Custom artwork price must be greater than zero.')
+        return { product: { id: CUSTOM_PRODUCT_ID, name: CUSTOM_PRODUCT_NAME, sku: CUSTOM_PRODUCT_SKU, categoryId: null, freeShipping: false, customShippingAmount: null }, category: null, productImage: null, size: { id: 'custom', label: `${dimensions.customWidth} × ${dimensions.customHeight} ${dimensions.customUnit}`, width: dimensions.customWidth, height: dimensions.customHeight, unit: dimensions.customUnit }, templateSizeId: null, productSizeId: null, quantity, templateId: null, designId: null, artworkId: artwork.id, previewAssetId: null, frontPreviewAssetId: null, backPreviewAssetId: null, productionAssetId: null, customerArtworkAssetId: artwork.assetId, designSource: 'customer_upload', designType: item.specifications?.designType === 'double_side' ? 'double_side' : 'single_side', unitCents, totalCents: unitCents * quantity, bleedMm: settings.printBleedMm, safeMarginMm: settings.printSafeMarginMm, cropMarks: settings.printCropMarks, specifications: item.specifications ?? {} }
+      }
       const product = productRows.find((row) => row.id === item.productId && row.active)
       const legacySize = sizeRows.find((row) => row.id === item.sizeId && row.productId === item.productId && row.enabled)
       const templateSize = product?.templateId && product.sizeMode === 'template_sizes' ? templateSizeRows.find((row) => row.id === item.sizeId && row.templateId === product.templateId && row.enabled) : null
@@ -133,21 +148,27 @@ export async function POST(request: NextRequest) {
         if (!renderedAssets.front || (requestedDesignType === 'double_side' && !renderedAssets.back)) throw new Error('The saved design is missing required production side files.')
       }
       if (designSource === 'customer_upload' && !artwork) throw new Error('The uploaded artwork is unavailable or belongs to another account.')
+      if (artwork?.customWidth && (!sameMeasurement(item.specifications?.customWidth, artwork.customWidth) || !sameMeasurement(item.specifications?.customHeight, artwork.customHeight) || item.specifications?.customUnit !== artwork.customUnit)) throw new Error('Custom artwork dimensions do not match the uploaded artwork.')
       const customHeight = item.specifications?.customHeight
       const customWidth = item.specifications?.customWidth
       const customRequested = customHeight !== undefined || customWidth !== undefined
+      if (artwork && customRequested && !artwork.customWidth) throw new Error('Custom dimensions must be saved with the uploaded artwork.')
       if (customRequested && (!product.allowCustomDimensions || !legacySize || product.sizeMode === 'fixed_variants')) throw new Error('Custom dimensions are not available for this product.')
       const finalHeight = customRequested ? parseMeasurement(customHeight, 'Custom height').normalized : size.height
       const finalWidth = customRequested ? parseMeasurement(customWidth, 'Custom width').normalized : size.width
       if (customRequested && (!size.height || !size.width)) throw new Error('The custom-size pricing reference has no configured dimensions.')
-      const areaRatio = customRequested ? Number(finalHeight) * Number(finalWidth) / (Number(size.height) * Number(size.width)) : 1
+      const customUnit = item.specifications?.customUnit || size.unit
+      if (artwork) printGeometry(millimetres(finalWidth || '', customRequested ? customUnit : size.unit), millimetres(finalHeight || '', customRequested ? customUnit : size.unit), Number(size.bleed), Number(size.safeMargin))
+      const areaRatio = customRequested ? customDimensions(finalWidth, finalHeight, customUnit).areaM2 / customDimensions(size.width, size.height, size.unit).areaM2 : 1
       const unitCents = cents(Number(size.unitPrice) * areaRatio)
       const productImage = productImageRows.find((image) => image.productId === product.id && image.isPrimary) || productImageRows.find((image) => image.productId === product.id)
       const category = categoryRows.find((row) => row.id === product.categoryId)
-      return { product, category, productImage: canonicalStoredAssetUrl(productImage?.url, productImage?.storageKey), size: { ...size, height: finalHeight, width: finalWidth, label: customRequested ? `${finalHeight} × ${finalWidth} ${size.unit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, designType: requestedDesignType, unitCents, totalCents: unitCents * quantity, specifications: item.specifications ?? {} }
+      return { product, category, productImage: canonicalStoredAssetUrl(productImage?.url, productImage?.storageKey), size: { ...size, height: finalHeight, width: finalWidth, unit: customRequested ? customUnit : size.unit, label: customRequested ? `${finalWidth} × ${finalHeight} ${customUnit}` : size.label }, templateSizeId: templateSize?.id || null, productSizeId: legacySize?.id || null, quantity, templateId: selectedTemplateId || null, designId: design?.id || null, artworkId: artwork?.id || null, previewAssetId: design?.previewAssetId || null, frontPreviewAssetId: design?.frontPreviewAssetId || null, backPreviewAssetId: design?.backPreviewAssetId || null, productionAssetId: design?.productionAssetId || null, customerArtworkAssetId: artwork?.assetId || null, designSource, designType: requestedDesignType, unitCents, totalCents: unitCents * quantity, bleedMm: size.bleed, safeMarginMm: size.safeMargin, cropMarks: size.trimMarks, specifications: item.specifications ?? {} }
     })
     const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.totalCents, 0)
-    const coupon = body.couponCode ? await validateCoupon(body.couponCode, calculatedItems.map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId, totalCents: item.totalCents })), session?.user.id) : null
+    const couponItems = calculatedItems.filter((item) => item.product.id !== CUSTOM_PRODUCT_ID).map((item) => ({ productId: item.product.id, categoryId: item.product.categoryId!, totalCents: item.totalCents }))
+    if (body.couponCode && !couponItems.length) throw new Error('Coupons are not available for custom artwork.')
+    const coupon = body.couponCode ? await validateCoupon(body.couponCode, couponItems, session?.user.id) : null
     const discountCents = coupon?.discountCents || 0
     const discountedSubtotalCents = Math.max(0, subtotalCents - discountCents)
     const shipping = calculateShipping({ deliveryType, productSubtotal: discountedSubtotalCents / 100, standardShippingCost: settings.shippingCost, freeShippingThreshold: settings.freeShippingThreshold, bannerBands: settings.bannerShippingBands, lines: calculatedItems.map((item) => ({ quantity: item.quantity, width: Number(item.size.width), height: Number(item.size.height), unit: item.size.unit, freeShipping: item.product.freeShipping, productId: item.product.id, customShippingAmount: item.product.customShippingAmount === null ? null : Number(item.product.customShippingAmount), isBanner: ['custom_banners','mesh_banners','vinyl_banners'].includes(item.category?.category || '') })) })
@@ -169,16 +190,16 @@ export async function POST(request: NextRequest) {
         }
       }
       const rows = await tx.insert(orders).values({
-        userId: session?.user.id ?? null, orderNumber, status: 'pending_design_confirmation', paymentStatus: 'awaiting_payment', paymentMethod, designConfirmationDeadline: designDeadline(),
+        userId: session?.user.id ?? null, orderNumber, status: calculatedItems.some((item) => item.artworkId) ? 'artwork_pending' : 'pending_design_confirmation', paymentStatus: 'awaiting_payment', paymentMethod, designConfirmationDeadline: designDeadline(),
         currency: settings.currency, customerEmail: email, idempotencyKey, totalAmount: amount(totalCents), taxAmount: amount(taxCents), shippingAmount: amount(shippingCents), couponId: coupon?.id || null, discountAmount: amount(discountCents), couponSnapshot: coupon ? { id: coupon.id, code: coupon.code, discountType: coupon.discountType, discountValue: coupon.discountValue, discountAmount: amount(discountCents) } : null,
         shippingAddress, billingAddress, deliveryType, policiesAccepted: true, policiesAcceptedAt: new Date(), policyAcceptance: currentPolicyAcceptance(), notes: typeof body.notes === 'string' ? body.notes.trim().slice(0, 2000) : null,
       }).returning()
       await tx.insert(orderItems).values(calculatedItems.map((item) => ({
-        orderId: rows[0].id, productId: item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
-        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, designType: item.designType, designMode: item.designType, sideMode: item.designType === 'double_side' ? 'double' : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, customShippingAmount: item.product.customShippingAmount, taxName: settings.taxName, taxRate: settings.taxEnabled ? settings.taxRate : 0, shippingCategory: item.category?.category || null },
+        orderId: rows[0].id, productId: item.product.id === CUSTOM_PRODUCT_ID ? null : item.product.id, productSizeId: item.productSizeId, templateSizeId: item.templateSizeId, templateId: item.templateId, designId: item.designId, customerArtworkId: item.artworkId, previewAssetId: item.previewAssetId, frontPreviewAssetId: item.frontPreviewAssetId, backPreviewAssetId: item.backPreviewAssetId, productionAssetId: item.productionAssetId, customerArtworkAssetId: item.customerArtworkAssetId, designSource: item.designSource,
+        quantity: item.quantity, unitPrice: amount(item.unitCents), totalPrice: amount(item.totalCents), specifications: { ...item.specifications, productName: item.product.name, productImage: item.productImage, sku: item.product.sku, variant: item.size.label, sizeLabel: item.size.label, unit: item.size.unit, width: item.size.width, height: item.size.height, bleedMm: item.bleedMm, safeMarginMm: item.safeMarginMm, cropMarks: item.cropMarks, designType: item.designType, designMode: item.designType, sideMode: item.designType === 'double_side' ? 'double' : 'single', designSource: item.designSource, designId: item.designId, templateId: item.templateId, freeShipping: item.product.freeShipping, customShippingAmount: item.product.customShippingAmount, taxName: settings.taxName, taxRate: settings.taxEnabled ? settings.taxRate : 0, shippingCategory: item.category?.category || null },
       })))
       if (coupon && reservationExpiresAt) await tx.insert(couponReservations).values({ couponId: coupon.id, userId: session?.user.id ?? null, orderId: rows[0].id, expiresAt: reservationExpiresAt })
-      await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: 'pending_design_confirmation', newStatus: 'pending_design_confirmation', changedBy: session?.user.id ?? null, notes: 'Order placed and awaiting design confirmation.', customerVisibleNote: 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
+      await tx.insert(orderStatusHistory).values({ orderId: rows[0].id, status: rows[0].status, newStatus: rows[0].status, changedBy: session?.user.id ?? null, notes: rows[0].status === 'artwork_pending' ? 'Order placed and awaiting artwork review.' : 'Order placed and awaiting design confirmation.', customerVisibleNote: rows[0].status === 'artwork_pending' ? 'Your artwork is awaiting review.' : 'Your design is awaiting confirmation.', expectedCompletionAt: rows[0].designConfirmationDeadline })
       return rows
     })
     return NextResponse.json({ data: { order, totals: { subtotal: amount(subtotalCents), discount: amount(discountCents), couponCode: coupon?.code || null, tax: amount(taxCents), shipping: amount(shippingCents), shippingAreaM2: shipping.bannerAreaM2, total: amount(totalCents), currency: settings.currency }, paymentExpiresAt: reservationExpiresAt?.toISOString() || null } }, { status: 201 })

@@ -45,7 +45,6 @@ export function CheckoutFulfilmentSettings({ settings, onChange }: { settings: F
     </div>
     <p className="mt-3 text-sm text-muted-foreground">The threshold uses the product subtotal after vouchers and applies only to standard shipping. Banner area fees still apply. Mixed global-rule carts pay the higher of the banner fee and standard fee. A threshold of 0 makes standard shipping free.</p>
     <p className="mt-2 text-sm text-muted-foreground">Each product can use global rules, free shipping, or a custom fee. Free products add no shipping or billable banner area. Custom fees are charged once per distinct product per order, added to global shipping, and are not waived by the threshold. Pickup is always free.</p>
-    <label className="mt-4 block text-sm font-semibold">Turnaround time<Input required className="mt-2" value={settings.turnaroundDays} onChange={(event) => onChange({ turnaroundDays: event.target.value })} /></label>
     <label className="mt-4 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={settings.allowGuestCheckout} onChange={(event) => onChange({ allowGuestCheckout: event.target.checked })} />Allow guest checkout</label>
   </section>
 }

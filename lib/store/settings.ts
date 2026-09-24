@@ -1,6 +1,7 @@
 import 'server-only'
 import { DEFAULT_SUPPORT_SETTINGS, validateSupportSettings, type SupportSettings } from '@/lib/support/settings'
 import { DEFAULT_BANNER_SHIPPING_BANDS, validateShippingBands, type ShippingBand } from '@/lib/shipping/bands'
+import { PRINT_SETTINGS } from '@/lib/production/print-settings'
 
 export interface StoreLocation {
   id: string
@@ -46,6 +47,10 @@ export interface StoreSettingsValues {
   privacyUrl: string
   allowGuestCheckout: boolean
   paymentTestMode: boolean
+  customArtworkPricePerM2: number | string
+  printBleedMm: number | string
+  printSafeMarginMm: number | string
+  printCropMarks: boolean
 }
 
 export const DEFAULT_STORE_SETTINGS: StoreSettingsValues = {
@@ -72,6 +77,10 @@ export const DEFAULT_STORE_SETTINGS: StoreSettingsValues = {
   privacyUrl: '/privacy-policy',
   allowGuestCheckout: true,
   paymentTestMode: true,
+  customArtworkPricePerM2: 0,
+  printBleedMm: PRINT_SETTINGS.bleed,
+  printSafeMarginMm: PRINT_SETTINGS.safeMargin,
+  printCropMarks: true,
 }
 
 function numberBetween(value: unknown, min: number, max: number, label: string) {
@@ -161,6 +170,10 @@ export function validateStoreSettings(value: unknown): StoreSettingsValues {
     privacyUrl: text('privacyUrl', 500) || '/privacy-policy',
     allowGuestCheckout: Boolean(input.allowGuestCheckout),
     paymentTestMode: Boolean(input.paymentTestMode),
+    customArtworkPricePerM2: numberBetween(input.customArtworkPricePerM2, 0.01, 100000, 'Custom artwork price per m²'),
+    printBleedMm: numberBetween(input.printBleedMm ?? PRINT_SETTINGS.bleed, 0, 50, 'Print bleed'),
+    printSafeMarginMm: numberBetween(input.printSafeMarginMm ?? PRINT_SETTINGS.safeMargin, 0, 100, 'Print safe margin'),
+    printCropMarks: input.printCropMarks !== false,
   }
 }
 

@@ -9,12 +9,13 @@ import { createPresignedDownloadUrl } from '@/lib/storage/r2'
 import { deleteAssetIfOrphaned } from '@/lib/storage/asset-records'
 import { deliverOrderEmailEvent } from '@/lib/orders/emails'
 import { cleanPlainText } from '@/lib/validation/customer-input'
+import { CUSTOM_PRODUCT_ID, CUSTOM_PRODUCT_NAME, CUSTOM_PRODUCT_SKU } from '@/lib/products/custom-artwork'
 
 async function details(id: string) {
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
   if (!order) return null
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, id))
-  const productIds = items.map((item) => item.productId)
+  const productIds = items.map((item) => item.productId).filter((id): id is string => Boolean(id))
   const artworkIds = items.flatMap((item) => item.customerArtworkId ? [item.customerArtworkId] : [])
   const designIds = items.flatMap((item) => item.designId ? [item.designId] : [])
   const assetIds = [...new Set(items.flatMap((item) => [item.previewAssetId, item.frontPreviewAssetId, item.backPreviewAssetId, item.productionAssetId, item.customerArtworkAssetId].filter((value): value is string => Boolean(value))))]
@@ -37,7 +38,7 @@ async function details(id: string) {
     const expectedRatio = Number(specs?.width) / Number(specs?.height)
     const sourceRatio = artwork?.sourceWidthPx && artwork.sourceHeightPx ? artwork.sourceWidthPx / artwork.sourceHeightPx : 0
     const dimensionWarning = expectedRatio > 0 && sourceRatio > 0 && Math.abs(expectedRatio - sourceRatio) / expectedRatio > 0.05 ? 'Uploaded artwork aspect ratio differs from the ordered production size. Review before printing.' : null
-    return { ...item, product: productRows.find((product) => product.id === item.productId), template: templateRows.find((template) => template.id === item.templateId) || null, artwork: artwork ? { ...artwork, dimensionWarning } : null, designUrl: item.designId ? designUrls.get(item.designId) : null, productionPreviewUrl: item.frontPreviewAssetId ? assetUrls.get(item.frontPreviewAssetId) : item.previewAssetId ? assetUrls.get(item.previewAssetId) : null, productionUrl: item.designId ? `/api/admin/orders/${id}/items/${item.id}/production?side=front&format=pdf` : null, productionSvgUrl: item.designId ? `/api/admin/orders/${id}/items/${item.id}/production?side=front&format=svg` : null, backProductionPreviewUrl: item.backPreviewAssetId ? assetUrls.get(item.backPreviewAssetId) : null, backProductionUrl: item.designId && (specs?.sideMode === 'double') ? `/api/admin/orders/${id}/items/${item.id}/production?side=back&format=pdf` : null, backProductionSvgUrl: item.designId && (specs?.sideMode === 'double') ? `/api/admin/orders/${id}/items/${item.id}/production?side=back&format=svg` : null }
+    return { ...item, product: productRows.find((product) => product.id === item.productId) || (item.productId === null && item.customerArtworkId ? { id: CUSTOM_PRODUCT_ID, name: CUSTOM_PRODUCT_NAME, sku: CUSTOM_PRODUCT_SKU } : null), template: templateRows.find((template) => template.id === item.templateId) || null, artwork: artwork ? { ...artwork, dimensionWarning } : null, designUrl: item.designId ? designUrls.get(item.designId) : null, productionPreviewUrl: item.frontPreviewAssetId ? assetUrls.get(item.frontPreviewAssetId) : item.previewAssetId ? assetUrls.get(item.previewAssetId) : null, productionUrl: item.designId ? `/api/admin/orders/${id}/items/${item.id}/production?side=front&format=pdf` : null, productionSvgUrl: item.designId ? `/api/admin/orders/${id}/items/${item.id}/production?side=front&format=svg` : null, backProductionPreviewUrl: item.backPreviewAssetId ? assetUrls.get(item.backPreviewAssetId) : null, backProductionUrl: item.designId && (specs?.sideMode === 'double') ? `/api/admin/orders/${id}/items/${item.id}/production?side=back&format=pdf` : null, backProductionSvgUrl: item.designId && (specs?.sideMode === 'double') ? `/api/admin/orders/${id}/items/${item.id}/production?side=back&format=svg` : null }
   }), history, payments }
 }
 
