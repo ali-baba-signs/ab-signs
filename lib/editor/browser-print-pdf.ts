@@ -102,9 +102,9 @@ function injectSvgMetadata(svg: string, metadata: Record<string, unknown>, title
   return svg.replace(/(<svg\b[^>]*>)/, `$1<title>${escapedTitle}</title><desc>Print-ready artwork with bleed and crop marks outside the bleed. Safety and trim guides are preview-only.</desc><metadata id="alibaba-signs-production">${encoded}</metadata>`)
 }
 
-export async function renderProductionFiles(canvasJson: Record<string, unknown>, config: ProductConfig, title = 'Ali Baba Signs production artwork'): Promise<ProductionFiles> {
-  const { canvas, spec, pageWidth, pageHeight, scaleX, scaleY, trimLeft, trimTop, trimWidth, trimHeight } = await createProductionCanvas(canvasJson, config)
-  try {
+type ProductionCanvas = Awaited<ReturnType<typeof createProductionCanvas>>
+
+function renderProductionSvgFromCanvas({ canvas, spec, pageWidth, pageHeight, scaleX, scaleY, trimLeft, trimTop, trimWidth, trimHeight }: ProductionCanvas, config: ProductConfig, title: string): ProductionFiles['svg'] {
     const metadata = productionMetadata(config)
     const width = `${spec.pageWidthMm}mm`, height = `${spec.pageHeightMm}mm`
     const rawSvg = canvas.toSVG({ suppressPreamble: true, width, height })
@@ -118,21 +118,45 @@ export async function renderProductionFiles(canvasJson: Record<string, unknown>,
       width,
       height,
     ))
-    const svg = { blob: new Blob([svgMarkup], { type: 'image/svg+xml' }), contentType: 'image/svg+xml' as const, pixelWidth: pageWidth, pixelHeight: pageHeight, metadata }
+    return { blob: new Blob([svgMarkup], { type: 'image/svg+xml' }), contentType: 'image/svg+xml', pixelWidth: pageWidth, pixelHeight: pageHeight, metadata }
+}
+
+async function renderProductionPdfFromCanvas({ canvas, spec }: ProductionCanvas, config: ProductConfig, title: string): Promise<ProductionFiles['pdf']> {
+    const metadata = productionMetadata(config)
+    const pageWidth = canvas.getWidth(), pageHeight = canvas.getHeight()
     const multiplier = Math.min(4, 4000 / Math.max(pageWidth, pageHeight))
     const raster = canvas.toCanvasElement(multiplier)
     const cmykPixels = await renderCmykPixels(raster)
     const pdfBytes = buildPrintReadyCmykPdf(cmykPixels, { widthMm: spec.trimWidthMm, heightMm: spec.trimHeightMm, bleedMm: spec.bleedMm, safetyMm: spec.safetyMm, productKind: spec.productKind, trimMarks: spec.cropMarks, jpegWidth: raster.width, jpegHeight: raster.height, title, renderedPageWidthMm: spec.pageWidthMm, renderedPageHeightMm: spec.pageHeightMm })
-    const pdf = { blob: new Blob([pdfBytes], { type: 'application/pdf' }), contentType: 'application/pdf' as const, pixelWidth: raster.width, pixelHeight: raster.height, metadata }
+    return { blob: new Blob([pdfBytes], { type: 'application/pdf' }), contentType: 'application/pdf', pixelWidth: raster.width, pixelHeight: raster.height, metadata }
+}
+
+export async function renderProductionFiles(canvasJson: Record<string, unknown>, config: ProductConfig, title = 'Ali Baba Signs production artwork'): Promise<ProductionFiles> {
+  const production = await createProductionCanvas(canvasJson, config)
+  try {
+    const svg = renderProductionSvgFromCanvas(production, config, title)
+    const pdf = await renderProductionPdfFromCanvas(production, config, title)
     return { pdf, svg }
-  } finally { canvas.dispose() }
+  } finally { production.canvas.dispose() }
+}
+
+export async function renderProductionSvg(canvasJson: Record<string, unknown>, config: ProductConfig, title = 'Ali Baba Signs production artwork') {
+  const production = await createProductionCanvas(canvasJson, config)
+  try { return renderProductionSvgFromCanvas(production, config, title) }
+  finally { production.canvas.dispose() }
 }
 
 export function downloadProductionFile(file: ProductionFile<string>, filename: string) {
+  const expectedType = filename.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : null
+  if (!expectedType || file.contentType !== expectedType || file.blob.type !== expectedType) throw new Error('The production file format does not match its download name.')
   const url = URL.createObjectURL(file.blob)
   try { const link = document.createElement('a'); link.href = url; link.download = filename; link.click() }
   finally { window.setTimeout(() => URL.revokeObjectURL(url), 1000) }
 }
 
-export async function renderPrintReadyPdf(canvasJson: Record<string, unknown>, config: ProductConfig, title?: string) { return (await renderProductionFiles(canvasJson, config, title)).pdf }
-export async function downloadPrintReadyPdf(canvasJson: Record<string, unknown>, config: ProductConfig, filename: string) { downloadProductionFile((await renderProductionFiles(canvasJson, config, filename.replace(/\.pdf$/i, ''))).pdf, filename) }
+export async function renderPrintReadyPdf(canvasJson: Record<string, unknown>, config: ProductConfig, title = 'Ali Baba Signs production artwork') {
+  const production = await createProductionCanvas(canvasJson, config)
+  try { return await renderProductionPdfFromCanvas(production, config, title) }
+  finally { production.canvas.dispose() }
+}
+export async function downloadPrintReadyPdf(canvasJson: Record<string, unknown>, config: ProductConfig, filename: string) { downloadProductionFile(await renderPrintReadyPdf(canvasJson, config, filename.replace(/\.pdf$/i, '')), filename) }

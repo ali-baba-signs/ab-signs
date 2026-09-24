@@ -15,7 +15,7 @@ import { authClient, useSession } from '@/lib/auth-client'
 import { fetchTemplate } from '@/lib/editor/templates'
 import { loadDesign as loadStoredDesign, saveDesign, serializeDesign } from '@/lib/editor/design-serialization'
 import { renderBrowserSide, uploadBrowserRender, uploadProductionFile } from '@/lib/editor/browser-preview'
-import { downloadProductionFile, renderProductionFiles } from '@/lib/editor/browser-print-pdf'
+import { downloadProductionFile, renderPrintReadyPdf, renderProductionFiles, renderProductionSvg } from '@/lib/editor/browser-print-pdf'
 import {
   type CanvasSessionUpload,
   CUSTOM_PROPERTIES,
@@ -238,6 +238,7 @@ export function CanvasEditor() {
   const [guides, setGuides] = useState(true)
   const [zoom, setZoom] = useState(1)
   const [status, setStatus] = useState('Ready')
+  const [isDirty, setIsDirty] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const busyRef = useRef(false)
   const [sessionUploads, setSessionUploads] = useState<CanvasSessionUpload[]>([])
@@ -246,6 +247,7 @@ export function CanvasEditor() {
   const currentSideRef = useRef<'front' | 'back'>('front')
   const sideStatesRef = useRef<Partial<Record<'front' | 'back', Record<string, unknown>>>>({})
   const savedDesignId = useRef<string | null>(null)
+  const lastSavedDesignState = useRef<string | null>(null)
   const originalTemplateRef = useRef<Record<string, unknown> | null>(null)
   const fixedTemplateRef = useRef<Record<string, unknown> | null>(null)
   const flagGuideRefs = useRef<EditorObject[]>([])
@@ -253,13 +255,30 @@ export function CanvasEditor() {
   const baseCanvasRef = useRef({ width: DEFAULT_PRODUCT_CONFIG.logicalCanvasWidth, height: DEFAULT_PRODUCT_CONFIG.logicalCanvasHeight, fitMode: 'contain' as 'contain' | 'cover' | 'stretch' })
   const sideTemplateSourcesRef = useRef<Partial<Record<'front' | 'back', SideTemplateSource>>>({})
   const sideTemplateIdsRef = useRef<{ front: string | null; back?: string | null }>({ front: null })
+  const currentDesignState = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    sideStatesRef.current[currentSideRef.current] = canvas.toJSON() as Record<string, unknown>
+    return JSON.stringify({
+      config: configRef.current,
+      templateId,
+      templateSides: sideTemplateIdsRef.current,
+      front: sideStatesRef.current.front,
+      back: configRef.current.sideMode === 'double' ? sideStatesRef.current.back : undefined,
+    })
+  }, [templateId])
   const frontHistory = useCanvasHistory(canvasRef)
   const backHistory = useCanvasHistory(canvasRef)
   const snapshot = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.snapshot : backHistory.snapshot)(), [backHistory.snapshot, frontHistory.snapshot])
   const scheduleSnapshot = useCallback((delay?: number) => (currentSideRef.current === 'front' ? frontHistory.scheduleSnapshot : backHistory.scheduleSnapshot)(delay), [backHistory.scheduleSnapshot, frontHistory.scheduleSnapshot])
   const reset = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.reset : backHistory.reset)(), [backHistory.reset, frontHistory.reset])
-  const undo = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.undo : backHistory.undo)(), [backHistory.undo, frontHistory.undo])
-  const redo = useCallback(() => (currentSideRef.current === 'front' ? frontHistory.redo : backHistory.redo)(), [backHistory.redo, frontHistory.redo])
+  const syncSavedState = useCallback(() => {
+    const dirty = !savedDesignId.current || currentDesignState() !== lastSavedDesignState.current
+    setIsDirty(dirty)
+    setStatus(dirty ? 'Unsaved changes' : 'All changes saved')
+  }, [currentDesignState])
+  const undo = useCallback(async () => { await (currentSideRef.current === 'front' ? frontHistory.undo : backHistory.undo)(); syncSavedState() }, [backHistory.undo, frontHistory.undo, syncSavedState])
+  const redo = useCallback(async () => { await (currentSideRef.current === 'front' ? frontHistory.redo : backHistory.redo)(); syncSavedState() }, [backHistory.redo, frontHistory.redo, syncSavedState])
   const runWhileRestoring = useCallback(<T,>(task: () => Promise<T>) => (currentSideRef.current === 'front' ? frontHistory.runWhileRestoring : backHistory.runWhileRestoring)(task), [backHistory.runWhileRestoring, frontHistory.runWhileRestoring])
   const canUndo = currentSide === 'front' ? frontHistory.canUndo : backHistory.canUndo
   const canRedo = currentSide === 'front' ? frontHistory.canRedo : backHistory.canRedo
@@ -417,6 +436,7 @@ export function CanvasEditor() {
     const changed = () => {
       snapshot()
       refreshObjects()
+      setIsDirty(true)
       setStatus('Unsaved changes')
     }
     canvas.on('selection:created', selection)
@@ -425,7 +445,7 @@ export function CanvasEditor() {
     canvas.on('object:added', changed)
     canvas.on('object:removed', changed)
     canvas.on('object:modified', changed)
-    canvas.on('text:changed', () => { scheduleSnapshot(); refreshObjects(); setStatus('Unsaved changes') })
+    canvas.on('text:changed', () => { scheduleSnapshot(); refreshObjects(); setIsDirty(true); setStatus('Unsaved changes') })
     canvas.on('after:render', drawGuides)
 
     const saved = requestedTemplateId ? null : loadStoredDesign()
@@ -564,6 +584,7 @@ export function CanvasEditor() {
         else if (object.locked) applyLock(object, true)
       }
       setTemplateId(template.id)
+      setIsDirty(true)
       refreshObjects()
       reset()
       canvas.requestRenderAll()
@@ -684,6 +705,7 @@ export function CanvasEditor() {
     object.setCoords()
     canvas.requestRenderAll()
     snapshot()
+    setIsDirty(true)
     setSelected(object as EditorObject)
   }, [snapshot])
 
@@ -691,6 +713,7 @@ export function CanvasEditor() {
     const normalized = normalizeProductConfig(next)
     configRef.current = normalized
     setProductConfig(normalized)
+    setIsDirty(true)
     void restoreOriginalAtSize(normalized).then(() => { refreshObjects(); reset(); fitToScreen(normalized); setStatus('Product size updated from the original template') })
   }, [fitToScreen, refreshObjects, reset, restoreOriginalAtSize])
 
@@ -707,6 +730,7 @@ export function CanvasEditor() {
     canvas.requestRenderAll()
     refreshObjects()
     snapshot()
+    setIsDirty(true)
   }, [refreshObjects, snapshot])
 
   const save = useCallback(async () => {
@@ -715,6 +739,7 @@ export function CanvasEditor() {
     busyRef.current = true
     setProcessing('Preparing your design…')
     sideStatesRef.current[currentSideRef.current] = canvas.toJSON()
+    const savingState = currentDesignState()
     const sides = configRef.current.sideMode === 'double' && sideStatesRef.current.front ? { front: { canvasJson: sideStatesRef.current.front }, ...(sideStatesRef.current.back ? { back: { canvasJson: sideStatesRef.current.back } } : {}) } : undefined
     const design = serializeDesign(canvas, configRef.current, templateId, sides, sideTemplateIdsRef.current)
     let currentSession = session?.user ? session : null
@@ -739,6 +764,8 @@ export function CanvasEditor() {
       }
     }
     if (!currentSession?.user) {
+      lastSavedDesignState.current = savingState
+      setIsDirty(currentDesignState() !== savingState)
       setStatus('Saved temporarily on this device. Sign in to save a private draft.')
       busyRef.current = false
       setProcessing(null)
@@ -803,6 +830,9 @@ export function CanvasEditor() {
       const databasePayload = await readApiResponse(databaseResponse)
       if (!databaseResponse.ok) throw new Error(databasePayload?.error?.message || `The design save service returned HTTP ${databaseResponse.status}. Please retry.`)
       savedDesignId.current = databasePayload?.data?.design?.id ?? databasePayload?.design?.id ?? savedDesignId.current
+      if (!savedDesignId.current) throw new Error('The design save did not return a draft ID. Please retry.')
+      lastSavedDesignState.current = savingState
+      setIsDirty(currentDesignState() !== savingState)
       const deletedKeys: unknown = databasePayload?.data?.uploadCleanup?.deletedKeys
       if (Array.isArray(deletedKeys)) updateSessionUploads((current) => current.filter((upload) => !upload.assetKey || !deletedKeys.includes(upload.assetKey)))
       setStatus(`Private draft saved ${new Date().toLocaleTimeString()}`)
@@ -811,7 +841,7 @@ export function CanvasEditor() {
       setStatus(error instanceof Error ? error.message : 'Private design could not be saved.')
       return null
     } finally { busyRef.current = false; setProcessing(null) }
-  }, [requestedProductId, requestedSizeId, session, templateId, updateSessionUploads])
+  }, [currentDesignState, requestedProductId, requestedSizeId, session, templateId, updateSessionUploads])
 
   const switchSide = useCallback(async (next: 'front' | 'back') => {
     const canvas = canvasRef.current
@@ -830,7 +860,7 @@ export function CanvasEditor() {
       await restoreOriginalAtSize(configRef.current)
       sideStatesRef.current[next] = canvas.toJSON()
     }
-    refreshObjects(); if (!saved) reset(); canvas.requestRenderAll(); setStatus(`Designing the ${next} side${sideTemplateSourcesRef.current[next]?.name ? ` · ${sideTemplateSourcesRef.current[next]!.name}` : ''}`)
+    refreshObjects(); if (!saved) { reset(); setIsDirty(true) } canvas.requestRenderAll(); setStatus(`Designing the ${next} side${sideTemplateSourcesRef.current[next]?.name ? ` · ${sideTemplateSourcesRef.current[next]!.name}` : ''}`)
   }, [activateTemplateSide, refreshObjects, reset, restoreOriginalAtSize, runWhileRestoring])
 
   const continueFromEditor = useCallback(async () => {
@@ -840,7 +870,10 @@ export function CanvasEditor() {
     }
     sideStatesRef.current[currentSideRef.current] = canvasRef.current?.toJSON()
     if (configRef.current.sideMode === 'double' && !sideStatesRef.current.back) { setStatus('Create or copy the Back artwork before continuing with this double-sided product.'); return }
-    const customizationRef = await save()
+    const designState = currentDesignState()
+    const needsSave = !savedDesignId.current || designState !== lastSavedDesignState.current
+    if (needsSave !== isDirty) setIsDirty(needsSave)
+    const customizationRef = needsSave ? await save() : savedDesignId.current
     if (requestedProductId) {
       const params = new URLSearchParams()
       if (!customizationRef) return
@@ -860,7 +893,7 @@ export function CanvasEditor() {
     } else {
       router.push('/products')
     }
-  }, [requestedDesignType, requestedProductId, requestedSizeId, router, save, templateId])
+  }, [currentDesignState, isDirty, requestedDesignType, requestedProductId, requestedSizeId, router, save, templateId])
 
   const exportOutput = useCallback(async (format: 'preview' | 'pdf' | 'svg') => {
     const canvas = canvasRef.current
@@ -875,7 +908,13 @@ export function CanvasEditor() {
       const originalData = format === 'preview' ? canvas.toDataURL({ format: 'png', multiplier: 2 }) : ''
       canvas.setDimensions({ width: oldWidth, height: oldHeight }); canvas.setZoom(oldZoom); guidesEnabledRef.current = guides; canvas.requestRenderAll()
       if (format === 'preview') { const data = await addWatermark(originalData); const preview = window.open('', '_blank', 'noopener,noreferrer'); if (preview) preview.document.write(`<title>Design Preview</title><img alt="Design preview" style="max-width:100%;height:auto" src="${data}">`) }
-      else { const production = await renderProductionFiles(canvasJson, configRef.current); downloadProductionFile(production[format], `alibaba-signs-${Date.now()}.${format}`) }
+      else {
+        const exportType: 'pdf' | 'svg' = format
+        const production = exportType === 'svg'
+          ? await renderProductionSvg(canvasJson, configRef.current)
+          : await renderPrintReadyPdf(canvasJson, configRef.current)
+        downloadProductionFile(production, `alibaba-signs-${Date.now()}.${exportType}`)
+      }
     } catch (error) {
       console.error(`Design ${format} export failed`, error)
       setStatus(error instanceof GeneratedSvgError || error instanceof SvgValidationError
@@ -912,6 +951,7 @@ export function CanvasEditor() {
         object.setCoords()
         canvasRef.current?.requestRenderAll()
         scheduleSnapshot(120)
+        setIsDirty(true)
       }
     }
     window.addEventListener('keydown', onKeyDown)

@@ -28,30 +28,35 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       ? (design.canvasData as Record<string, unknown>).renderedAssets as Record<string, unknown>
       : {}
     const renderedSide = renderedAssets?.[side] && typeof renderedAssets[side] === 'object' ? renderedAssets[side] as Record<string, unknown> : {}
-    const assetId = format === 'png'
-      ? side === 'back' ? design.backPreviewAssetId : design.frontPreviewAssetId
-      : side === 'front' ? design.productionAssetId : null
     const objectKey = format === 'svg' && typeof renderedSide.svgProductionKey === 'string'
       ? renderedSide.svgProductionKey
       : format === 'pdf' && side === 'back' && typeof renderedSide.productionKey === 'string' ? renderedSide.productionKey : null
-    const [asset] = assetId
-      ? await db.select().from(storageAssets).where(eq(storageAssets.id, assetId)).limit(1)
-      : objectKey ? await db.select().from(storageAssets).where(eq(storageAssets.objectKey, objectKey)).limit(1) : []
+    const assetId = format === 'png'
+      ? side === 'back' ? design.backPreviewAssetId : design.frontPreviewAssetId
+      : format === 'pdf' && side === 'front' ? design.productionAssetId : null
+    const [asset] = objectKey
+      ? await db.select().from(storageAssets).where(eq(storageAssets.objectKey, objectKey)).limit(1)
+      : assetId ? await db.select().from(storageAssets).where(eq(storageAssets.id, assetId)).limit(1) : []
     if (!asset && format === 'svg') {
       const svg = designToSvg(design.canvasData, side)
       const filename = `${order.orderNumber}-${item.id.slice(0, 8)}-${side}-production.svg`
-      return new NextResponse(svg, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'content-disposition': `attachment; filename="${filename}"`, 'cache-control': 'private, no-store', 'x-production-source': 'legacy-regeneration' } })
+      return new NextResponse(svg, { headers: { 'content-type': 'image/svg+xml; charset=utf-8', 'content-disposition': `attachment; filename="${filename}"`, 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'x-production-source': 'legacy-regeneration' } })
     }
     if (!asset) throw new Error(`${side === 'back' ? 'Back' : 'Front'} ${format === 'png' ? 'preview' : 'production file'} is missing from this saved design.`)
 
     const body = await getObjectBody(asset.objectKey)
-    const extension = asset.contentType === 'application/pdf' ? 'pdf' : asset.contentType === 'image/svg+xml' ? 'svg' : asset.contentType === 'image/png' ? 'png' : 'jpg'
+    const expectedType = format === 'svg' ? 'image/svg+xml' : format === 'pdf' ? 'application/pdf' : null
+    if (expectedType && asset.contentType !== expectedType) throw new Error(`The saved ${format.toUpperCase()} production file has the wrong content type.`)
+    if (format === 'svg' && !/^<svg\b/i.test(body.toString('utf8').trim().replace(/^<\?xml[^?]*\?>\s*/i, ''))) throw new Error('The saved SVG production file is not SVG markup.')
+    if (format === 'pdf' && !body.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('The saved PDF production file is not a PDF.')
+    const extension = format === 'svg' ? 'svg' : format === 'pdf' ? 'pdf' : asset.contentType === 'image/png' ? 'png' : 'jpg'
     const filename = `${order.orderNumber}-${item.id.slice(0, 8)}-${side}-production.${extension}`
     return new NextResponse(body, {
       headers: {
-        'content-type': asset.contentType,
+        'content-type': expectedType || asset.contentType,
         'content-disposition': `${format === 'png' ? 'inline' : 'attachment'}; filename="${filename}"`,
         'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
         'x-print-metadata': Buffer.from(JSON.stringify(renderedSide.metadata || {})).toString('base64url'),
       },
     })
