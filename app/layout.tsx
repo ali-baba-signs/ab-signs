@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { ChatWidget } from '@/components/live-chat/chat-widget'
+import { MetaPixel } from '@/components/analytics/meta-pixel'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -49,8 +50,10 @@ export default function RootLayout({
       <body className="antialiased bg-white text-slate-900">
         {children}
         <ChatWidget />
+        <MetaPixel />
         {process.env.VERCEL === '1' && <Analytics />}
       </body>
     </html>
   )
 }
+

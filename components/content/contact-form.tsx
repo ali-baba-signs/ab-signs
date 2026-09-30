@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { trackMetaEvent } from '@/components/analytics/meta-pixel'
 import { SUPPORT_CATEGORIES } from '@/lib/support/settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +38,7 @@ export function ContactForm() {
       }
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error?.message || 'Your enquiry could not be sent.')
+      trackMetaEvent('Lead')
       setNotice([payload.data?.message, payload.data?.orderStatus ? payload.data.orderStatus.status + ': ' + payload.data.orderStatus.nextStep : payload.data?.verificationRequired ? 'Sign in with your verified order email to view private order status. Our team can also help verify ownership.' : ''].filter(Boolean).join(' '))
       if (artwork?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(artwork.previewUrl)
       setForm(emptyForm)
@@ -65,3 +67,4 @@ export function ContactForm() {
     <Button type="submit" className="mt-5" disabled={sending}>{sending ? 'Sending…' : 'Send Enquiry'}</Button>
   </form>
 }
+

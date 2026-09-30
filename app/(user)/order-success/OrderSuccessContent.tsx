@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart-context";
 import type { PurchasedCartLine } from "@/lib/cart/checkout-removal";
 import { orderMilestoneLabel } from "@/lib/orders/workflow";
+import { trackMetaEvent } from "@/components/analytics/meta-pixel";
 
 type StoredPayment = {
   orderId: string;
@@ -22,6 +23,7 @@ type PaymentSummary = {
   paymentStatus: string;
   status: string;
   totals: { total: string; currency: string };
+  items?: Array<{ productId: string }>;
   customerName?: string;
   customerEmail?: string;
 };
@@ -73,6 +75,11 @@ export function OrderSuccessContent({ orderNumber }: { orderNumber?: string }) {
         if (stopped) return;
         setSummary(payload.data);
         if (payload.data.paymentStatus === "paid") {
+          const purchaseKey = `meta-purchase:${stored.orderId}`;
+          if (sessionStorage.getItem(purchaseKey) !== 'sent') {
+            trackMetaEvent('Purchase', { order_id: stored.orderId, value: Number(payload.data.totals.total), currency: payload.data.totals.currency, product_ids: (payload.data.items || []).map((item: { productId: string }) => item.productId), content_ids: (payload.data.items || []).map((item: { productId: string }) => item.productId) });
+            sessionStorage.setItem(purchaseKey, 'sent');
+          }
           fetch("https://automation.alibabasigns.com.au/webhook/new-order", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

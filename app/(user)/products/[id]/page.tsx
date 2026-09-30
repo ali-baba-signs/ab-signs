@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCart } from '@/lib/cart-context'
+import { trackMetaEvent } from '@/components/analytics/meta-pixel'
 import { ArtworkUploadCard, type ArtworkSelection } from '@/components/products/artwork-upload-card'
 import { designSelectionsForProductionSize, productionSizeIdentity, uniqueProductionSizes, type DesignType, type SizeDesignConfiguration } from '@/lib/products/design-configurations'
 import { TEMPORARY_CUSTOM_QUOTE_IMAGE, temporaryCustomQuoteProduct, temporaryCustomQuoteProductByName } from '@/lib/products/temporary-custom-quotes'
@@ -55,6 +56,14 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const [adding, setAdding] = useState(false)
   const [artwork, setArtwork] = useState<ArtworkSelection | null>(null)
   const [reviews,setReviews]=useState<ReviewData|null>(null)
+  useEffect(() => {
+    if (!product || product.id !== id) return
+    const key = `meta-view:${id}`
+    const previous = Number(sessionStorage.getItem(key) || 0)
+    if (Date.now() - previous < 2000) return
+    sessionStorage.setItem(key, String(Date.now()))
+    trackMetaEvent('ViewContent', { product_id: product.id, content_ids: [product.id], product_name: product.name, category: product.category?.name || '', value: Number(product.basePrice), currency: 'AUD' })
+  }, [id, product])
   useEffect(() => { if (temporaryProduct) return; void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); const nextProduct = payload.data.product as Product; const firstSize = nextProduct.sizes.find((size) => size.id === requestedSizeId) || nextProduct.sizes[0]; const firstSelection = firstSize ? designSelectionsForProductionSize(firstSize,nextProduct.sizes)[0] : null; const firstConfiguration = firstSelection?.configuration; const firstTemplateId = firstConfiguration?.designType === 'double_side' ? firstConfiguration.frontTemplateId : firstConfiguration?.singleTemplateId; setProduct(nextProduct); setDesignType(firstConfiguration?.designType || 'single_side'); setTemplateId(firstTemplateId || ''); setSizeId(firstSelection?.size.id || firstSize?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId, temporaryProduct])
   const selectedTemplate = useMemo(() => product?.templates.find((template) => template.id === templateId) || null, [product, templateId])
   const allSizes = useMemo(() => product?.sizes || [], [product])

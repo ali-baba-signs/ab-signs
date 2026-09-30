@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { removePurchasedCartLines, type PurchasedCartLine } from '@/lib/cart/checkout-removal'
+import { trackMetaEvent } from '@/components/analytics/meta-pixel'
 
 export interface CartItem {
   lineId: string
@@ -29,7 +30,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
   useEffect(() => { const timer = window.setTimeout(() => { try { const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]'); if (Array.isArray(parsed)) setItems(parsed.filter((item) => item?.productId && item?.sizeId && item?.lineId)) } catch { localStorage.removeItem(storageKey) } finally { setReady(true) } }, 0); return () => window.clearTimeout(timer) }, [])
   useEffect(() => { if (ready) localStorage.setItem(storageKey, JSON.stringify(items)) }, [items, ready])
-  const addItem = useCallback((item: Omit<CartItem, 'lineId'>) => { const lineId = `${item.productId}:${item.sizeId}:${item.templateId || 'none'}:${item.customizationRef || item.designId || item.artworkId || 'standard'}`; setItems((current) => { const existing = current.find((line) => line.lineId === lineId); return existing ? current.map((line) => line.lineId === lineId ? { ...line, quantity: Math.min(1000, line.quantity + item.quantity) } : line) : [...current, { ...item, lineId }] }) }, [])
+  const addItem = useCallback((item: Omit<CartItem, 'lineId'>) => { const lineId = `${item.productId}:${item.sizeId}:${item.templateId || 'none'}:${item.customizationRef || item.designId || item.artworkId || 'standard'}`; trackMetaEvent('AddToCart', { product_id: item.productId, content_ids: [item.productId], quantity: item.quantity, value: item.price * item.quantity, currency: 'AUD' }); setItems((current) => { const existing = current.find((line) => line.lineId === lineId); return existing ? current.map((line) => line.lineId === lineId ? { ...line, quantity: Math.min(1000, line.quantity + item.quantity) } : line) : [...current, { ...item, lineId }] }) }, [])
   const removeItem = useCallback((lineId: string) => setItems((current) => current.filter((item) => item.lineId !== lineId)), [])
   const removePurchasedItems = useCallback((lines: PurchasedCartLine[]) => setItems((current) => removePurchasedCartLines(current, lines)), [])
   const updateQuantity = useCallback((lineId: string, quantity: number) => { if (quantity <= 0) removeItem(lineId); else setItems((current) => current.map((item) => item.lineId === lineId ? { ...item, quantity: Math.min(1000, Math.max(1, quantity)) } : item)) }, [removeItem])
@@ -38,3 +39,5 @@ export function CartProvider({ children }: { children: ReactNode }) {
   return <CartContext.Provider value={{ items, total, ready, addItem, removeItem, removePurchasedItems, updateQuantity, clearCart }}>{children}</CartContext.Provider>
 }
 export function useCart() { const value = useContext(CartContext); if (!value) throw new Error('useCart must be used within CartProvider'); return value }
+
+

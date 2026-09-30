@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard, Save, ShieldCheck } from "lucide-react";
 import { useCart } from "@/lib/cart-context";
+import { trackMetaEvent } from "@/components/analytics/meta-pixel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AUSTRALIAN_STATES } from "@/lib/address/australia";
@@ -591,6 +592,7 @@ export default function CheckoutPage() {
         }),
       );
       router.push("/payment");
+      trackMetaEvent('InitiateCheckout', { value: Number(payload.data.totals?.total ?? estimate.total), currency: payload.data.totals?.currency ?? settings.currency });
     } catch (reason) {
       const message =
         reason instanceof DOMException && reason.name === "AbortError"

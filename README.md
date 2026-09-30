@@ -1,5 +1,11 @@
 # Ali Baba Signs
 
+## Meta Pixel
+
+Set `NEXT_PUBLIC_META_PIXEL_ID=1411263227123131` in the hosting environment and rebuild. The optional `.env.example` entry shows the format. The root layout loads the base pixel once in production. Development (`next dev`) disables it, even if the variable is set; removing the variable from a production build also disables it.
+
+To test, run a production build with the ID configured and use Meta Events Manager Test Events or the Meta Pixel Helper browser extension. Visit pages and product details, add an item, proceed from checkout to payment, submit an enquiry, and complete a Stripe test payment. Confirm Purchase appears only after the order confirmation page receives a `paid` status from `/api/payments/status`. Refresh that confirmation page to check that Purchase is not sent twice in the same browser session.
+
 ## Local Setup
 
 Create `.env.local` in the project root:
