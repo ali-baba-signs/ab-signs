@@ -61,9 +61,11 @@ export async function POST(request: NextRequest) {
     const userDisplayMsg = action ? (CHAT_ACTIONS.find(item => item.action === action)?.label || action) : message
 
     // Route request to n8n Webhook
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-message'
+    const n8nWebhookUrl = process.env.SUPPORT_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-message'
     const webhookSecret = process.env.SUPPORT_WEBHOOK_SECRET
-
+console.log("N8N URL:", n8nWebhookUrl)
+console.log("SECRET EXISTS:", Boolean(webhookSecret))
+    
     if (!webhookSecret) {
       throw new SupportError(
         'Webhook configuration error.',
