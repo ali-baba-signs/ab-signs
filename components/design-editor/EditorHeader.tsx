@@ -27,7 +27,7 @@ export function EditorHeader(props: Props) {
       </Link>
       <Button variant="ghost" size="sm" onClick={props.onUndo} disabled={props.disabled || !props.canUndo}><Undo2 /> Undo</Button>
       <Button variant="ghost" size="sm" onClick={props.onRedo} disabled={props.disabled || !props.canRedo}><Redo2 /> Redo</Button>
-      <span role="status" className="order-last w-full break-words text-xs text-zinc-500 lg:order-none lg:ml-auto lg:w-auto lg:min-w-0 lg:flex-1">{props.status}</span>
+      <span role="status" className="order-last w-full wrap-break-word text-xs text-zinc-500 lg:order-0 lg:ml-auto lg:w-auto lg:min-w-0 lg:flex-1">{props.status}</span>
       <Button variant="outline" size="sm" onClick={props.onSave} disabled={props.disabled}><Save /> Save</Button>
       {/* <Button variant="outline" size="sm" onClick={props.onPreview} disabled={props.disabled}><Eye /> Preview</Button> */}
       <Button variant="outline" size="sm" onClick={props.onDownloadPdf} disabled={props.disabled}><Download /> PDF</Button>

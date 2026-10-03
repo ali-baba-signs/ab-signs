@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
     const customerEmail = session?.user?.email || null
     const customerName = session?.user?.name || 'Website Visitor'
 
-     // If hosted on Vercel Pro/serverless
     // Check intent for action labels
     const intent = supportIntent(action, message)
     const userDisplayMsg = action ? (CHAT_ACTIONS.find(item => item.action === action)?.label || action) : message
@@ -63,42 +62,35 @@ export async function POST(request: NextRequest) {
     // Route request to n8n Webhook
     const n8nWebhookUrl = process.env.SUPPORT_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-message'
     const webhookSecret = process.env.SUPPORT_WEBHOOK_SECRET
-console.log("N8N URL:", n8nWebhookUrl)
-console.log("SECRET EXISTS:", Boolean(webhookSecret))
     
     if (!webhookSecret) {
-      throw new SupportError(
-        'Webhook configuration error.',
-        500
-      )
+      throw new SupportError('Webhook configuration error.', 500)
     }
-const controller = new AbortController()
 
-const timeout = setTimeout(() => {
-  controller.abort()
-},30000)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => {
+      controller.abort()
+    }, 30000)
 
+    const n8nRes = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-webhook-secret': webhookSecret
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        action,
+        message: userDisplayMsg,
+        orderNumber,
+        customerName,
+        customerEmail,
+        sessionId,
+        pageUrl
+      })
+    })
 
-const n8nRes = await fetch(n8nWebhookUrl,{
-  method:'POST',
-  headers:{
-    'content-type':'application/json',
-    'x-webhook-secret': webhookSecret
-  },
-  signal: controller.signal,
-  body: JSON.stringify({
-    action,
-    message:userDisplayMsg,
-    orderNumber,
-    customerName,
-    customerEmail,
-    sessionId,
-    pageUrl
-  })
-})
-
-
-clearTimeout(timeout)
+    clearTimeout(timeout)
 
     if (!n8nRes.ok) {
       throw new SupportError('Support automation is currently unavailable.', 502)
@@ -106,20 +98,37 @@ clearTimeout(timeout)
 
     const n8nPayload = await n8nRes.json()
 
-    const botResponse = n8nPayload.reply || 'Thanks for contacting Alibaba Signs. We are reviewing your message.'
+    // Treat empty string reply from n8n as intentional silence (e.g. human active)
+    const botResponse = typeof n8nPayload.reply === 'string' 
+      ? n8nPayload.reply 
+      : 'Thanks for contacting Alibaba Signs. We are reviewing your message.'
+
     const detectedIntent = n8nPayload.intent || intent
     const requiresHuman = Boolean(n8nPayload.wantsHuman || n8nPayload.priority === 'HIGH')
     const collectOrderId = detectedIntent === 'orderStatus' && !orderNumber
 
-    // Persist turn in Neon DB for admin panel review
-    const inserted = await db.insert(liveChatMessages).values([
-      { sessionId, userId, message: userDisplayMsg, isAdminMessage: false },
-      { sessionId, userId, message: botResponse, isAdminMessage: true }
-    ]).returning({
-      id: liveChatMessages.id,
-      message: liveChatMessages.message,
-      isAdminMessage: liveChatMessages.isAdminMessage
-    })
+    // Persist turn in DB: always save user message; only save bot message if non-empty
+    const messagesToInsert = [
+      { sessionId, userId, message: userDisplayMsg, isAdminMessage: false }
+    ]
+
+    if (botResponse.trim().length > 0) {
+      messagesToInsert.push({
+        sessionId,
+        userId,
+        message: botResponse,
+        isAdminMessage: true
+      })
+    }
+
+    const inserted = await db
+      .insert(liveChatMessages)
+      .values(messagesToInsert)
+      .returning({
+        id: liveChatMessages.id,
+        message: liveChatMessages.message,
+        isAdminMessage: liveChatMessages.isAdminMessage
+      })
 
     return NextResponse.json({
       data: {
@@ -128,10 +137,10 @@ clearTimeout(timeout)
         requiresHuman,
         collectOrderId,
         notifyTeam: Boolean(
-  n8nPayload.notifyTeam ||
-  n8nPayload.priority === 'URGENT - ACTION REQUIRED' ||
-  n8nPayload.priority === 'HIGH'
-),
+          n8nPayload.notifyTeam ||
+          n8nPayload.priority === 'URGENT - ACTION REQUIRED' ||
+          n8nPayload.priority === 'HIGH'
+        ),
         messages: inserted
       }
     }, { status: 201 })

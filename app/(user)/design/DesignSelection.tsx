@@ -43,8 +43,8 @@ export default function DesignSelection() {
     </div>
     {selectedSize && !available.length && <p>No editable templates are assigned to this size. Please select another size or contact us for design assistance.</p>}
     <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{available.map(({ template, size, configuration }) => <article key={`${size.id}-${configuration.designType}`} className="min-w-0 overflow-hidden rounded-xl border">
-      {template.previewImageUrl && <img src={template.previewImageUrl} alt={template.name} className="aspect-[4/3] w-full object-contain p-4" />}
-      <div className="p-4"><h2 className="break-words text-lg font-bold">{template.name}</h2><p className="mt-1 text-sm">{configuration.designType === 'double_side' ? 'Double sided' : 'Single sided'} · {size.label}</p>
+      {template.previewImageUrl && <img src={template.previewImageUrl} alt={template.name} className="aspect-4/3 w-full object-contain p-4" />}
+      <div className="p-4"><h2 className="wrap-break-word text-lg font-bold">{template.name}</h2><p className="mt-1 text-sm">{configuration.designType === 'double_side' ? 'Double sided' : 'Single sided'} · {size.label}</p>
       <Link className="mt-4 inline-flex min-h-11 items-center rounded-md bg-primary px-5 py-2 font-semibold text-primary-foreground" href={`/design?${new URLSearchParams({ productId, sizeId: size.id, templateId: template.id, designType: configuration.designType })}`}>Open editor</Link></div>
     </article>)}</div>
   </main>

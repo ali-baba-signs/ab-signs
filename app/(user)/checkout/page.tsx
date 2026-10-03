@@ -773,7 +773,7 @@ export default function CheckoutPage() {
                     className="h-12 w-12 rounded border object-contain"
                   />
                 )}
-                <span className="min-w-0 flex-1 break-words">
+                <span className="min-w-0 flex-1 wrap-break-word">
                   {item.productName} · {item.sizeLabel} × {item.quantity}
                   {shippingProducts[item.productId]?.freeShipping && (
                     <small className="block text-green-700">
