@@ -286,10 +286,10 @@ export function ChatWidget() {
                 className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
               >
                 <div
-                  className={`max-w-[85%] wrap-break-word rounded-2xl px-3.5 py-2 text-sm shadow-xs ${
+                  className={`max-w-[85%] wrap-break-word whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm shadow-xs [&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 ${
                     isUser
                       ? "bg-primary text-primary-foreground rounded-br-xs"
-                      : "bg-muted text-foreground rounded-bl-xs [&_a]:text-primary [&_a]:underline [&_ul]:list-disc [&_ul]:pl-4"
+                      : "bg-muted text-foreground rounded-bl-xs [&_a]:text-primary [&_a]:font-semibold [&_a]:underline [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-1"
                   }`}
                 >
                   <ReactMarkdown>{message.text}</ReactMarkdown>
