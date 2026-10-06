@@ -6,7 +6,6 @@ import { MessageCircle, Minimize2, Send, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   CHAT_ACTIONS,
   type ChatReply,
@@ -36,16 +35,17 @@ export function ChatWidget() {
   const [reply, setReply] = useState<ChatReply | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  
+
   const sessionId = useRef<string>("");
   const inFlight = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
 
   // Hide the widget completely on any admin page
   if (pathname?.startsWith("/admin") || pathname?.startsWith("/staff-portal")) {
     return null;
   }
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Initialize or restore session ID
   useEffect(() => {
@@ -66,6 +66,19 @@ export function ChatWidget() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, busy, scrollToBottom]);
+
+  // Auto-resize textarea to fit content up to maximum threshold
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // Set to scrollHeight, letting CSS max-height limit growth
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [input, adjustTextareaHeight]);
 
   // Polling for live agent responses
   useEffect(() => {
@@ -99,11 +112,10 @@ export function ChatWidget() {
           });
         }
       } catch {
-        /* Retry on the next poll interval */
+        /* Retry on next poll */
       }
     };
 
-    // Immediate poll when opened, then interval
     void poll();
     const timer = window.setInterval(() => void poll(), 8000);
 
@@ -183,6 +195,10 @@ export function ChatWidget() {
       });
 
       setInput("");
+      // Reset textarea height back to compact baseline
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Support is unavailable."
@@ -192,6 +208,15 @@ export function ChatWidget() {
       setBusy(false);
     }
   }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter inserts a newline normally
+    // Ctrl + Enter or Cmd + Enter sends immediately
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void send();
+    }
+  };
 
   if (!isOpen) {
     return (
@@ -320,7 +345,7 @@ export function ChatWidget() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Footer */}
+      {/* Input Footer with Auto-Growing Multi-line Textarea */}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -328,24 +353,28 @@ export function ChatWidget() {
         }}
         className="space-y-2 border-t bg-card p-3"
       >
-        <div className="flex gap-2">
-          <Input
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={textareaRef}
             id="support-chat-input"
-            className="h-9 min-w-0 text-xs"
-            maxLength={reply?.collectOrderId ? 80 : 2000}
+            rows={1}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             disabled={busy}
+            maxLength={reply?.collectOrderId ? 80 : 2000}
             placeholder={
               reply?.collectOrderId
                 ? "Enter your order ID (e.g. ABS-1024)..."
-                : "Type your question..."
+                : "Type a message... (Press Enter for new line)"
             }
+            className="flex min-h-[40px] max-h-32 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           />
+
           <Button
             type="submit"
             size="sm"
-            className="h-9 px-3"
+            className="h-10 px-3 shrink-0"
             aria-label="Send support message"
             disabled={busy || !input.trim()}
           >
@@ -363,7 +392,7 @@ export function ChatWidget() {
         )}
 
         <p className="text-[10px] text-muted-foreground leading-tight">
-          Instant answers powered by FAQs. Sensitive order requests may require signing in.
+          Press <strong>Enter</strong> for a new line. Click Send or press <strong>Ctrl+Enter</strong> to send.
         </p>
       </form>
     </section>
