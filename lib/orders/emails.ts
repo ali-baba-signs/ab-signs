@@ -330,8 +330,8 @@ async function sendOrderCompleted(orderId: string) {
         </div>
 
         <div style="background-color:#f0ffebf2fdf4;border:1px solid #ED1B68;border-radius:8px;padding:20px;margin-bottom:24px;text-align:center;">
-          <h2 style="font-size:18px;color:#166534;margin:0 0 6px;">How did we do?</h2>
-          <p style="font-size:14px;color:#15803d;margin:0 0 16px;line-height:1.4;">
+          <h2 style="font-size:18px;color:#ED1B68;margin:0 0 6px;">How did we do?</h2>
+          <p style="font-size:14px;color:#8f0638;margin:0 0 16px;line-height:1.4;">
             Your feedback means the world to our team. Click below to review your items:
           </p>
           ${itemReviewCards}

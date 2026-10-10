@@ -9,9 +9,9 @@ export const orderStatusEnum = pgEnum('order_status', [
   'pending_design_confirmation', 'design_revision_required', 'design_confirmed',
   'artwork_pending',
   'awaiting_payment_confirmation', 'awaiting_payment', 'payment_confirmed', 'order_confirmed',
-  'in_production', 'queued_for_printing', 'printing', 'printing_completed',
-  'quality_check', 'production_completed', 'print_ready', 'ready_for_pickup',
-  'awaiting_dispatch', 'ready_for_dispatch', 'dispatched', 'out_for_delivery', 'delivered', 'completed', 'on_hold',
+  'in_production', 'printing_completed',
+ 'production_completed', 'print_ready', 'ready_for_pickup',
+  'awaiting_dispatch', 'out_for_delivery', 'delivered', 'completed', 'on_hold',
   'cancelled', 'refund_requested', 'refunded',
 ])
 export const productCategoryEnum = pgEnum('product_category', ['custom_banners', 'mesh_banners', 'vinyl_banners', 'templates', 'digital_designs'])
