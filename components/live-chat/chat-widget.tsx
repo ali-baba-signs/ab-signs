@@ -91,7 +91,7 @@ export function ChatWidget() {
       try {
         const response = await fetch(
           `/api/live-chat?sessionId=${sessionId.current}`,
-          { signal: controller.signal }
+          { signal: controller.signal },
         );
         if (!response.ok) return;
 
@@ -101,7 +101,7 @@ export function ChatWidget() {
             id: row.id,
             text: row.message,
             sender: row.isAdminMessage ? "support" : "user",
-          })
+          }),
         );
 
         if (!controller.signal.aborted && incoming.length > 0) {
@@ -181,7 +181,8 @@ export function ChatWidget() {
             {
               id: crypto.randomUUID(),
               text: action
-                ? CHAT_ACTIONS.find((item) => item.action === action)?.label || action
+                ? CHAT_ACTIONS.find((item) => item.action === action)?.label ||
+                  action
                 : message,
               sender: "user",
             },
@@ -200,9 +201,7 @@ export function ChatWidget() {
         textareaRef.current.style.height = "auto";
       }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Support is unavailable."
-      );
+      setError(err instanceof Error ? err.message : "Support is unavailable.");
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -238,7 +237,9 @@ export function ChatWidget() {
       {/* Header */}
       <header className="flex items-center justify-between border-b bg-card px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Alibaba Signs Support</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            Alibaba Signs Support
+          </h2>
           <p className="text-xs text-muted-foreground">
             Instant FAQs · Live staff monitoring
           </p>
@@ -256,24 +257,26 @@ export function ChatWidget() {
       <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
-            👋 Welcome! Ask any question below or choose an instant topic to get started.
+            👋 Welcome! Ask any question below or choose an instant topic to get
+            started.
           </div>
         )}
 
         {/* Quick Action Chips */}
         <div className="flex flex-wrap gap-1.5 pb-2">
-          {CHAT_ACTIONS.map((item) => (
-            <Button
-              key={item.action}
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              disabled={busy}
-              onClick={() => void send(item.action)}
-            >
-              {item.label}
-            </Button>
-          ))}
+          {!reply?.requiresHuman &&
+            CHAT_ACTIONS.map((item) => (
+              <Button
+                key={item.action}
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={busy}
+                onClick={() => void send(item.action)}
+              >
+                {item.label}
+              </Button>
+            ))}
         </div>
 
         {/* Message Thread */}
@@ -332,14 +335,17 @@ export function ChatWidget() {
         )}
 
         {reply?.requiresHuman && (
-          <Link
-            className="mt-2 inline-block text-xs font-medium text-primary underline"
-            href="/contact"
-          >
-            {reply.intent === "custom_quote"
-              ? "Submit quote specifications & artwork →"
-              : "Contact our support team directly →"}
-          </Link>
+          <div className="text-xs text-muted-foreground">
+            Our team has been notified. Please wait for a response.
+            <Link
+              className="mt-2 inline-block text-xs font-medium text-primary underline"
+              href="/contact"
+            >
+              {reply.intent === "custom_quote"
+                ? "Submit quote specifications & artwork →"
+                : "Contact our support team directly →"}
+            </Link>
+          </div>
         )}
 
         <div ref={messagesEndRef} />
@@ -392,7 +398,8 @@ export function ChatWidget() {
         )}
 
         <p className="text-[10px] text-muted-foreground leading-tight">
-          Press <strong>Enter</strong> for a new line. Click Send or press <strong>Ctrl+Enter</strong> to send.
+          Press <strong>Enter</strong> for a new line. Click Send or press{" "}
+          <strong>Ctrl+Enter</strong> to send.
         </p>
       </form>
     </section>
