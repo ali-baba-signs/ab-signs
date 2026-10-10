@@ -11,6 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+function responseError(response: unknown): { message?: string; code?: string } | null {
+  if (!response || typeof response !== 'object' || !('error' in response)) return null
+  const error = response.error
+  return error && typeof error === 'object' ? error as { message?: string; code?: string } : null
+}
+
 export function AuthForm({
   mode,
   admin = false,
@@ -48,7 +54,8 @@ export function AuthForm({
 
   async function sendMfaCode() {
     const result = await authClient.twoFactor.sendOtp()
-    if (result.error) throw new Error(result.error.message || 'The verification code could not be sent.')
+    const error = responseError(result)
+    if (error) throw new Error(error.message || 'The verification code could not be sent.')
     setResendAvailableAt(Date.now() + 30_000)
   }
 
@@ -57,9 +64,10 @@ export function AuthForm({
     setLoading(true); setError(null); setSuccess(null)
     try {
       const result = await authClient.sendVerificationEmail({ email, callbackURL: '/sign-in?verified=1' })
-      if (result.error) {
-        setEmailDeliveryFailed((result.error as { code?: string }).code === 'EMAIL_DELIVERY_FAILED')
-        setError(result.error.message || 'The verification email could not be resent.')
+      const error = responseError(result)
+      if (error) {
+        setEmailDeliveryFailed(error.code === 'EMAIL_DELIVERY_FAILED')
+        setError(error.message || 'The verification email could not be resent.')
       } else {
         setEmailDeliveryFailed(false)
         setSuccess('Verification email sent. Check your inbox and spam folder.')
@@ -78,7 +86,8 @@ export function AuthForm({
     setLoading(true); setError(null)
     try {
       const result = await authClient.twoFactor.verifyOtp({ code })
-      if (result.error) throw new Error(result.error.message || 'The verification code is invalid or expired.')
+      const error = responseError(result)
+      if (error) throw new Error(error.message || 'The verification code is invalid or expired.')
       setSuccess('Login successful.')
       router.push(callbackURL)
       router.refresh()
@@ -101,7 +110,7 @@ export function AuthForm({
         : isSignUp
           ? await authClient.signUp.email({ email, password, name, callbackURL: '/sign-in?verified=1' })
           : await authClient.signIn.email({ email, password })
-      const { error } = result
+      const error = responseError(result)
 
       if (error) {
         const message = error.message ?? 'Could not complete the request. Check the email and password.'

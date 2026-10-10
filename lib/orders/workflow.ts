@@ -1,391 +1,206 @@
 export const ORDER_STATUSES = [
-  "pending",
-  "confirmed",
-  "production",
-  "ready_to_ship",
-  "shipped",
+  'pending',
+  'confirmed',
+  'production',
+  'ready_to_ship',
+  'shipped',
+  'pending_design_confirmation',
+  'design_revision_required',
+  'design_confirmed',
+  'artwork_pending',
+  'awaiting_payment_confirmation',
+  'awaiting_payment',
+  'payment_confirmed',
+  'order_confirmed',
+  'in_production',
+  'printing_completed',
+  'production_completed',
+  'print_ready',
+  'ready_for_pickup',
+  'awaiting_dispatch',
+  'out_for_delivery',
+  'delivered',
+  'completed',
+  'on_hold',
+  'cancelled',
+  'refund_requested',
+  'refunded',
+] as const
 
-  "pending_design_confirmation",
-  "design_revision_required",
-  "design_confirmed",
-  "artwork_pending",
+export type OrderWorkflowStatus = (typeof ORDER_STATUSES)[number]
 
-  "awaiting_payment_confirmation",
-  "awaiting_payment",
-  "payment_confirmed",
-  "order_confirmed",
-
-  "in_production",
-  "quality_check",
-  "printing_completed",
-  "production_completed",
-  "print_ready",
-
-  "ready_for_pickup",
-  "awaiting_dispatch",
-  "out_for_delivery",
-  "dispatched",
-
-  "delivered",
-  "completed",
-
-  "on_hold",
-  "cancelled",
-  "refund_requested",
-  "refunded",
-] as const;
-
-export type OrderWorkflowStatus = (typeof ORDER_STATUSES)[number];
-
-export type OrderMilestone =
-  | "pending"
-  | "confirmed"
-  | "production"
-  | "dispatch"
-  | "completed"
-  | "attention";
+// Streamlined milestones: Design & Confirmation -> Production -> Dispatch -> Completed -> Attention
+export type OrderMilestone = 'pending' | 'production' | 'dispatch' | 'completed' | 'attention'
 
 export const ORDER_MILESTONE_LABELS: Record<OrderMilestone, string> = {
-  pending: "Pending / Design",
+  pending: 'Pending / Design',
+  production: 'In Production',
+  dispatch: 'Dispatch / Pickup',
+  completed: 'Completed',
+  attention: 'Needs Attention',
+}
 
-  confirmed: "Confirmed",
-
-  production: "Production",
-
-  dispatch: "Dispatch / Pickup",
-
-  completed: "Completed",
-
-  attention: "Needs Attention",
-};
+// Keeping order_confirmed in 'pending' ensures it appears alongside design actions in milestone filters
+const statusMilestones: Record<OrderWorkflowStatus, OrderMilestone> = {
+  pending: 'pending',
+  artwork_pending: 'pending',
+  pending_design_confirmation: 'pending',
+  design_revision_required: 'pending',
+  confirmed: 'pending',
+  design_confirmed: 'pending',
+  awaiting_payment_confirmation: 'pending',
+  awaiting_payment: 'pending',
+  payment_confirmed: 'pending',
+  order_confirmed: 'pending',
+  production: 'production',
+  in_production: 'production',
+  printing_completed: 'production',
+  production_completed: 'production',
+  print_ready: 'production',
+  ready_to_ship: 'dispatch',
+  ready_for_pickup: 'dispatch',
+  awaiting_dispatch: 'dispatch',
+  shipped: 'dispatch',
+  out_for_delivery: 'dispatch',
+  delivered: 'completed',
+  completed: 'completed',
+  on_hold: 'attention',
+  cancelled: 'attention',
+  refund_requested: 'attention',
+  refunded: 'attention',
+}
 
 export const ORDER_STATUS_LABELS: Record<OrderWorkflowStatus, string> = {
-  pending: "Pending",
-
-  confirmed: "Confirmed",
-
-  production: "Production",
-
-  ready_to_ship: "Ready to Ship",
-
-  shipped: "Shipped",
-
-  pending_design_confirmation: "Pending Design Confirmation",
-
-  design_revision_required: "Design Revision Required",
-
-  design_confirmed: "Design Confirmed",
-
-  artwork_pending: "Artwork Pending",
-
-  awaiting_payment_confirmation: "Awaiting Payment Confirmation",
-
-  awaiting_payment: "Awaiting Payment",
-
-  payment_confirmed: "Payment Confirmed",
-
-  order_confirmed: "Order Confirmed",
-
-  in_production: "In Production",
-
-  quality_check: "Quality Check",
-
-  printing_completed: "Printing Completed",
-
-  production_completed: "Production Completed",
-
-  print_ready: "Print Ready",
-
-  ready_for_pickup: "Ready for Pickup",
-
-  awaiting_dispatch: "Awaiting Dispatch",
-
-  out_for_delivery: "Out for Delivery",
-
-  dispatched: "Dispatched",
-
-  delivered: "Delivered",
-
-  completed: "Completed",
-
-  on_hold: "On Hold",
-
-  cancelled: "Cancelled",
-
-  refund_requested: "Refund Requested",
-
-  refunded: "Refunded",
-};
-
-const statusMilestones: Record<OrderWorkflowStatus, OrderMilestone> = {
-  pending: "pending",
-
-  artwork_pending: "pending",
-
-  pending_design_confirmation: "pending",
-
-  design_revision_required: "pending",
-
-  confirmed: "confirmed",
-
-  design_confirmed: "confirmed",
-
-  awaiting_payment_confirmation: "confirmed",
-
-  awaiting_payment: "confirmed",
-
-  payment_confirmed: "confirmed",
-
-  order_confirmed: "confirmed",
-
-  production: "production",
-
-  in_production: "production",
-
-  quality_check: "production",
-
-  printing_completed: "production",
-
-  production_completed: "production",
-
-  print_ready: "production",
-
-  ready_to_ship: "dispatch",
-
-  ready_for_pickup: "dispatch",
-
-  awaiting_dispatch: "dispatch",
-
-  shipped: "dispatch",
-
-  dispatched: "dispatch",
-
-  out_for_delivery: "dispatch",
-
-  delivered: "completed",
-
-  completed: "completed",
-
-  on_hold: "attention",
-
-  cancelled: "attention",
-
-  refund_requested: "attention",
-
-  refunded: "attention",
-};
-const transitions: Record<OrderWorkflowStatus, readonly OrderWorkflowStatus[]> =
-  {
-    pending_design_confirmation: [
-      "design_revision_required",
-      "design_confirmed",
-      "order_confirmed",
-      "on_hold",
-      "cancelled",
-    ],
-
-    design_revision_required: [
-      "pending_design_confirmation",
-      "design_confirmed",
-      "order_confirmed",
-      "on_hold",
-      "cancelled",
-    ],
-
-    artwork_pending: [
-      "pending_design_confirmation",
-      "design_confirmed",
-      "order_confirmed",
-      "on_hold",
-      "cancelled",
-    ],
-
-    design_confirmed: [
-      "awaiting_payment",
-      "payment_confirmed",
-      "order_confirmed",
-    ],
-
-    awaiting_payment_confirmation: [
-      "payment_confirmed",
-      "order_confirmed",
-      "cancelled",
-    ],
-
-    awaiting_payment: ["payment_confirmed", "order_confirmed", "cancelled"],
-
-    payment_confirmed: ["order_confirmed", "in_production"],
-
-    order_confirmed: ["in_production", "print_ready", "on_hold", "cancelled"],
-
-    in_production: ["quality_check", "printing_completed", "print_ready"],
-
-    production: ["in_production", "print_ready"],
-
-    quality_check: [
-      "printing_completed",
-      "production_completed",
-      "print_ready",
-    ],
-
-    printing_completed: ["production_completed", "print_ready"],
-
-    production_completed: ["print_ready"],
-
-    print_ready: ["ready_for_pickup", "awaiting_dispatch", "out_for_delivery"],
-
-    ready_for_pickup: ["completed", "delivered"],
-
-    ready_to_ship: ["awaiting_dispatch", "out_for_delivery"],
-
-    awaiting_dispatch: ["out_for_delivery"],
-
-    shipped: ["out_for_delivery", "delivered"],
-
-    out_for_delivery: ["delivered"],
-
-    dispatched: ["delivered"],
-
-    delivered: ["completed", "refund_requested", "refunded"],
-
-    completed: ["refund_requested", "refunded"],
-
-    refund_requested: ["refunded"],
-
-    on_hold: ["order_confirmed", "in_production", "cancelled"],
-
-    cancelled: ["refunded"],
-
-    refunded: [],
-
-    pending: ["pending_design_confirmation"],
-
-    confirmed: ["order_confirmed"],
-  };
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  production: 'Production',
+  ready_to_ship: 'Ready to Ship',
+  shipped: 'Shipped',
+  pending_design_confirmation: 'Awaiting Artwork / Pending Design',
+  design_revision_required: 'Design Revision Required',
+  design_confirmed: 'Design Confirmed',
+  artwork_pending: 'Artwork Pending',
+  awaiting_payment_confirmation: 'Awaiting Payment Confirmation',
+  awaiting_payment: 'Awaiting Payment',
+  payment_confirmed: 'Payment Confirmed',
+  order_confirmed: 'Order Confirmed',
+  in_production: 'In Production',
+  printing_completed: 'Printing Completed',
+  production_completed: 'Production Completed',
+  print_ready: 'Printing Completed',
+  ready_for_pickup: 'Ready for Pickup',
+  awaiting_dispatch: 'Awaiting Dispatch',
+  out_for_delivery: 'Out for Delivery',
+  delivered: 'Delivered',
+  completed: 'Completed',
+  on_hold: 'On Hold',
+  cancelled: 'Cancelled',
+  refund_requested: 'Refund Requested',
+  refunded: 'Refunded',
+}
+
+const transitions: Record<OrderWorkflowStatus, readonly OrderWorkflowStatus[]> = {
+  // From pending design, admins can request revision, confirm order directly, or hold/cancel
+  pending_design_confirmation: ['order_confirmed', 'design_revision_required', 'artwork_pending', 'design_confirmed', 'on_hold', 'cancelled'],
+  design_revision_required: ['order_confirmed', 'pending_design_confirmation', 'design_confirmed', 'on_hold', 'cancelled'],
+  artwork_pending: ['pending_design_confirmation', 'design_confirmed', 'order_confirmed', 'on_hold', 'cancelled'],
+  design_confirmed: ['awaiting_payment', 'payment_confirmed', 'order_confirmed'],
+  awaiting_payment_confirmation: ['payment_confirmed', 'order_confirmed', 'cancelled'],
+  awaiting_payment: ['payment_confirmed', 'order_confirmed', 'cancelled'],
+  payment_confirmed: ['order_confirmed', 'in_production'],
+
+  // Once confirmed, moves to production
+  order_confirmed: ['in_production', 'print_ready', 'on_hold', 'cancelled'],
+
+  // Production steps
+  in_production: ['print_ready', 'on_hold'],
+  production: ['in_production', 'print_ready'],
+  printing_completed: ['production_completed', 'print_ready'],
+  production_completed: ['print_ready'],
+  print_ready: ['ready_for_pickup', 'out_for_delivery', 'on_hold'],
+
+  // Dispatch & final steps
+  ready_for_pickup: ['completed', 'out_for_delivery', 'delivered', 'on_hold'],
+  ready_to_ship: ['awaiting_dispatch', 'out_for_delivery'],
+  awaiting_dispatch: ['out_for_delivery'],
+  shipped: ['out_for_delivery', 'delivered'],
+  out_for_delivery: ['delivered', 'on_hold'],
+  delivered: ['completed', 'refund_requested', 'refunded'],
+  completed: ['refund_requested', 'refunded'],
+  refund_requested: ['refunded'],
+
+  on_hold: ORDER_STATUSES.filter(
+    (status): status is Exclude<OrderWorkflowStatus, 'on_hold' | 'refunded'> =>
+      status !== 'on_hold' && status !== 'refunded'
+  ),
+  cancelled: ['refunded'],
+  refunded: [],
+  pending: ['pending_design_confirmation'],
+  confirmed: ['order_confirmed'],
+}
 
 export function isOrderStatus(value: unknown): value is OrderWorkflowStatus {
-  return (
-    typeof value === "string" &&
-    (ORDER_STATUSES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (ORDER_STATUSES as readonly string[]).includes(value)
 }
 
 const legacyStatus: Record<string, OrderWorkflowStatus> = {
-  pending: "pending_design_confirmation",
+  quality_check: 'in_production',
+  dispatched: 'out_for_delivery',
+}
 
-  artwork_pending: "artwork_pending",
-
-  design_confirmed: "design_confirmed",
-
-  awaiting_payment_confirmation: "awaiting_payment_confirmation",
-
-  awaiting_payment: "awaiting_payment",
-
-  payment_confirmed: "payment_confirmed",
-
-  confirmed: "order_confirmed",
-
-  production: "in_production",
-
-  quality_check: "quality_check",
-
-  printing_completed: "printing_completed",
-
-  production_completed: "production_completed",
-
-  ready_to_ship: "ready_for_pickup",
-
-  awaiting_dispatch: "awaiting_dispatch",
-
-  shipped: "out_for_delivery",
-
-  dispatched: "out_for_delivery",
-
-  refund_requested: "refund_requested",
-};
-
-export function normalizeOrderStatus(
-  status?: string | null,
-): OrderWorkflowStatus {
-  if (!status) {
-    return "pending_design_confirmation";
-  }
-
-  if (isOrderStatus(status)) {
-    return status;
-  }
-
-  return legacyStatus[status] || "pending_design_confirmation";
+export function normalizeOrderStatus(status?: string | null): OrderWorkflowStatus {
+  if (isOrderStatus(status)) return status
+  return status ? legacyStatus[status] || 'pending_design_confirmation' : 'pending_design_confirmation'
 }
 
 export function orderMilestone(status: string): OrderMilestone {
-  return statusMilestones[normalizeOrderStatus(status)];
+  return statusMilestones[normalizeOrderStatus(status)]
 }
 
 export function orderMilestoneLabel(status: string): string {
-  return ORDER_MILESTONE_LABELS[orderMilestone(status)];
+  return ORDER_MILESTONE_LABELS[orderMilestone(status)]
 }
 
-export function allowedTransitions(
-  status: string,
-): readonly OrderWorkflowStatus[] {
-  return transitions[normalizeOrderStatus(status)];
+export function allowedTransitions(status: string): readonly OrderWorkflowStatus[] {
+  return transitions[normalizeOrderStatus(status)]
 }
 
-export function assertTransition(
-  current: string,
-  next: unknown,
-): OrderWorkflowStatus {
-  const nextStatus =
-    typeof next === "string" ? normalizeOrderStatus(next) : null;
+/**
+ * Helper for UI components/dropdowns:
+ * Returns the exact list of options (with value and label) available for the current status.
+ */
+export function getAvailableNextStatuses(currentStatus: string): { value: OrderWorkflowStatus; label: string }[] {
+  const allowed = allowedTransitions(currentStatus)
+  return allowed.map((status) => ({
+    value: status,
+    label: ORDER_STATUS_LABELS[status],
+  }))
+}
 
-  if (!nextStatus) {
-    throw new Error("Select a valid order status.");
+export function assertTransition(current: string, next: unknown): OrderWorkflowStatus {
+  if (!isOrderStatus(next)) {
+    throw new Error('Select a valid order status.')
   }
 
-  const currentStatus = normalizeOrderStatus(current);
-
-  if (!allowedTransitions(currentStatus).includes(nextStatus)) {
+  const normalizedCurrent = normalizeOrderStatus(current)
+  if (!allowedTransitions(normalizedCurrent).includes(next)) {
     throw new Error(
-      `${ORDER_STATUS_LABELS[currentStatus]} cannot transition directly to ${ORDER_STATUS_LABELS[nextStatus]}.`,
-    );
+      `${ORDER_STATUS_LABELS[normalizedCurrent]} cannot transition directly to ${ORDER_STATUS_LABELS[next]}.`
+    )
   }
-
-  return nextStatus;
+  return next
 }
 
 export function designDeadline(createdAt = new Date()): Date {
-  return new Date(createdAt.getTime() + 6 * 60 * 60 * 1000);
+  return new Date(createdAt.getTime() + 6 * 60 * 60 * 1000)
 }
 
 export function deadlineState(
   deadline: Date | string | null,
-  confirmedAt?: Date | string | null,
-): {
-  delayed: boolean;
-  remainingMs: number | null;
-} {
-  if (!deadline) {
-    return {
-      delayed: false,
-      remainingMs: null,
-    };
-  }
-
-  const target = new Date(deadline).getTime();
-
-  if (confirmedAt) {
-    return {
-      delayed: false,
-      remainingMs: 0,
-    };
-  }
-
-  const remaining = target - Date.now();
-
-  return {
-    delayed: remaining < 0,
-
-    remainingMs: remaining,
-  };
+  confirmedAt?: Date | string | null
+): { delayed: boolean; remainingMs: number | null } {
+  if (!deadline) return { delayed: false, remainingMs: null }
+  const target = new Date(deadline).getTime()
+  const end = confirmedAt ? new Date(confirmedAt).getTime() : Date.now()
+  return { delayed: end > target, remainingMs: confirmedAt ? 0 : target - Date.now() }
 }

@@ -745,7 +745,8 @@ export function CanvasEditor() {
     let currentSession = session?.user ? session : null
     if (!currentSession?.user) {
       try {
-        currentSession = (await authClient.getSession()).data
+        const refreshed = await authClient.getSession()
+        currentSession = refreshed && 'data' in refreshed ? refreshed.data : refreshed && 'user' in refreshed ? refreshed : null
       } catch (error) {
         setStatus('Your session could not be checked because the authentication service is unreachable. Your design remains open; retry shortly.')
         console.error('Design save session check failed', error)

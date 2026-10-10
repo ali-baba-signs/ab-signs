@@ -123,6 +123,7 @@ test('canvas image signatures reject renamed files and accept PNG, JPEG, and WEB
 
 test('legacy operational statuses collapse into five customer milestones plus attention', () => {
   assert.equal(orderMilestone('quality_check'), 'production')
+  assert.equal(orderMilestone('order_confirmed'), 'pending')
   assert.equal(orderMilestoneLabel('out_for_delivery'), 'Dispatch / Pickup')
   assert.equal(orderMilestone('refund_requested'), 'attention')
 })

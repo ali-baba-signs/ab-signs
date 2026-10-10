@@ -176,10 +176,10 @@ const getMilestoneBadge = (status: string) => {
 
     let colorClasses = 'border-slate-300 bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200'
 
-    // Milestone is typed as: "pending" | "confirmed" | "dispatch" | "completed" | "attention"
+    // Use the shared milestone grouping for badge colors.
     if (milestone === 'attention' || status.includes('awaiting_design')) {
       colorClasses = 'border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700'
-    } else if (milestone === 'confirmed' || status.includes('production')) {
+    } else if (milestone === 'production') {
       colorClasses = 'border-blue-300 bg-blue-50 text-blue-900 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-700'
     } else if (milestone === 'completed' || status.includes('delivered')) {
       colorClasses = 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700'

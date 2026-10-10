@@ -34,14 +34,14 @@ export const auth = betterAuth({
     requireEmailVerification: true,
     resetPasswordTokenExpiresIn: 60 * 60,
     revokeSessionsOnPasswordReset: true,
-    sendResetPassword: async ({ user, url }) => deliverAuthenticationEmail('password-reset', () => sendPasswordResetEmail({ email: user.email, name: user.name, url })),
+    sendResetPassword: async ({ user, url }: { user: { email: string; name: string }; url: string }) => deliverAuthenticationEmail('password-reset', () => sendPasswordResetEmail({ email: user.email, name: user.name, url })),
   },
   emailVerification: {
     expiresIn: 60 * 60,
     sendOnSignUp: true,
     sendOnSignIn: false,
     autoSignInAfterVerification: false,
-    sendVerificationEmail: async ({ user, url }) => deliverAuthenticationEmail('verification', () => sendAccountVerificationEmail({ email: user.email, name: user.name, url })),
+    sendVerificationEmail: async ({ user, url }: { user: { email: string; name: string }; url: string }) => deliverAuthenticationEmail('verification', () => sendAccountVerificationEmail({ email: user.email, name: user.name, url })),
   },
   rateLimit: {
     enabled: true,
@@ -81,7 +81,10 @@ export const auth = betterAuth({
       digits: 6,
       allowedAttempts: 5,
       storeOTP: 'hashed',
-      sendOTP: async ({ user, otp }) => deliverAuthenticationEmail('login-code', () => sendLoginVerificationCode({ email: user.email, name: user.name, code: otp })),
+      sendOTP: async ({ user, otp }) => {
+        const recipient = user as typeof user & { email: string; name: string }
+        return deliverAuthenticationEmail('login-code', () => sendLoginVerificationCode({ email: recipient.email, name: recipient.name, code: otp }))
+      },
     },
   })],
 })

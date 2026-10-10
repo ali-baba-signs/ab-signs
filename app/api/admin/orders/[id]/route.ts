@@ -79,7 +79,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ id:
         deliveryType: String(deliveryType),
         updatedAt: now,
       }
-      if (nextStatus === 'dispatched' && !order.dispatchedAt) updates.dispatchedAt = now
+      if (nextStatus === 'out_for_delivery' && !order.dispatchedAt) updates.dispatchedAt = now
       if (nextStatus === 'delivered' && !order.deliveredAt) { updates.deliveredAt = now; updates.deliveredByAdminId = session.user.id; updates.deliveryNote = customerNote.slice(0, 2000) || null }
       if (nextStatus === 'ready_for_pickup' && !order.readyForPickupAt) updates.readyForPickupAt = now
       if (nextStatus === 'completed' && deliveryType === 'pickup' && !order.pickupCompletedAt) updates.pickupCompletedAt = now

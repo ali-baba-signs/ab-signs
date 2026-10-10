@@ -143,6 +143,7 @@ test('legacy duplicate side rows appear as one production size with both custome
 test('order workflow accepts only configured transitions and computes the six-hour deadline', () => {
   assert.equal(assertTransition('pending_design_confirmation', 'design_confirmed'), 'design_confirmed')
   assert.throws(() => assertTransition('pending_design_confirmation', 'completed'), /cannot transition directly/i)
+  assert.throws(() => assertTransition('pending_design_confirmation', 'unknown_status'), /Select a valid order status/i)
   assert.deepEqual(allowedTransitions('refunded'), [])
   const created = new Date('2026-08-06T00:00:00.000Z')
   assert.equal(designDeadline(created).toISOString(), '2026-08-06T06:00:00.000Z')
