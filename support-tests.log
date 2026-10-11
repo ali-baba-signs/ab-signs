@@ -467,7 +467,6 @@ not ok 75 - temporary custom quote catalogue contains only the requested nine pr
         'Pull Up Banner',
         'Shop Front Signs',
     -   '3D Signs',
-        'Grass Stakes',
         'A Frames',
         'Business Cards',
         'Flyers',
@@ -490,7 +489,6 @@ not ok 75 - temporary custom quote catalogue contains only the requested nine pr
     0: 'Table Cloths'
     1: 'Pull Up Banner'
     2: 'Shop Front Signs'
-    3: 'Grass Stakes'
     4: 'A Frames'
     5: 'Business Cards'
     6: 'Flyers'

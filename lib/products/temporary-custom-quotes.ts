@@ -29,14 +29,14 @@ export const TEMPORARY_CUSTOM_QUOTE_PRODUCTS = [
       "Made-to-measure signage for shop fronts, windows, and business premises.",
   },
   // { id: 'custom-quote-3d-signs', name: '3D Signs', image:'https://assets.alibabasigns.com.au/products/Static%20Products/custom.png', description: 'Dimensional signage produced to your preferred size, material, and finish.' },
-  {
-    id: "custom-quote-grass-stakes",
-    name: "Grass Stakes",
-    image:
-      "https://assets.alibabasigns.com.au/products/Static%20Products/h%20frame.jpeg",
-    description:
-      "Custom printed grass stakes for promotions, events, and directional signage.",
-  },
+  // {
+  //   id: "custom-quote-grass-stakes",
+  //   name: "Grass Stakes",
+  //   image:
+  //     "https://assets.alibabasigns.com.au/products/Static%20Products/h%20frame.jpeg",
+  //   description:
+  //     "Custom printed grass stakes for promotions, events, and directional signage.",
+  // },
   {
     id: "custom-quote-a-frames",
     name: "A Frames",

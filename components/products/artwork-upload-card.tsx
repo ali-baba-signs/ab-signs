@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { FileCheck2, FileUp, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useSession } from '@/lib/auth-client'
 
 export interface ArtworkSelection { id: string; filename: string; previewUrl: string | null; contentType: string; fileSize: number; sourceWidthPx?: number | null; sourceHeightPx?: number | null; file?: File }
 const ARTWORK_ACCEPT = '.pdf,.svg,.eps,.ai,.png,application/pdf,image/png,image/svg+xml,application/postscript,application/vnd.adobe.illustrator'
@@ -11,9 +13,28 @@ const ARTWORK_EXTENSIONS = ['pdf', 'svg', 'eps', 'ai', 'png']
 const ARTWORK_MAX_BYTES = 100 * 1024 * 1024
 const formatError = 'Unsupported file type. Please upload only supported formats: PDF, SVG, EPS, AI, PNG.'
 
-export function ArtworkUploadCard({ productId, productName, sizeId, sizeLabel, variantLabel, quantity, value, onChange, initiallyOpen = false, mode = 'product' }: { productId: string; productName: string; sizeId: string; sizeLabel: string; variantLabel?: string; quantity: number; value: ArtworkSelection | null; onChange: (value: ArtworkSelection | null) => void; initiallyOpen?: boolean; mode?: 'product' | 'temporary_quote' }) {
-  const [open, setOpen] = useState(initiallyOpen), [draft, setDraft] = useState<ArtworkSelection | null>(value)
+export function ArtworkUploadCard({ productId, productName, sizeId, sizeLabel, variantLabel, quantity, value, onChange, initiallyOpen = false, mode = 'product', returnTo }: { productId: string; productName: string; sizeId: string; sizeLabel: string; variantLabel?: string; quantity: number; value: ArtworkSelection | null; onChange: (value: ArtworkSelection | null) => void; initiallyOpen?: boolean; mode?: 'product' | 'temporary_quote'; returnTo?: string }) {
+  const router = useRouter()
+  const { data: session, isPending } = useSession()
+  const [open, setOpen] = useState(initiallyOpen && mode !== 'product'), [draft, setDraft] = useState<ArtworkSelection | null>(value)
+  const [initialOpenDismissed, setInitialOpenDismissed] = useState(false)
+  const showOpen = open || (mode === 'product' && initiallyOpen && Boolean(session?.user) && !initialOpenDismissed)
   const [notes, setNotes] = useState(''), [progress, setProgress] = useState(0), [error, setError] = useState(''), [uploading, setUploading] = useState(false)
+
+  useEffect(() => {
+    if (mode === 'product' && initiallyOpen && !isPending && !session?.user) {
+      router.replace(`/sign-in?callbackUrl=${encodeURIComponent(returnTo || window.location.pathname + window.location.search)}`)
+    }
+  }, [initiallyOpen, isPending, mode, returnTo, router, session?.user])
+
+  function openUpload() {
+    if (mode === 'product' && !session?.user) {
+      router.push(`/sign-in?callbackUrl=${encodeURIComponent(returnTo || window.location.pathname + window.location.search)}`)
+      return
+    }
+    setDraft(value)
+    setOpen(true)
+  }
 
   function upload(file?: File) {
     if (!file || uploading) return
@@ -38,14 +59,14 @@ export function ArtworkUploadCard({ productId, productName, sizeId, sizeLabel, v
   }
   async function discard(item: ArtworkSelection) { if (mode === 'temporary_quote') { if (item.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl); return } await fetch('/api/artwork', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: item.id }) }).catch(() => undefined) }
   async function removeConfirmed() { if (!value) return; await discard(value); onChange(null) }
-  async function close() { if (draft && draft.id !== value?.id) await discard(draft); setDraft(value); setOpen(false) }
-  function confirm() { if (!draft) return setError('Choose a supported artwork file before confirming.'); const previous = value; onChange(draft); setOpen(false); if (previous && previous.id !== draft.id) void discard(previous) }
+  async function close() { if (draft && draft.id !== value?.id) await discard(draft); setDraft(value); setInitialOpenDismissed(true); setOpen(false) }
+  function confirm() { if (!draft) return setError('Choose a supported artwork file before confirming.'); const previous = value; onChange(draft); setInitialOpenDismissed(true); setOpen(false); if (previous && previous.id !== draft.id) void discard(previous) }
   function fileInput(label: string) { return <label className="inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-lg border-2 border-primary bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90"><FileUp className="h-5 w-5"/>{label}<Input className="sr-only" type="file" accept={ARTWORK_ACCEPT} disabled={uploading} onChange={(event) => { upload(event.target.files?.[0]); event.currentTarget.value = '' }}/></label> }
   function preview(item: ArtworkSelection) { return item.previewUrl ? item.contentType === 'application/pdf' ? <object aria-label="PDF artwork first-page preview" data={`${item.previewUrl}#page=1&view=FitH`} type="application/pdf" className="mt-3 h-64 w-full rounded border bg-white"><p>PDF selected. Preview is unavailable in this browser.</p></object> : <img src={item.previewUrl} alt="Selected artwork preview" className="mt-3 max-h-64 w-full rounded border bg-white object-contain"/> : <div className="mt-3 rounded border border-dashed bg-white p-5 text-center text-sm"><p className="font-semibold">Production file selected</p><p className="text-muted-foreground">EPS and AI files are preserved safely and are not executed in the browser.</p></div> }
 
-  return <section className="mt-5 rounded-xl border-2 border-primary/30 bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-start gap-3"><FileUp className="mt-1 h-6 w-6 text-primary"/><div><h2 className="text-lg font-bold">Upload Your Artwork</h2><p className="text-sm text-muted-foreground">{mode === 'temporary_quote' ? 'Optionally attach artwork to your custom quotation message.' : 'Review the production size, upload a supported file, then explicitly confirm it.'}</p></div></div><Button type="button" size="lg" variant={value ? 'outline' : 'default'} className="font-bold shadow-sm" onClick={() => { setDraft(value); setOpen(true) }} disabled={mode === 'product' && !sizeId}><FileUp/>{value ? 'Replace Artwork' : 'Open Upload Form'}</Button></div>
+  return <section className="mt-5 rounded-xl border-2 border-primary/30 bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-start gap-3"><FileUp className="mt-1 h-6 w-6 text-primary"/><div><h2 className="text-lg font-bold">Upload Your Artwork</h2><p className="text-sm text-muted-foreground">{mode === 'temporary_quote' ? 'Optionally attach artwork to your custom quotation message.' : 'Review the production size, upload a supported file, then explicitly confirm it.'}</p></div></div><Button type="button" size="lg" variant={value ? 'outline' : 'default'} className="font-bold shadow-sm" onClick={openUpload} disabled={mode === 'product' && (!sizeId || isPending)}><FileUp/>{value ? 'Replace Artwork' : 'Open Upload Form'}</Button></div>
     {value && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded border border-green-200 bg-green-50 p-3"><div className="flex items-center gap-2"><FileCheck2 className="text-green-700"/><div><p className="text-sm font-semibold">Confirmed: {value.filename}</p><p className="text-xs text-muted-foreground">{sizeLabel ? `${sizeLabel} · ` : ''}{value.contentType} · {(value.fileSize / 1024 / 1024).toFixed(2)} MB</p></div></div><Button type="button" size="sm" variant="outline" className="text-red-600" onClick={() => void removeConfirmed()}><Trash2/>Remove</Button></div>}
-    {open && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="artwork-form-title"><div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-background p-6 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="artwork-form-title" className="text-2xl font-black">Upload print-ready artwork</h2><p className="mt-1 text-sm text-muted-foreground">The file is attached only after you press Confirm artwork.</p></div><Button type="button" size="sm" variant="outline" aria-label="Close artwork form" onClick={() => void close()}><X/></Button></div>
+    {showOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="artwork-form-title"><div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-background p-6 shadow-2xl"><div className="flex items-start justify-between gap-3"><div><h2 id="artwork-form-title" className="text-2xl font-black">Upload print-ready artwork</h2><p className="mt-1 text-sm text-muted-foreground">The file is attached only after you press Confirm artwork.</p></div><Button type="button" size="sm" variant="outline" aria-label="Close artwork form" onClick={() => void close()}><X/></Button></div>
       {mode === 'product' && <><dl className="mt-5 grid gap-3 rounded-lg bg-secondary p-4 sm:grid-cols-2"><div><dt className="text-xs font-bold uppercase">Product</dt><dd>{productName}</dd></div><div><dt className="text-xs font-bold uppercase">Quantity</dt><dd>{quantity}</dd></div><div><dt className="text-xs font-bold uppercase">Configured size</dt><dd>{sizeLabel}</dd></div><div><dt className="text-xs font-bold uppercase">Variant</dt><dd>{variantLabel || 'Standard'}</dd></div></dl><label className="mt-5 block text-sm font-semibold">Optional production notes<textarea className="mt-1 min-h-24 w-full rounded border p-2" maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)}/></label></>}
       {draft ? <div className="mt-4 rounded border border-green-200 bg-green-50 p-3"><p className="font-semibold">{draft.filename}</p><p className="text-xs text-muted-foreground">{draft.contentType} · {(draft.fileSize / 1024 / 1024).toFixed(2)} MB{draft.sourceWidthPx ? ` · ${draft.sourceWidthPx} × ${draft.sourceHeightPx} px` : ''}</p>{preview(draft)}<div className="mt-3">{fileInput('Replace File')}</div></div> : <div className="mt-4 flex flex-col items-center rounded-xl border-2 border-dashed border-primary/60 bg-primary/5 p-8 text-sm font-semibold"><p className="mb-4 text-base font-black text-foreground">Accepted: PDF · SVG · EPS · AI · PNG</p>{fileInput(uploading ? `Uploading ${progress}%` : 'Choose PDF, SVG, EPS, AI, or PNG')}<p className="mt-3 text-xs text-muted-foreground">Maximum 100 MB</p></div>}
       {uploading && <div className="mt-2 h-2 rounded bg-secondary"><div className="h-full rounded bg-primary" style={{ width: `${progress}%` }}/></div>}{error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-6 flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => void close()}>Cancel</Button><Button type="button" disabled={!draft || uploading} onClick={confirm}><FileCheck2/>Confirm artwork</Button></div>

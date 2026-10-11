@@ -41,15 +41,16 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const searchParams = useSearchParams()
   const customizationRef = searchParams.get('customizationRef')
   const requestedSizeId = searchParams.get('sizeId')
+  const requestedDesignType = searchParams.get('designType')
   const { addItem } = useCart()
   const [product, setProduct] = useState<Product | null>(null)
   const [sizeId, setSizeId] = useState('')
   const [templateId, setTemplateId] = useState('')
   const [designType, setDesignType] = useState<DesignType>('single_side')
-  const [quantity, setQuantity] = useState(1)
-  const [customSize,setCustomSize]=useState(false)
-  const [customHeight,setCustomHeight]=useState('')
-  const [customWidth,setCustomWidth]=useState('')
+  const [quantity, setQuantity] = useState(() => Math.min(1000, Math.max(1, Number(searchParams.get('quantity')) || 1)))
+  const [customSize,setCustomSize]=useState(searchParams.get('customSize')==='1')
+  const [customHeight,setCustomHeight]=useState(searchParams.get('customHeight')||'')
+  const [customWidth,setCustomWidth]=useState(searchParams.get('customWidth')||'')
   const [imageIndex, setImageIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -64,7 +65,7 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
     sessionStorage.setItem(key, String(Date.now()))
     trackMetaEvent('ViewContent', { product_id: product.id, content_ids: [product.id], product_name: product.name, category: product.category?.name || '', value: Number(product.basePrice), currency: 'AUD' })
   }, [id, product])
-  useEffect(() => { if (temporaryProduct) return; void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); const nextProduct = payload.data.product as Product; const firstSize = nextProduct.sizes.find((size) => size.id === requestedSizeId) || nextProduct.sizes[0]; const firstSelection = firstSize ? designSelectionsForProductionSize(firstSize,nextProduct.sizes)[0] : null; const firstConfiguration = firstSelection?.configuration; const firstTemplateId = firstConfiguration?.designType === 'double_side' ? firstConfiguration.frontTemplateId : firstConfiguration?.singleTemplateId; setProduct(nextProduct); setDesignType(firstConfiguration?.designType || 'single_side'); setTemplateId(firstTemplateId || ''); setSizeId(firstSelection?.size.id || firstSize?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId, temporaryProduct])
+  useEffect(() => { if (temporaryProduct) return; void (async () => { try { const [response,reviewResponse] = await Promise.all([fetch(`/api/products/${id}`),fetch(`/api/reviews?productId=${id}`)]); const payload = await response.json(); if (!response.ok) throw new Error(payload.error?.message || 'Product not found.'); const nextProduct = payload.data.product as Product; const firstSize = nextProduct.sizes.find((size) => size.id === requestedSizeId) || nextProduct.sizes[0]; const selections = firstSize ? designSelectionsForProductionSize(firstSize,nextProduct.sizes) : []; const firstSelection = selections.find((selection) => selection.configuration.designType === requestedDesignType) || selections[0]; const firstConfiguration = firstSelection?.configuration; const firstTemplateId = firstConfiguration?.designType === 'double_side' ? firstConfiguration.frontTemplateId : firstConfiguration?.singleTemplateId; setProduct(nextProduct); setDesignType(firstConfiguration?.designType || 'single_side'); setTemplateId(firstTemplateId || ''); setSizeId(firstSelection?.size.id || firstSize?.id || ''); if(reviewResponse.ok)setReviews((await reviewResponse.json()).data) } catch (err) { setError(err instanceof Error ? err.message : 'The product could not be loaded.') } finally { setLoading(false) } })() }, [id, requestedSizeId, requestedDesignType, temporaryProduct])
   const selectedTemplate = useMemo(() => product?.templates.find((template) => template.id === templateId) || null, [product, templateId])
   const allSizes = useMemo(() => product?.sizes || [], [product])
   const availableSizes = useMemo(() => uniqueProductionSizes(allSizes), [allSizes])
@@ -85,6 +86,21 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const baseUnitPrice = Number(selectedSize?.unitPrice || product.basePrice)
   const customRatio = customSize && selectedSize?.height && selectedSize.width ? Number(customHeight)*Number(customWidth)/(Number(selectedSize.height)*Number(selectedSize.width)) : 1
   const unitPrice = customSize && Number.isFinite(customRatio) && customRatio>0 ? Math.round(baseUnitPrice*customRatio*100)/100 : baseUnitPrice
+  const uploadReturnParams = new URLSearchParams(searchParams.toString())
+  uploadReturnParams.set('sizeId', selectedSize?.id || '')
+  uploadReturnParams.set('designType', designType)
+  uploadReturnParams.set('quantity', String(quantity))
+  uploadReturnParams.set('uploadArtwork', '1')
+  if (customSize) {
+    uploadReturnParams.set('customSize', '1')
+    uploadReturnParams.set('customHeight', customHeight)
+    uploadReturnParams.set('customWidth', customWidth)
+  } else {
+    uploadReturnParams.delete('customSize')
+    uploadReturnParams.delete('customHeight')
+    uploadReturnParams.delete('customWidth')
+  }
+  const uploadReturnTo = `/products/${encodeURIComponent(product.id)}?${uploadReturnParams}`
 return (
   <main className="min-h-screen bg-background">
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -186,7 +202,7 @@ return (
                 <p className="font-semibold">Design Online</p>
                  <p className="text-sm text-muted-foreground">The correct production template is loaded automatically for this size and design option.</p>
                 <Link
-                  href={`/design?templateId=${selectedTemplate.id}&productId=${product.id}&sizeId=${selectedSize.id}&designType=${designType}`}
+                  href={`/design?${new URLSearchParams({ templateId: selectedTemplate.id, productId: product.id, sizeId: selectedSize.id, designType, quantity: String(quantity) })}`}
                   className="mt-3 inline-flex rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
                 >
                   Start designing
@@ -222,6 +238,7 @@ return (
             value={artwork}
             onChange={setArtwork}
             initiallyOpen={searchParams.get('uploadArtwork')==='1'}
+            returnTo={uploadReturnTo}
           />
 
           {/* Error Message */}

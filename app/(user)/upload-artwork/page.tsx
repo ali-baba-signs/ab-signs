@@ -11,6 +11,7 @@ import {
   type SizeDesignConfiguration,
 } from "@/lib/products/design-configurations";
 import { PRINT_SETTINGS } from "@/lib/production/print-settings";
+import { RequireCustomerAuth } from "@/components/auth/require-customer-auth";
 
 type Size = {
   id: string;
@@ -47,7 +48,7 @@ const accepted =
 const formatError =
   "Unsupported file type. Please upload only supported formats: PDF, SVG, EPS, AI, PNG.";
 
-export default function UploadArtworkPage() {
+function UploadArtworkContent() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState("");
@@ -552,4 +553,8 @@ export default function UploadArtworkPage() {
       )}
     </main>
   );
+}
+
+export default function UploadArtworkPage() {
+  return <RequireCustomerAuth><UploadArtworkContent /></RequireCustomerAuth>;
 }

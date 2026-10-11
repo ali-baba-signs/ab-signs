@@ -10,6 +10,7 @@ import { adminPath } from '@/lib/auth/admin-path'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { safeCallbackUrl } from '@/lib/auth/callback-url'
 
 function responseError(response: unknown): { message?: string; code?: string } | null {
   if (!response || typeof response !== 'object' || !('error' in response)) return null
@@ -40,9 +41,9 @@ export function AuthForm({
 
   const isSignUp = mode === 'sign-up'
   const callbackURL = useMemo(() => {
-    const value = searchParams.get('callbackUrl')
-    return value?.startsWith('/') && !value.startsWith('//') ? value : '/'
+    return safeCallbackUrl(searchParams.get('callbackUrl'))
   }, [searchParams])
+  const verificationCallbackURL = `/sign-in?verified=1&callbackUrl=${encodeURIComponent(callbackURL)}`
 
   useEffect(() => {
     if (!resendAvailableAt) return
@@ -63,7 +64,7 @@ export function AuthForm({
     if (!email || loading) return
     setLoading(true); setError(null); setSuccess(null)
     try {
-      const result = await authClient.sendVerificationEmail({ email, callbackURL: '/sign-in?verified=1' })
+      const result = await authClient.sendVerificationEmail({ email, callbackURL: verificationCallbackURL })
       const error = responseError(result)
       if (error) {
         setEmailDeliveryFailed(error.code === 'EMAIL_DELIVERY_FAILED')
@@ -108,7 +109,7 @@ export function AuthForm({
       const result = admin
         ? await adminAuthClient.signIn.email({ email, password })
         : isSignUp
-          ? await authClient.signUp.email({ email, password, name, callbackURL: '/sign-in?verified=1' })
+          ? await authClient.signUp.email({ email, password, name, callbackURL: verificationCallbackURL })
           : await authClient.signIn.email({ email, password })
       const error = responseError(result)
 
@@ -295,7 +296,7 @@ export function AuthForm({
               </div>
 
               <Link
-                href={isSignUp ? '/sign-in' : '/sign-up'}
+                href={`${isSignUp ? '/sign-in' : '/sign-up'}?callbackUrl=${encodeURIComponent(callbackURL)}`}
                 className="w-full inline-flex items-center justify-center border border-border bg-background hover:bg-secondary text-foreground font-medium py-2 px-4 rounded-md transition-colors"
               >
                 {isSignUp ? 'Sign In Instead' : 'Create New Account'}

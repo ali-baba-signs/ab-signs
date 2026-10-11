@@ -884,12 +884,12 @@ export default function CheckoutPage() {
                 <span>Shipping</span>
                 <span>${estimate.shipping.toFixed(2)}</span>
               </div>
-              {estimate.bannerAreaM2 > 0 && (
+              {/* {estimate.bannerAreaM2 > 0 && (
                 <p className="text-xs text-muted-foreground">
                   Banner shipping: {estimate.bannerAreaM2.toFixed(2)} m² printed
                   area
                 </p>
-              )}
+              )} */}
               <div className="flex justify-between">
                 <span>
                   {settings.taxName}

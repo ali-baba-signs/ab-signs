@@ -5,7 +5,7 @@ import { validateUpload } from '../lib/storage/upload-validation'
 
 test('temporary custom quote catalogue contains only the requested nine products', () => {
   assert.deepEqual(TEMPORARY_CUSTOM_QUOTE_PRODUCTS.map((product) => product.name), [
-    'Table Cloths', 'Pull Up Banner', 'Shop Front Signs', '3D Signs', 'Grass Stakes',
+    'Table Cloths', 'Pull Up Banner', 'Shop Front Signs', '3D Signs',
     'A Frames', 'Business Cards', 'Flyers', 'Menus/Brochures',
   ])
   assert.equal(TEMPORARY_CUSTOM_QUOTE_IMAGE, 'https://assets.alibabasigns.com.au/products/Static%20Products/custom.png')

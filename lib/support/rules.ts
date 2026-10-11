@@ -10,7 +10,7 @@ export const CHAT_ACTIONS = [
 export type SupportIntent = typeof CHAT_ACTIONS[number]['action'] | 'payment' | 'complaint' | 'urgent' | 'unknown'
 export interface ChatReply { intent: SupportIntent; response: string; requiresHuman: boolean; collectOrderId: boolean; notifyTeam: boolean }
 const responses: Record<SupportIntent, string> = {
-  products: 'We offer vinyl and mesh banners, feather and teardrop flags, plus custom signage such as shop-front signs, A-frames, grass stakes, table cloths and printed marketing materials. Browse /products for current options.',
+  products: 'We offer vinyl and mesh banners, feather and teardrop flags, plus custom signage such as shop-front signs, A-frames, table cloths and printed marketing materials. Browse /products for current options.',
   artwork: 'Accepted artwork formats: PDF, SVG, EPS, AI and PNG. Maximum file size: 100 MB. Use /contact to send artwork with a custom quote.',
   delivery: 'We deliver Australia wide. Production time depends on the product and quantity. Our team can confirm timing for your order.',
   privacy: 'Our policies: /policies, /privacy-policy, /terms-of-service, /refund-returns-policy and /warranty-disclaimer.',

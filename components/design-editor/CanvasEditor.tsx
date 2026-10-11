@@ -224,6 +224,7 @@ export function CanvasEditor() {
   const requestedProductId = searchParams.get('productId')
   const requestedSizeId = searchParams.get('sizeId')
   const requestedDesignType = searchParams.get('designType')
+  const requestedQuantity = searchParams.get('quantity')
   const { data: session } = useSession()
   const elementRef = useRef<HTMLCanvasElement>(null)
   const workspaceRef = useRef<HTMLDivElement>(null)
@@ -886,6 +887,7 @@ export function CanvasEditor() {
       }
       if (requestedSizeId) params.set('sizeId', requestedSizeId)
       if (requestedDesignType) params.set('designType', requestedDesignType)
+      if (requestedQuantity) params.set('quantity', requestedQuantity)
       if (templateId) params.set('templateId', templateId)
       params.set('designId', customizationRef)
       params.set('productId', requestedProductId)
@@ -894,7 +896,7 @@ export function CanvasEditor() {
     } else {
       router.push('/products')
     }
-  }, [currentDesignState, isDirty, requestedDesignType, requestedProductId, requestedSizeId, router, save, templateId])
+  }, [currentDesignState, isDirty, requestedDesignType, requestedProductId, requestedQuantity, requestedSizeId, router, save, templateId])
 
   const exportOutput = useCallback(async (format: 'preview' | 'pdf' | 'svg') => {
     const canvas = canvasRef.current
