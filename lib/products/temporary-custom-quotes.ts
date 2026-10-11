@@ -4,22 +4,22 @@ export const TEMPORARY_CUSTOM_QUOTE_IMAGE =
   "https://assets.alibabasigns.com.au/products/Static%20Products/custom.png";
 
 export const TEMPORARY_CUSTOM_QUOTE_PRODUCTS = [
-  {
-    id: "custom-quote-table-cloths",
-    name: "Table Cloths",
-    image:
-      "https://assets.alibabasigns.com.au/products/Static%20Products/Table%20Cloth.webp",
-    description:
-      "Custom printed table cloths made for events, displays, and branded spaces.",
-  },
-  {
-    id: "custom-quote-pull-up-banner",
-    name: "Pull Up Banner",
-    image:
-      "https://assets.alibabasigns.com.au/products/Static%20Products/Pull%20Up%20Banner%20with%20New%20Phone%20Number.webp",
-    description:
-      "Portable pull up banners tailored to your artwork and display requirements.",
-  },
+  // {
+  //   id: "custom-quote-table-cloths",
+  //   name: "Table Cloths",
+  //   image:
+  //     "https://assets.alibabasigns.com.au/products/Static%20Products/Table%20Cloth.webp",
+  //   description:
+  //     "Custom printed table cloths made for events, displays, and branded spaces.",
+  // },
+  // {
+  //   id: "custom-quote-pull-up-banner",
+  //   name: "Pull Up Banner",
+  //   image:
+  //     "https://assets.alibabasigns.com.au/products/Static%20Products/Pull%20Up%20Banner%20with%20New%20Phone%20Number.webp",
+  //   description:
+  //     "Portable pull up banners tailored to your artwork and display requirements.",
+  // },
   {
     id: "custom-quote-shop-front-signs",
     name: "Shop Front Signs",
@@ -37,14 +37,14 @@ export const TEMPORARY_CUSTOM_QUOTE_PRODUCTS = [
   //   description:
   //     "Custom printed grass stakes for promotions, events, and directional signage.",
   // },
-  {
-    id: "custom-quote-a-frames",
-    name: "A Frames",
-    image:
-      "https://assets.alibabasigns.com.au/products/Static%20Products/A%20Frame%20with%20New%20Phone%20Number.webp",
-    description:
-      "Custom A-frame signage for footpaths, retail spaces, and events.",
-  },
+  // {
+  //   id: "custom-quote-a-frames",
+  //   name: "A Frames",
+  //   image:
+  //     "https://assets.alibabasigns.com.au/products/Static%20Products/A%20Frame%20with%20New%20Phone%20Number.webp",
+  //   description:
+  //     "Custom A-frame signage for footpaths, retail spaces, and events.",
+  // },
   {
     id: "custom-quote-business-cards",
     name: "Business Cards",
