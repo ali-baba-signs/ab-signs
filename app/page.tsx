@@ -152,7 +152,7 @@ export default async function HomePage() {
         'brand': { '@id': 'https://alibabasigns.com.au/#organization' },
         'offers': {
           '@type': 'AggregateOffer',
-          'priceCurrency': 'USD',
+          'priceCurrency': 'AUD',
           'lowPrice': '50',
           'highPrice': '1500',
           'offerCount': '10',
