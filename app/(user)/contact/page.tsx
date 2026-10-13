@@ -5,7 +5,7 @@ import { SocialIcon } from '@/components/shared/social-icon'
 import { loadStoreSettings } from '@/lib/store/load-settings'
 import { DEFAULT_STORE_SETTINGS } from '@/lib/store/settings'
 
-export const metadata:Metadata={title:'Contact | Ali Baba Signs',description:'Contact Ali Baba Signs about custom signage, artwork, existing orders, or trade enquiries.'}
+export const metadata:Metadata={title:'Contact Alibaba Signs | Signage Company Perth',description:'Contact Alibaba Signs for affordable custom signage in Perth. Get a quote for shop front signs, banner printing, flags, business signage, and professional sign installation across Perth Metro.'}
 
 export default async function ContactPage(){
   const settings = await loadStoreSettings().catch(() => DEFAULT_STORE_SETTINGS)
