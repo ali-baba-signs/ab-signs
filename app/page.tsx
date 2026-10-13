@@ -31,6 +31,16 @@ export const metadata: Metadata = {
     url: 'https://alibabasigns.com.au/',
     type: 'website',
   },
+  keywords: [
+    'custom banners', 'vinyl banners', 'mesh banners', 'sign printing', 'design editor', 
+    'Feather Flag', 'Teardrop Flag', 'signage company Perth', 'custom signs Perth', 
+    'shop front signs Perth', 'banner printing Perth', 'flag printing Perth', 
+    'A-frame signs Perth', 'real estate signs Perth', 'outdoor vinyl banners Perth', 
+    'fence mesh banners Perth', 'safety signs Perth', 'coreflute signs Perth', 
+    'outdoor signs Perth', 'business signage Perth', 'custom printed tablecloths Perth', 
+    'promotional signage Perth', 'affordable signage Perth', 'Perth sign maker', 
+    'Perth sign printing', 'Perth sign installation'
+  ]
 }
 
 export default async function HomePage() {
@@ -81,10 +91,99 @@ export default async function HomePage() {
     return image ? [{ id: product.id, name: product.name, description: richTextToPlainText(product.description || ''), image: image.url, basePrice: product.basePrice, soldQuantity: product.socialProof.soldQuantity }] : []
   })
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'SignShop',
+        '@id': 'https://alibabasigns.com.au/#organization',
+        'name': 'Alibaba Signs',
+        'url': 'https://alibabasigns.com.au/',
+        'logo': 'https://alibabasigns.com.au/logo.png',
+        'image': 'https://alibabasigns.com.au/banner.jpg',
+        'description': 'Leading signage company in Perth offering custom shop front signs, outdoor vinyl banners, flag printing, A-frame signs, real estate signs, fence mesh banners, coreflute printing, and safety signs across Perth Metropolitan area.',
+        'telephone': '0478 230 945', 
+        'email': 'sales@alibabasigns.com.au',
+        'priceRange': '$$',
+        'knowsAbout': [
+          'custom banners', 'vinyl banners', 'mesh banners', 'sign printing', 
+          'design editor', 'Feather Flag', 'Teardrop Flag', 'signage company Perth', 
+          'custom signs Perth', 'shop front signs Perth', 'banner printing Perth', 
+          'flag printing Perth', 'A-frame signs Perth', 'real estate signs Perth', 
+          'outdoor vinyl banners Perth', 'fence mesh banners Perth', 'safety signs Perth', 
+          'coreflute signs Perth', 'outdoor signs Perth', 'business signage Perth', 
+          'custom printed tablecloths Perth', 'promotional signage Perth', 
+          'affordable signage Perth', 'Perth sign maker', 'Perth sign printing', 
+          'Perth sign installation'
+        ],
+        'address': {
+          '@type': 'PostalAddress',
+          'streetAddress': 'Southern River',
+          'addressLocality': 'Southern River',
+          'addressRegion': 'WA',
+          'addressCountry': 'AU'
+        },
+        'geo': {
+          '@type': 'GeoCoordinates',
+          'latitude': -32.0911,
+          'longitude': 115.9525
+        },
+        'areaServed': [
+          { '@type': 'AdministrativeArea', 'name': 'Perth Metropolitan Area' },
+          { '@type': 'Place', 'name': 'Southern River' },
+          { '@type': 'Place', 'name': 'Canning Vale' },
+          { '@type': 'Place', 'name': 'Jandakot' },
+          { '@type': 'Place', 'name': 'Forrestdale' },
+          { '@type': 'Place', 'name': 'Maddington' },
+          { '@type': 'Place', 'name': 'Cannington' },
+          { '@type': 'Place', 'name': 'Gosnells' },
+          { '@type': 'Place', 'name': 'Piara Waters' },
+          { '@type': 'Place', 'name': 'Harrisdale' },
+          { '@type': 'Place', 'name': 'Armadale' },
+          { '@type': 'Place', 'name': 'Kelmscott' },
+          { '@type': 'Place', 'name': 'Bibra Lake' }
+        ]
+      },
+      {
+        '@type': 'Product',
+        '@id': 'https://alibabasigns.com.au/#product',
+        'name': 'Custom Shop Front Signs & Business Signage Perth',
+        'description': 'High-impact custom shop front sign design, outdoor vinyl banners, A-frame signs, and business branding installation in Perth.',
+        'brand': { '@id': 'https://alibabasigns.com.au/#organization' },
+        'offers': {
+          '@type': 'AggregateOffer',
+          'priceCurrency': 'AUD',
+          'lowPrice': '50',
+          'highPrice': '1500',
+          'offerCount': '10',
+          'availability': 'https://schema.org/InStock'
+        }
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': 'https://alibabasigns.com.au/#faq',
+        'mainEntity': [
+          {
+            '@type': 'Question',
+            'name': 'Who makes affordable shop signs in Perth?',
+            'acceptedAnswer': {
+              '@type': 'Answer',
+              'text': 'Alibaba Signs provides durable and affordable custom shop front signs, outdoor vinyl banners, lightboxes, coreflute signs, and full business branding solutions across the Perth Metropolitan Area, including Southern River, Canning Vale, and surrounding suburbs.'
+            }
+          }
+        ]
+      }
+    ]
+  }
+
   return (
     <CartProvider>
       <div className="min-h-screen overflow-x-clip bg-white text-[#111]">
         <Header />
+         <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
         <main>
           {slides.length > 0 && <HeroCarousel slides={slides} />}
           <BenefitsStrip />
