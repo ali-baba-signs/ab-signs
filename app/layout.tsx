@@ -6,6 +6,10 @@ import './globals.css'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://alibabasigns.com.au'),
+    verification: {
+    google: 'Yrth9xhu-wwVAxwhe0_i6cAlKDD5-BdaZ1nX0NTqEOA',
+  },
+
   title: 'Alibaba Signs - Custom Banners & Vinyl Design',
   description: 'Custom signage, vinyl banners, mesh banners and online artwork tools for Australian businesses.',
   keywords: 'custom banners, vinyl banners, mesh banners, sign printing, design editor',
