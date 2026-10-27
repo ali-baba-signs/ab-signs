@@ -1,12 +1,13 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import Script from 'next/script'
 import { ChatWidget } from '@/components/live-chat/chat-widget'
 import { MetaPixel } from '@/components/analytics/meta-pixel'
 import './globals.css'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://alibabasigns.com.au'),
-    verification: {
+  verification: {
     google: 'Yrth9xhu-wwVAxwhe0_i6cAlKDD5-BdaZ1nX0NTqEOA',
   },
 
@@ -51,6 +52,22 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="scroll-smooth light">
+      <head>
+        {/* Google Tag (gtag.js) */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=AW-18522055990"
+          strategy="afterInteractive"
+        />
+        <Script id="google-gtag" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+
+            gtag('config', 'AW-18522055990');
+          `}
+        </Script>
+      </head>
       <body className="antialiased bg-white text-slate-900">
         {children}
         <ChatWidget />
@@ -60,4 +77,3 @@ export default function RootLayout({
     </html>
   )
 }
-
