@@ -1,5 +1,23 @@
 # Ali Baba Signs
 
+## Product SEO URLs and sitemap
+
+Product IDs remain UUIDs for orders, the editor, artwork uploads, and admin APIs. Public product URLs use the persisted `products.slug` column. The database assigns a slug from the name on insert, appends `-2`, `-3`, and so on for duplicate names, and keeps the slug when the name changes. Existing products receive slugs in a deterministic backfill. A UUID product URL returns HTTP 301 to its slug URL; product pages publish that URL as their canonical and Open Graph URL.
+
+The XML sitemap at `/sitemap.xml` is an index of a static sitemap and 10,000-product pages at `/sitemaps/products/{page}`. It includes only active, public, indexable products and uses `products.updated_at` for product `lastmod`. `/robots.txt` references the index. `seo_noindex` defaults to false; set it to true for a product that should remain accessible but be excluded from indexing and the sitemap. Inactive products and deleted products are never included.
+
+### Deployment
+
+1. Back up the production database and apply [the product SEO migration](sql/2026-11-05-product-seo-slugs.sql) **before** deploying this code. With the deployment database URL in the environment, run `node scripts/apply-migration.mjs 2026-11-05-product-seo-slugs.sql` (or load a local env file with Node's `--env-file`). The migration adds and backfills slugs and is recorded by `schema_migrations`.
+2. Deploy the application. Confirm that the hosting configuration routes `alibabasigns.com.au` and `www.alibabasigns.com.au` to this deployment. The app redirects the `www` and HTTP variants to `https://alibabasigns.com.au`.
+3. Check a known product at `/products/{slug}`, its old `/products/{uuid}` URL, `/sitemap.xml`, `/sitemaps/products/0`, and `/robots.txt`. Resubmit the sitemap in Google Search Console after deployment.
+
+The migration leaves names and UUIDs untouched. It does not require changing cart or checkout records. If a product must be excluded while remaining live, run `UPDATE products SET seo_noindex = true, updated_at = now() WHERE id = '<uuid>';` through the protected database administration process.
+
+### Verification after deployment
+
+Use a published product UUID and its stored slug. Check that the slug URL returns 200 with an H1, canonical tag, description, Open Graph tags and Product JSON-LD; the UUID URL returns 301 with any query string preserved; and the slug appears once in `/sitemaps/products/0`. Set a test product inactive or `seo_noindex = true` and confirm it disappears from the sitemap. Create two test products with the same name to confirm distinct slugs; rename one and confirm its slug stays the same. Check cart, Design Online and Upload Artwork using the slug URL. Restore or remove the test records after verification.
+
 ## Meta Pixel
 
 Set `NEXT_PUBLIC_META_PIXEL_ID=1411263227123131` in the hosting environment and rebuild. The optional `.env.example` entry shows the format. The root layout loads the base pixel once in production. Development (`next dev`) disables it, even if the variable is set; removing the variable from a production build also disables it.

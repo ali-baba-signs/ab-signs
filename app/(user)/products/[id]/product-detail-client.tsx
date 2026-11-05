@@ -34,7 +34,7 @@ function StarRating({ rating, size = 'h-4 w-4' }: { rating: number; size?: strin
     </div>
   )
 }
-function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
+function ProductDetailContent({ params, initialProduct }: { params: Promise<{ id: string }>; initialProduct?: unknown }) {
   const { id } = use(params)
   const temporaryProduct = temporaryCustomQuoteProduct(id)
   const router = useRouter()
@@ -43,16 +43,19 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
   const requestedSizeId = searchParams.get('sizeId')
   const requestedDesignType = searchParams.get('designType')
   const { addItem } = useCart()
-  const [product, setProduct] = useState<Product | null>(null)
-  const [sizeId, setSizeId] = useState('')
-  const [templateId, setTemplateId] = useState('')
-  const [designType, setDesignType] = useState<DesignType>('single_side')
+  const initial = initialProduct as Product | null
+  const initialSize = initial?.sizes.find((size) => size.id === requestedSizeId) || initial?.sizes[0]
+  const initialSelection = initialSize ? designSelectionsForProductionSize(initialSize, initial!.sizes).find((selection) => selection.configuration.designType === requestedDesignType) || designSelectionsForProductionSize(initialSize, initial!.sizes)[0] : null
+  const [product, setProduct] = useState<Product | null>(initial)
+  const [sizeId, setSizeId] = useState(initialSelection?.size.id || initialSize?.id || '')
+  const [templateId, setTemplateId] = useState((initialSelection?.configuration.designType === 'double_side' ? initialSelection.configuration.frontTemplateId : initialSelection?.configuration.singleTemplateId) || '')
+  const [designType, setDesignType] = useState<DesignType>(initialSelection?.configuration.designType || 'single_side')
   const [quantity, setQuantity] = useState(() => Math.min(1000, Math.max(1, Number(searchParams.get('quantity')) || 1)))
   const [customSize,setCustomSize]=useState(searchParams.get('customSize')==='1')
   const [customHeight,setCustomHeight]=useState(searchParams.get('customHeight')||'')
   const [customWidth,setCustomWidth]=useState(searchParams.get('customWidth')||'')
   const [imageIndex, setImageIndex] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!initial)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [artwork, setArtwork] = useState<ArtworkSelection | null>(null)
@@ -100,7 +103,7 @@ function ProductDetailContent({ params }: { params: Promise<{ id: string }> }) {
     uploadReturnParams.delete('customHeight')
     uploadReturnParams.delete('customWidth')
   }
-  const uploadReturnTo = `/products/${encodeURIComponent(product.id)}?${uploadReturnParams}`
+  const uploadReturnTo = `/products/${encodeURIComponent((product as Product & { slug?: string }).slug || product.id)}?${uploadReturnParams}`
 return (
   <main className="min-h-screen bg-background">
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -361,6 +364,6 @@ return (
 );
 }
 
-export function ProductDetailClient(props: { params: Promise<{ id: string }> }) {
+export function ProductDetailClient(props: { params: Promise<{ id: string }>; initialProduct?: unknown }) {
     return <Suspense fallback={<div className="grid min-h-[70vh] place-items-center">Loading product…</div>}><ProductDetailContent {...props} /></Suspense>
 }

@@ -6,6 +6,7 @@ import { Star } from 'lucide-react'
 
 interface ProductCardProps {
   id: string
+  slug?: string
   customQuote?: boolean
   name: string
   description?: string
@@ -19,6 +20,7 @@ interface ProductCardProps {
 
 export function ProductCard({
   id,
+  slug,
   customQuote = false,
   name,
   description,
@@ -29,7 +31,7 @@ export function ProductCard({
   reviewCount = 0,
   soldQuantity = 0,
 }: ProductCardProps) {
-  const href = `/products/${id}`
+  const href = `/products/${slug || id}`
   return (
     <article className="group flex h-full min-w-0 flex-col">
       <Link href={href}>

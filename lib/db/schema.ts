@@ -134,6 +134,8 @@ export const productCategories = pgTable('product_categories', {
 // Products
 export const products = pgTable('products', {
   id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 255 }).notNull().default(''),
+  seoNoindex: boolean('seo_noindex').default(false).notNull(),
   categoryId: uuid('category_id').notNull().references(() => productCategories.id),
   sku: varchar('sku', { length: 100 }).unique().notNull(),
   name: varchar('name', { length: 255 }).notNull(),

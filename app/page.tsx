@@ -88,7 +88,7 @@ export default async function HomePage() {
 
   const popularProductCards = popularProducts.flatMap((product) => {
     const image = product.images.find((item) => item.isPrimary) || product.images[0]
-    return image ? [{ id: product.id, name: product.name, description: richTextToPlainText(product.description || ''), image: image.url, basePrice: product.basePrice, soldQuantity: product.socialProof.soldQuantity }] : []
+    return image ? [{ id: product.id, slug: product.slug, name: product.name, description: richTextToPlainText(product.description || ''), image: image.url, basePrice: product.basePrice, soldQuantity: product.socialProof.soldQuantity }] : []
   })
 
   const jsonLd = {

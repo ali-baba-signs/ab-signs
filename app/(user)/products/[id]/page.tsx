@@ -1,7 +1,12 @@
 // app/products/[id]/page.tsx  (SERVER component — no 'use client')
 import type { Metadata } from 'next'
 import { cache } from 'react'
-import { headers } from 'next/headers'
+import { notFound, permanentRedirect } from 'next/navigation'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db/client'
+import { products } from '@/lib/db/schema'
+import { getProductsWithDetails } from '@/lib/products/queries'
+import { sanitizeRichText } from '@/lib/content/sanitize-html'
 import { temporaryCustomQuoteProduct } from '@/lib/products/temporary-custom-quotes'
 import { ProductDetailClient } from './product-detail-client'
 
@@ -9,7 +14,6 @@ export const dynamic = 'force-dynamic'
 
 const SITE_URL = 'https://alibabasigns.com.au'
 const SITE_NAME = 'Alibaba Signs'
-const FALLBACK_IMAGE = `${SITE_URL}/banner.jpg`
 // ⚠️ Adjust to your real category listing URL
 const categoryUrl = (slug: string) => `${SITE_URL}/products?category=${encodeURIComponent(slug)}`
 
@@ -18,6 +22,8 @@ type PageProps = { params: Promise<{ id: string }> }
 /** Shape of the product returned by /api/products/[id] (fields used for SEO only) */
 type ProductRecord = {
   id: string
+  slug: string
+  seoNoindex: boolean
   sku: string | null
   name: string
   description: string | null
@@ -33,6 +39,7 @@ type ProductRecord = {
 
 type SeoProduct = {
   id: string
+  slug: string
   sku: string
   name: string
   summary: string // first real paragraph, plain text
@@ -87,26 +94,33 @@ function absoluteUrl(url: string) {
 
 const money = (value: number) => value.toFixed(2)
 
-/** Base URL of this app for server-side calls to its own API routes */
-async function getBaseUrl() {
-  if (process.env.INTERNAL_APP_URL) return process.env.INTERNAL_APP_URL.replace(/\/$/, '')
-  const h = await headers()
-  const host = h.get('x-forwarded-host') || h.get('host') || 'localhost:3000'
-  const proto = h.get('x-forwarded-proto') || (host.startsWith('localhost') ? 'http' : 'https')
-  return `${proto}://${host}`
-}
+/** Reuses the public API's data rules without a second HTTP request. */
+const fetchProduct = cache(async (id: string): Promise<ProductRecord | null> => {
+  if (temporaryCustomQuoteProduct(id)) return null
+  const [product] = await getProductsWithDetails(id)
+  if (!product || !product.active) return null
+  const compatibleTemplates = product.templates.filter((template) =>
+    template.status === 'active' && template.conversionStatus === 'ready' && template.compatibleSizeIds.length > 0
+  )
+  return {
+    ...product,
+    description: sanitizeRichText(product.description),
+    updatedAt: product.updatedAt.toISOString(),
+    images: product.images.map((image) => ({ ...image, isPrimary: Boolean(image.isPrimary), order: image.order || 0 })),
+    sizes: product.sizes.filter((size) => size.enabled),
+    templates: compatibleTemplates,
+    template: compatibleTemplates[0] || null,
+  } as ProductRecord
+})
 
-/** Loads one product through the existing /api/products/[id] route */
-async function fetchProduct(id: string): Promise<ProductRecord | null> {
-  const response = await fetch(`${await getBaseUrl()}/api/products/${encodeURIComponent(id)}`, {
-    cache: 'no-store',
-  })
-  if (response.status === 404) return null
-  if (!response.ok) throw new Error(`Product API responded ${response.status}`)
-  const payload = await response.json()
-  // Your client reads payload.data.product; also accept a bare { product }
-  return (payload?.data?.product ?? payload?.product ?? null) as ProductRecord | null
-}
+const resolveProductId = cache(async (segment: string) => {
+  if (temporaryCustomQuoteProduct(segment)) return segment
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)
+  const [row] = await db.select({ id: products.id, slug: products.slug, active: products.active, sku: products.sku, name: products.name }).from(products)
+    .where(isUuid ? eq(products.id, segment) : eq(products.slug, segment)).limit(1)
+  if (!row || !row.active || row.sku.startsWith('SYSTEM_') || row.sku === 'CUSTOM-ARTWORK-ITEM' || row.name === 'Custom Product') return null
+  return row.id
+})
 
 /* ---------------- data ---------------- */
 
@@ -116,6 +130,7 @@ const loadSeoProduct = cache(async (id: string): Promise<SeoProduct | null> => {
   if (temporary) {
     return {
       id,
+      slug: id,
       sku: id,
       name: temporary.name,
       summary: temporary.description,
@@ -149,6 +164,7 @@ const loadSeoProduct = cache(async (id: string): Promise<SeoProduct | null> => {
     const reviews = product.socialProof
     return {
       id: product.id,
+      slug: product.slug,
       sku: product.sku || product.id,
       name: product.name,
       summary: extractSummary(product.description || ''),
@@ -162,31 +178,31 @@ const loadSeoProduct = cache(async (id: string): Promise<SeoProduct | null> => {
         reviews && reviews.reviewCount > 0 && reviews.averageRating > 0
           ? { value: reviews.averageRating, count: reviews.reviewCount }
           : null,
-      indexable: product.active,
+      indexable: product.active && !product.seoNoindex,
       isQuoteOnly: false,
     }
   } catch (error) {
     console.error(`SEO data for product "${id}" could not be loaded.`, error)
-    return null
+    throw error
   }
 })
 
 /* ---------------- metadata ---------------- */
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { id } = await params
+  const { id: segment } = await params
+  const id = await resolveProductId(segment)
+  if (!id) return { title: `Product Not Found | ${SITE_NAME}`, robots: { index: false, follow: false } }
   const product = await loadSeoProduct(id)
 
   if (!product) {
     return { title: `Product Not Found | ${SITE_NAME}`, robots: { index: false, follow: false } }
   }
 
-  const url = `${SITE_URL}/products/${encodeURIComponent(id)}`
+  const url = `${SITE_URL}/products/${encodeURIComponent(product.slug)}`
 
   // e.g. "Fabric Banner Printing Perth | From $27 | Alibaba Signs"
-  const title = product.lowPrice
-    ? `${product.name} Printing Perth | From $${product.lowPrice.toFixed(0)} | ${SITE_NAME}`
-    : `${product.name} Printing Perth | Custom Quote | ${SITE_NAME}`
+  const title = `${product.name} | ${product.sku} | ${SITE_NAME}`
 
   // e.g. "Custom Fabric Banner from $27.00 in 20 sizes + custom sizes. Make a lasting impression…"
   const lead = product.lowPrice
@@ -194,11 +210,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         product.sizeCount > 1 ? ` in ${product.sizeCount} sizes` : ''
       }${product.allowCustomDimensions ? ' + custom sizes' : ''}.`
     : `Request a custom quote for ${product.name}.`
-  const description = truncate(`${lead} ${product.summary}`)
+  const description = truncate(`${lead} Product code: ${product.sku}. ${product.summary}`)
 
-  const images = product.images.length
-    ? product.images.slice(0, 4).map((img) => ({ url: img.url, width: 1000, height: 1000, alt: img.alt }))
-    : [{ url: FALLBACK_IMAGE, alt: SITE_NAME }]
+  const images = product.images.slice(0, 4).map((img) => ({ url: img.url, alt: img.alt }))
 
   const categoryName = product.category?.name
   return {
@@ -237,7 +251,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       ? {
           'product:price:amount': money(product.lowPrice),
           'product:price:currency': 'AUD',
-          'product:availability': 'in stock',
           'product:brand': SITE_NAME,
           'product:retailer_item_id': product.sku,
         }
@@ -251,9 +264,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 /* ---------------- page ---------------- */
 
 export default async function ProductDetailPage({ params }: PageProps) {
-  const { id } = await params
+  const { id: segment } = await params
+  const id = await resolveProductId(segment)
+  if (!id) notFound()
   const product = await loadSeoProduct(id)
-  const url = `${SITE_URL}/products/${encodeURIComponent(id)}`
+  if (!product) notFound()
+  if (segment !== product.slug) permanentRedirect(`/products/${encodeURIComponent(product.slug)}`)
+  const url = `${SITE_URL}/products/${encodeURIComponent(product.slug)}`
 
   const offers =
     product?.lowPrice && product.highPrice && !product.isQuoteOnly
@@ -263,8 +280,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
             url,
             priceCurrency: 'AUD',
             price: money(product.lowPrice),
-            availability: 'https://schema.org/InStock',
-            itemCondition: 'https://schema.org/NewCondition',
             seller: { '@id': `${SITE_URL}/#organization` },
           }
         : {
@@ -274,8 +289,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
             lowPrice: money(product.lowPrice),
             highPrice: money(product.highPrice),
             offerCount: product.sizeCount,
-            availability: 'https://schema.org/InStock',
-            itemCondition: 'https://schema.org/NewCondition',
             seller: { '@id': `${SITE_URL}/#organization` },
           }
       : null
@@ -301,7 +314,6 @@ export default async function ProductDetailPage({ params }: PageProps) {
             image: product.images.map((img) => img.url),
             url,
             sku: product.sku,
-            mpn: product.sku,
             ...(product.category ? { category: product.category.name } : {}),
             brand: { '@type': 'Brand', name: SITE_NAME },
             ...(offers ? { offers } : {}),
@@ -339,7 +351,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
         />
       )}
-      <ProductDetailClient params={params} />
+      <ProductDetailClient params={Promise.resolve({ id })} initialProduct={await fetchProduct(id)} />
     </>
   )
 }
