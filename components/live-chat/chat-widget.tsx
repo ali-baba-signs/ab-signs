@@ -38,14 +38,10 @@ export function ChatWidget() {
 
   const sessionId = useRef<string>("");
   const inFlight = useRef(false);
+  const pendingRequest = useRef<{ key: string; id: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const pathname = usePathname();
-
-  // Hide the widget completely on any admin page
-  if (pathname?.startsWith("/admin") || pathname?.startsWith("/staff-portal")) {
-    return null;
-  }
 
   // Initialize or restore session ID
   useEffect(() => {
@@ -82,12 +78,12 @@ export function ChatWidget() {
 
   // Polling for live agent responses
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || pathname?.startsWith("/admin") || pathname?.startsWith("/staff-portal")) return;
 
     const controller = new AbortController();
 
     const poll = async () => {
-      if (!sessionId.current) return;
+      if (!sessionId.current || document.visibilityState !== "visible") return;
       try {
         const response = await fetch(
           `/api/live-chat?sessionId=${sessionId.current}`,
@@ -123,7 +119,7 @@ export function ChatWidget() {
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [isOpen]);
+  }, [isOpen, pathname]);
 
   async function send(action?: SupportIntent) {
     if (inFlight.current || (!action && !input.trim())) return;
@@ -147,6 +143,11 @@ export function ChatWidget() {
         sessionStorage.setItem(STORAGE_KEY, sessionId.current);
       }
 
+      const requestKey = JSON.stringify({ sessionId: sessionId.current, message, selected });
+      if (pendingRequest.current?.key !== requestKey) {
+        pendingRequest.current = { key: requestKey, id: crypto.randomUUID() };
+      }
+
       const response = await fetch("/api/live-chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -155,6 +156,7 @@ export function ChatWidget() {
           message,
           orderNumber: !action && reply?.collectOrderId ? message : undefined,
           sessionId: sessionId.current,
+          messageId: pendingRequest.current!.id,
           pageUrl: window.location.origin + window.location.pathname,
         }),
       });
@@ -166,6 +168,7 @@ export function ChatWidget() {
 
       const next = payload.data as ChatReply;
       setReply(next);
+      pendingRequest.current = null;
 
       const saved = payload.data.messages as
         | { id: string; message: string; isAdminMessage: boolean }[]
@@ -186,7 +189,9 @@ export function ChatWidget() {
                 : message,
               sender: "user",
             },
-            { id: crypto.randomUUID(), text: next.response, sender: "support" },
+            ...(next.response
+              ? [{ id: crypto.randomUUID(), text: next.response, sender: "support" as const }]
+              : []),
           ];
 
       setMessages((current) => {
@@ -216,6 +221,11 @@ export function ChatWidget() {
       void send();
     }
   };
+
+  // Keep hook order stable when navigating between public and staff pages.
+  if (pathname?.startsWith("/admin") || pathname?.startsWith("/staff-portal")) {
+    return null;
+  }
 
   if (!isOpen) {
     return (
@@ -390,10 +400,7 @@ export function ChatWidget() {
 
         {error && (
           <p role="alert" className="text-xs text-destructive">
-            {error}{" "}
-            <Link href="/sign-in" className="underline font-medium">
-              Sign in
-            </Link>
+            {error}
           </p>
         )}
 

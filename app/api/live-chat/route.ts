@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { and, asc, eq } from 'drizzle-orm'
+import { createHash, createHmac } from 'node:crypto'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { liveChatMessages } from '@/lib/db/schema'
 import { SupportError } from '@/lib/support/validation'
 import { getSession } from '@/lib/auth/middleware'
 import { boundedSupportBody } from '@/lib/support/request-body'
 import { CHAT_ACTIONS, supportIntent } from '@/lib/support/rules'
-
+ 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function turnRowId(messageId: string, kind: 'customer' | 'reply') {
+  const bytes = createHash('sha256').update(`support-v3:${messageId}:${kind}`).digest().subarray(0, 16)
+  bytes[6] = (bytes[6] & 0x0f) | 0x50
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = bytes.toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
@@ -43,108 +52,96 @@ export async function POST(request: NextRequest) {
     const action = String(body.action || '')
     const orderNumber = String(body.orderNumber || '').trim()
     const sessionId = String(body.sessionId || '')
+    const messageId = String(body.messageId || '')
     const pageUrl = String(body.pageUrl || 'https://alibabasigns.com.au')
 
     if (message.length > 2000) throw new SupportError('Messages must be at most 2,000 characters.')
     if (orderNumber.length > 80) throw new SupportError('Order ID is too long.')
     if (!sessionId || !uuid.test(sessionId)) throw new SupportError('Invalid chat session.')
+    if (!messageId || !uuid.test(messageId)) throw new SupportError('Invalid message ID.')
 
-    // Get session context (if logged in)
     const session = await getSession()
     const userId = session?.user?.id || null
     const customerEmail = session?.user?.email || null
     const customerName = session?.user?.name || 'Website Visitor'
-
-    // Check intent for action labels
     const intent = supportIntent(action, message)
     const userDisplayMsg = action ? (CHAT_ACTIONS.find(item => item.action === action)?.label || action) : message
 
-    // Route request to n8n Webhook
-    const n8nWebhookUrl = process.env.SUPPORT_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-message'
-    const webhookSecret = process.env.SUPPORT_WEBHOOK_SECRET
-    
-    if (!webhookSecret) {
-      throw new SupportError('Webhook configuration error.', 500)
-    }
+    const n8nWebhookUrl = process.env.SUPPORT_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-v3-website'
+    const webhookSecret = process.env.SUPPORT_WEBSITE_HMAC_SECRET
+    if (!webhookSecret) throw new SupportError('Webhook configuration error.', 500)
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => {
-      controller.abort()
-    }, 30000)
-
-    const n8nRes = await fetch(n8nWebhookUrl, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-webhook-secret': webhookSecret
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        action,
-        message: userDisplayMsg,
-        orderNumber,
-        customerName,
-        customerEmail,
-        sessionId,
-        pageUrl
-      })
+    // HMAC covers the exact bytes passed to fetch.
+    const signedBody = JSON.stringify({
+      action: action === 'human_support' ? 'talk_to_team' : action,
+      message: userDisplayMsg,
+      messageId,
+      customerId: sessionId,
+      customerName,
+      verifiedUserId: userId || undefined,
+      verifiedEmail: customerEmail || undefined,
+      orderNumber,
+      pageUrl
     })
-
-    clearTimeout(timeout)
-
-    if (!n8nRes.ok) {
-      throw new SupportError('Support automation is currently unavailable.', 502)
-    }
-
-    const n8nPayload = await n8nRes.json()
-
-    // Treat empty string reply from n8n as intentional silence (e.g. human active)
-    const botResponse = typeof n8nPayload.reply === 'string' 
-      ? n8nPayload.reply 
-      : 'Thanks for contacting Alibaba Signs. We are reviewing your message.'
-
-    const detectedIntent = n8nPayload.intent || intent
-    const requiresHuman = Boolean(n8nPayload.wantsHuman || n8nPayload.priority === 'HIGH')
-    const collectOrderId = detectedIntent === 'orderStatus' && !orderNumber
-
-    // Persist turn in DB: always save user message; only save bot message if non-empty
-    const messagesToInsert = [
-      { sessionId, userId, message: userDisplayMsg, isAdminMessage: false }
-    ]
-
-    if (botResponse.trim().length > 0) {
-      messagesToInsert.push({
-        sessionId,
-        userId,
-        message: botResponse,
-        isAdminMessage: true
+    const signature = createHmac('sha256', webhookSecret).update(signedBody).digest('hex')
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    let n8nRes: Response
+    try {
+      n8nRes = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-support-signature-256': `sha256=${signature}`
+        },
+        signal: controller.signal,
+        body: signedBody
       })
+    } finally {
+      clearTimeout(timeout)
     }
 
-    const inserted = await db
-      .insert(liveChatMessages)
-      .values(messagesToInsert)
-      .returning({
+    if (!n8nRes.ok) throw new SupportError('Support automation is currently unavailable.', 502)
+    const n8nPayload = await n8nRes.json() as { status?: string; reply?: string; state?: string }
+    if (!['sent', 'no_reply', 'suppressed'].includes(n8nPayload.status || '')) {
+      throw new SupportError('Support is still processing this message. Please retry.', 503)
+    }
+
+    const botResponse = n8nPayload.status === 'sent' && typeof n8nPayload.reply === 'string'
+      ? n8nPayload.reply : ''
+    const requiresHuman = ['HUMAN_REQUESTED', 'HUMAN_ACTIVE'].includes(n8nPayload.state || '')
+    const customerRowId = turnRowId(messageId, 'customer')
+    const replyRowId = turnRowId(messageId, 'reply')
+    const messagesToInsert: (typeof liveChatMessages.$inferInsert)[] = [
+      { id: customerRowId, sessionId, userId, message: userDisplayMsg, isAdminMessage: false }
+    ]
+    if (botResponse.trim()) messagesToInsert.push({
+      id: replyRowId, sessionId, userId, message: botResponse, isAdminMessage: true
+    })
+    await db.insert(liveChatMessages).values(messagesToInsert).onConflictDoNothing()
+
+    const stored = await db
+      .select({
         id: liveChatMessages.id,
         message: liveChatMessages.message,
         isAdminMessage: liveChatMessages.isAdminMessage
       })
+      .from(liveChatMessages)
+      .where(and(
+        eq(liveChatMessages.sessionId, sessionId),
+        inArray(liveChatMessages.id, botResponse ? [customerRowId, replyRowId] : [customerRowId])
+      ))
+    const inserted = stored.sort((a, b) =>
+      a.id === customerRowId ? -1 : b.id === customerRowId ? 1 : 0)
 
-    return NextResponse.json({
-      data: {
-        intent: detectedIntent,
-        response: botResponse,
-        requiresHuman,
-        collectOrderId,
-        notifyTeam: Boolean(
-          n8nPayload.notifyTeam ||
-          n8nPayload.priority === 'URGENT - ACTION REQUIRED' ||
-          n8nPayload.priority === 'HIGH'
-        ),
-        messages: inserted
-      }
-    }, { status: 201 })
-
+    return NextResponse.json({ data: {
+      intent,
+      response: botResponse,
+      requiresHuman,
+      collectOrderId: intent === 'track_order' && !orderNumber,
+      notifyTeam: requiresHuman,
+      messages: inserted
+    } }, { status: 201 })
   } catch (error) {
     return NextResponse.json(
       { error: { message: error instanceof SupportError ? error.message : 'Support is temporarily unavailable.' } },
