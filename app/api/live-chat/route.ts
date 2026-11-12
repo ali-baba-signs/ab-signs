@@ -39,7 +39,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const origin = request.headers.get('origin')
-    if (origin && origin !== new URL(request.url).origin && origin !== new URL(process.env.NEXT_PUBLIC_SITE_URL || request.url).origin) {
+    const allowedOrigins = new Set([
+      new URL(request.url).origin,
+      'https://alibabasigns.com.au',
+      'https://www.alibabasigns.com.au'
+    ])
+    if (origin && !allowedOrigins.has(origin)) {
       throw new SupportError('Request origin is not allowed.', 403)
     }
 
@@ -58,7 +63,9 @@ export async function POST(request: NextRequest) {
     if (message.length > 2000) throw new SupportError('Messages must be at most 2,000 characters.')
     if (orderNumber.length > 80) throw new SupportError('Order ID is too long.')
     if (!sessionId || !uuid.test(sessionId)) throw new SupportError('Invalid chat session.')
-    if (!messageId || !uuid.test(messageId)) throw new SupportError('Invalid message ID.')
+    if (!messageId || !uuid.test(messageId)) {
+      throw new SupportError('Website chat widget is outdated: messageId is missing or invalid.', 400)
+    }
 
     const session = await getSession()
     const userId = session?.user?.id || null
@@ -67,9 +74,11 @@ export async function POST(request: NextRequest) {
     const intent = supportIntent(action, message)
     const userDisplayMsg = action ? (CHAT_ACTIONS.find(item => item.action === action)?.label || action) : message
 
-    const n8nWebhookUrl = process.env.SUPPORT_WEBHOOK_URL || 'https://automation.alibabasigns.com.au/webhook/support-v3-website'
+    // This route always targets V3. The legacy /support-message URL must not
+    // override it through an environment variable.
+    const n8nWebhookUrl = 'https://automation.alibabasigns.com.au/webhook/support-v3-website'
     const webhookSecret = process.env.SUPPORT_WEBSITE_HMAC_SECRET
-    if (!webhookSecret) throw new SupportError('Webhook configuration error.', 500)
+    if (!webhookSecret) throw new SupportError('Website HMAC secret is not configured on the website server.', 500)
 
     // HMAC covers the exact bytes passed to fetch.
     const signedBody = JSON.stringify({
@@ -101,7 +110,10 @@ export async function POST(request: NextRequest) {
       clearTimeout(timeout)
     }
 
-    if (!n8nRes.ok) throw new SupportError('Support automation is currently unavailable.', 502)
+    if (!n8nRes.ok) {
+      console.error('[support-v3] Website webhook returned', n8nRes.status)
+      throw new SupportError(`Support webhook returned HTTP ${n8nRes.status}.`, 502)
+    }
     const n8nPayload = await n8nRes.json() as { status?: string; reply?: string; state?: string }
     if (!['sent', 'no_reply', 'suppressed'].includes(n8nPayload.status || '')) {
       throw new SupportError('Support is still processing this message. Please retry.', 503)
@@ -143,6 +155,7 @@ export async function POST(request: NextRequest) {
       messages: inserted
     } }, { status: 201 })
   } catch (error) {
+    console.error('[support-v3] Website POST failed', error instanceof Error ? error.message : 'unknown error')
     return NextResponse.json(
       { error: { message: error instanceof SupportError ? error.message : 'Support is temporarily unavailable.' } },
       { status: error instanceof SupportError ? error.status : 500 }
