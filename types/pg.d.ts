@@ -6,6 +6,10 @@ declare module 'pg' {
 
   export class Pool {
     constructor(config?: { connectionString?: string; ssl?: unknown })
+    connect(): Promise<{
+      query<Row = Record<string, unknown>>(queryText: string, values?: readonly unknown[]): Promise<QueryResult<Row>>
+      release(): void
+    }>
     query<Row = Record<string, unknown>>(
       queryText: string,
       values?: readonly unknown[],

@@ -25,6 +25,7 @@ import {
   RefreshCw,
   Store,
   LayoutDashboard,
+  BookOpen,
   CheckCircle2,
   TrendingUp,
 } from "lucide-react";
@@ -122,6 +123,7 @@ export default function AdminDashboard() {
         },
         { label: "Web Enquiries", href: adminPath("/enquiries"), icon: Mail },
         { label: "Customer Reviews", href: adminPath("/reviews"), icon: Star },
+        { label: "Knowledge Base", href: adminPath("/knowledge"), icon: BookOpen },
       ],
     },
     {

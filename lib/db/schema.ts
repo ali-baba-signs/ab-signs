@@ -2,6 +2,24 @@ import { pgTable, text, timestamp, integer, boolean, decimal, varchar, json, pgE
 import { relations } from 'drizzle-orm'
 import type { HeroStyleConfig } from '@/lib/home/hero-style'
 
+// Existing knowledge table; its indexes and constraints are managed in the database.
+export const knowledgeEntries = pgTable('knowledge_entries', {
+  id: text('id').primaryKey(),
+  intent: text('intent').notNull(),
+  approvedAnswer: text('approved_answer').notNull(),
+  enabled: boolean('enabled').default(false).notNull(),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  category: text('category'),
+  title: text('title'),
+  content: text('content'),
+  keywords: text('keywords').array().default([]).notNull(),
+  sourceDocument: text('source_document'),
+  sourceVersion: text('source_version'),
+  approvalStatus: text('approval_status').default('pending').notNull(),
+})
+
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'customer', 'designer'])
 export const orderStatusEnum = pgEnum('order_status', [
